@@ -157,8 +157,8 @@ export default function App() {
           style: {
             label: 'data(label)',
             shape: 'round-rectangle',
-            'background-color': '#0c4a6e',
-            color: '#e0f2fe',
+            'background-color': '#2f7c79',
+            color: '#fff9ef',
             'font-size': 10,
             'font-weight': 500,
             'text-wrap': 'wrap',
@@ -166,7 +166,7 @@ export default function App() {
             'text-justification': 'center',
             'text-valign': 'center',
             'border-width': 1,
-            'border-color': '#7dd3fc',
+            'border-color': '#23615f',
             width: 'mapData(labelLength, 4, 120, 46, 180)',
             height: 'mapData(labelLength, 4, 120, 30, 110)',
             padding: '10px',
@@ -175,18 +175,18 @@ export default function App() {
         {
           selector: 'node[kind = "literal"]',
           style: {
-            'background-color': '#14532d',
-            'border-color': '#86efac',
-            color: '#dcfce7',
+            'background-color': '#c96440',
+            'border-color': '#a75034',
+            color: '#fff8f2',
             shape: 'round-octagon',
           },
         },
         {
           selector: 'node[kind = "blank"]',
           style: {
-            'background-color': '#4c1d95',
-            'border-color': '#c4b5fd',
-            color: '#ede9fe',
+            'background-color': '#d5c8b8',
+            'border-color': '#bcae9e',
+            color: '#46362a',
             shape: 'hexagon',
           },
         },
@@ -194,41 +194,41 @@ export default function App() {
           selector: 'edge',
           style: {
             width: 1.4,
-            'line-color': '#1f2937',
-            'target-arrow-color': '#1f2937',
+            'line-color': '#7b7469',
+            'target-arrow-color': '#7b7469',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
-            opacity: 0.78,
+            opacity: 0.76,
           },
         },
         {
           selector: '.faded',
           style: {
-            opacity: 0.08,
+            opacity: 0.12,
           },
         },
         {
           selector: '.focus-node',
           style: {
             'border-width': 4,
-            'border-color': '#f59e0b',
-            'background-color': '#0369a1',
-            color: '#fefce8',
+            'border-color': '#c75f39',
+            'background-color': '#2a6f6d',
+            color: '#fff9ef',
           },
         },
         {
           selector: '.focus-neighbor',
           style: {
             'border-width': 3,
-            'border-color': '#fb7185',
+            'border-color': '#d57955',
           },
         },
         {
           selector: '.focus-edge',
           style: {
             width: 3,
-            'line-color': '#fb7185',
-            'target-arrow-color': '#fb7185',
+            'line-color': '#d57955',
+            'target-arrow-color': '#d57955',
             opacity: 1,
           },
         },
@@ -464,205 +464,236 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <aside className={`panel left ${leftCollapsed ? 'collapsed' : ''}`}>
-        <button
-          className="panel-toggle"
-          type="button"
-          onClick={() => setLeftCollapsed((value) => !value)}
-          aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse left panel'}
-        >
-          {leftCollapsed ? '>' : '<'}
-        </button>
-
-        {!leftCollapsed && (
-          <div className="panel-content">
-            <h1>idea* viewer</h1>
-            <p className="panel-subtitle">Knowledge Graph explorer with Cytoscape + N3 + Comunica</p>
-
-            <section className="panel-section">
-              <h2>Data Upload</h2>
-
-              <label className="file-control">
-                <span>KG file (.ttl)</span>
-                <input
-                  type="file"
-                  accept=".ttl,.n3,.nt,.nq,.trig"
-                  onChange={(event) => setKgFile(event.target.files?.[0] ?? null)}
-                />
-                <small>{kgFile ? kgFile.name : 'No KG file selected'}</small>
-              </label>
-
-              <label className="file-control">
-                <span>Ontology (optional: .owl/.rdf/.ttl)</span>
-                <input
-                  type="file"
-                  accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
-                  onChange={(event) => setOntologyFile(event.target.files?.[0] ?? null)}
-                />
-                <small>{ontologyFile ? ontologyFile.name : 'No ontology file selected'}</small>
-              </label>
-
-              <button type="button" className="primary" disabled={!kgFile || isLoading} onClick={handleLoadGraph}>
-                {isLoading ? 'Parsing...' : 'Build graph'}
-              </button>
-            </section>
-
-            <section className="panel-section">
-              <h2>Class Filter</h2>
-              <div className="mini-actions">
-                <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
-                  Select all
-                </button>
-                <button
-                  type="button"
-                  onClick={clearClassSelection}
-                  disabled={!graphData || selectedClassIris.length === 0}
-                >
-                  Clear
-                </button>
-              </div>
-
-              <div className="class-list">
-                {!graphData && <p className="muted">Load data to list class types.</p>}
-                {graphData && graphData.classes.length === 0 && (
-                  <p className="muted">No explicit `rdf:type` triples detected.</p>
-                )}
-                {graphData &&
-                  graphData.classes.map((entry) => (
-                    <label key={entry.id} className="class-item">
-                      <input
-                        type="checkbox"
-                        checked={selectedClassIris.includes(entry.id)}
-                        onChange={() => toggleClass(entry.id)}
-                      />
-                      <span className="class-label" title={entry.id}>
-                        {entry.label}
-                      </span>
-                      <small>{entry.count}</small>
-                    </label>
-                  ))}
-              </div>
-            </section>
-
-            <section className="panel-section">
-              <h2>SPARQL Filter</h2>
-              <textarea
-                value={sparqlDraft}
-                onChange={(event) => setSparqlDraft(event.target.value)}
-                placeholder={'SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), "argument")) }'}
-                rows={5}
-              />
-
-              <div className="mini-actions">
-                <button type="button" onClick={applySparqlFilter} disabled={!graphData || !sparqlDraft.trim()}>
-                  Apply
-                </button>
-                <button type="button" onClick={clearSparqlFilter} disabled={!sparqlQuery && !sparqlDraft}>
-                  Clear
-                </button>
-              </div>
-              <p className="muted">Return `?entity` (or any node variable) from your query.</p>
-            </section>
-          </div>
-        )}
-      </aside>
-
-      <main className="graph-area">
-        <div className="status-bar">
-          <span>{status}</span>
-          <span>
-            {isFiltering ? 'Applying filters...' : `${visibleElements.filter((entry) => !entry.data.source).length} nodes visible`}
-          </span>
+    <div className="page-shell">
+      <header className="app-header">
+        <div>
+          <h1 className="brand-title">
+            IDEA<span className="brand-star">*</span> VIEWER
+          </h1>
+          <p className="brand-subtitle">Argument discourse visualization in scientific knowledge graphs.</p>
         </div>
 
-        {(loadError || filterError) && (
-          <div className="error-stack">
-            {loadError && <div className="error">Load error: {loadError}</div>}
-            {filterError && <div className="error">Filter error: {filterError}</div>}
-          </div>
-        )}
+        <nav className="header-tabs" aria-label="Viewer modes">
+          <button type="button" className="tab active">
+            Graph
+          </button>
+          <button type="button" className="tab">
+            Filters
+          </button>
+          <button type="button" className="tab">
+            Inspector
+          </button>
+        </nav>
+      </header>
 
-        <div ref={graphContainerRef} className="graph-canvas" />
-      </main>
+      <div className="app-shell">
+        <aside className={`panel left ${leftCollapsed ? 'collapsed' : ''}`}>
+          <button
+            className="panel-toggle"
+            type="button"
+            onClick={() => setLeftCollapsed((value) => !value)}
+            aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse left panel'}
+          >
+            {leftCollapsed ? '>' : '<'}
+          </button>
 
-      <aside className={`panel right ${rightCollapsed ? 'collapsed' : ''}`}>
-        <button
-          className="panel-toggle"
-          type="button"
-          onClick={() => setRightCollapsed((value) => !value)}
-          aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse right panel'}
-        >
-          {rightCollapsed ? '<' : '>'}
-        </button>
+          {!leftCollapsed && (
+            <div className="panel-content">
+              <section className="panel-section">
+                <h2>Source File</h2>
 
-        {!rightCollapsed && (
-          <div className="panel-content">
-            <h2>Entity Details</h2>
+                <label className="file-control">
+                  <span>KG file (.ttl)</span>
+                  <input
+                    type="file"
+                    accept=".ttl,.n3,.nt,.nq,.trig"
+                    onChange={(event) => setKgFile(event.target.files?.[0] ?? null)}
+                  />
+                  <small>{kgFile ? kgFile.name : 'No KG file selected'}</small>
+                </label>
 
-            {!selectedNode && <p className="muted">Click a node to inspect properties and neighbors.</p>}
+                <label className="file-control">
+                  <span>Ontology (optional: .owl/.rdf/.ttl)</span>
+                  <input
+                    type="file"
+                    accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
+                    onChange={(event) => setOntologyFile(event.target.files?.[0] ?? null)}
+                  />
+                  <small>{ontologyFile ? ontologyFile.name : 'No ontology file selected'}</small>
+                </label>
 
-            {selectedNode && (
-              <>
-                <h3 className="entity-title">{selectedNode.fullLabel}</h3>
+                <button type="button" className="primary" disabled={!kgFile || isLoading} onClick={handleLoadGraph}>
+                  {isLoading ? 'Parsing...' : 'Build graph'}
+                </button>
+              </section>
 
-                <dl className="entity-meta">
-                  <dt>Type</dt>
-                  <dd>{selectedNode.termType}</dd>
+              <section className="panel-section">
+                <h2>Graph Filters</h2>
+                <div className="mini-actions">
+                  <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearClassSelection}
+                    disabled={!graphData || selectedClassIris.length === 0}
+                  >
+                    Clear
+                  </button>
+                </div>
 
-                  <dt>ID</dt>
-                  <dd className="mono">{selectedNode.id}</dd>
-
-                  {selectedNode.iri && (
-                    <>
-                      <dt>IRI/Literal</dt>
-                      <dd className="breakable">{selectedNode.iri}</dd>
-                    </>
+                <div className="class-list">
+                  {!graphData && <p className="muted">Load data to list class types.</p>}
+                  {graphData && graphData.classes.length === 0 && (
+                    <p className="muted">No explicit `rdf:type` triples detected.</p>
                   )}
+                  {graphData &&
+                    graphData.classes.map((entry) => (
+                      <label key={entry.id} className="class-item">
+                        <input
+                          type="checkbox"
+                          checked={selectedClassIris.includes(entry.id)}
+                          onChange={() => toggleClass(entry.id)}
+                        />
+                        <span className="class-label" title={entry.id}>
+                          {entry.label}
+                        </span>
+                        <small>{entry.count}</small>
+                      </label>
+                    ))}
+                </div>
+              </section>
 
-                  {selectedNode.classes.length > 0 && (
-                    <>
-                      <dt>Classes</dt>
-                      <dd className="breakable">{selectedNode.classes.join(', ')}</dd>
-                    </>
-                  )}
-                </dl>
+              <section className="panel-section">
+                <h2>SPARQL Filter</h2>
+                <textarea
+                  value={sparqlDraft}
+                  onChange={(event) => setSparqlDraft(event.target.value)}
+                  placeholder={
+                    'SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), "argument")) }'
+                  }
+                  rows={5}
+                />
 
                 <div className="mini-actions">
-                  <button type="button" onClick={() => setFocusedNodeId(selectedNode.id)}>
-                    Focus here
+                  <button type="button" onClick={applySparqlFilter} disabled={!graphData || !sparqlDraft.trim()}>
+                    Apply
                   </button>
-                  <button type="button" onClick={() => setFocusedNodeId(null)} disabled={!focusedNodeId}>
-                    Clear focus
+                  <button type="button" onClick={clearSparqlFilter} disabled={!sparqlQuery && !sparqlDraft}>
+                    Clear
                   </button>
                 </div>
+                <p className="muted">Return `?entity` (or any node variable) from your query.</p>
+              </section>
+            </div>
+          )}
+        </aside>
 
-                <h4>Visible connections ({neighborRows.length})</h4>
-                <div className="neighbors">
-                  {neighborRows.length === 0 && <p className="muted">No visible edges for this node.</p>}
-                  {neighborRows.map((row) => (
-                    <button
-                      key={row.edgeId}
-                      className="neighbor-row"
-                      type="button"
-                      onClick={() => {
-                        setSelectedNodeId(row.neighborId);
-                        setFocusedNodeId(row.neighborId);
-                      }}
-                      title={row.neighborLabel}
-                    >
-                      <span className="badge">{row.direction}</span>
-                      <span className="neighbor-text">
-                        {row.predicateLabel} → {row.neighborLabel}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+        <main className="graph-area">
+          <div className="graph-head">
+            <h2>Document Graph</h2>
+            <div className="status-bar">
+              <span>{status}</span>
+              <span>
+                {isFiltering
+                  ? 'Applying filters...'
+                  : `${visibleElements.filter((entry) => !entry.data.source).length} nodes visible`}
+              </span>
+            </div>
           </div>
-        )}
-      </aside>
+
+          {(loadError || filterError) && (
+            <div className="error-stack">
+              {loadError && <div className="error">Load error: {loadError}</div>}
+              {filterError && <div className="error">Filter error: {filterError}</div>}
+            </div>
+          )}
+
+          <div className="graph-canvas-wrap">
+            <div ref={graphContainerRef} className="graph-canvas" />
+          </div>
+        </main>
+
+        <aside className={`panel right ${rightCollapsed ? 'collapsed' : ''}`}>
+          <button
+            className="panel-toggle"
+            type="button"
+            onClick={() => setRightCollapsed((value) => !value)}
+            aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse right panel'}
+          >
+            {rightCollapsed ? '<' : '>'}
+          </button>
+
+          {!rightCollapsed && (
+            <div className="panel-content">
+              <section className="panel-section details-card">
+                <h2>Entity Inspector</h2>
+
+                {!selectedNode && <p className="muted">Click a node to inspect properties and neighbors.</p>}
+
+                {selectedNode && (
+                  <>
+                    <h3 className="entity-title">{selectedNode.fullLabel}</h3>
+
+                    <dl className="entity-meta">
+                      <dt>Type</dt>
+                      <dd>{selectedNode.termType}</dd>
+
+                      <dt>ID</dt>
+                      <dd className="mono">{selectedNode.id}</dd>
+
+                      {selectedNode.iri && (
+                        <>
+                          <dt>IRI/Literal</dt>
+                          <dd className="breakable">{selectedNode.iri}</dd>
+                        </>
+                      )}
+
+                      {selectedNode.classes.length > 0 && (
+                        <>
+                          <dt>Classes</dt>
+                          <dd className="breakable">{selectedNode.classes.join(', ')}</dd>
+                        </>
+                      )}
+                    </dl>
+
+                    <div className="mini-actions">
+                      <button type="button" onClick={() => setFocusedNodeId(selectedNode.id)}>
+                        Focus here
+                      </button>
+                      <button type="button" onClick={() => setFocusedNodeId(null)} disabled={!focusedNodeId}>
+                        Clear focus
+                      </button>
+                    </div>
+
+                    <h4>Visible connections ({neighborRows.length})</h4>
+                    <div className="neighbors">
+                      {neighborRows.length === 0 && <p className="muted">No visible edges for this node.</p>}
+                      {neighborRows.map((row) => (
+                        <button
+                          key={row.edgeId}
+                          className="neighbor-row"
+                          type="button"
+                          onClick={() => {
+                            setSelectedNodeId(row.neighborId);
+                            setFocusedNodeId(row.neighborId);
+                          }}
+                          title={row.neighborLabel}
+                        >
+                          <span className="badge">{row.direction}</span>
+                          <span className="neighbor-text">
+                            {row.predicateLabel} → {row.neighborLabel}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </section>
+            </div>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

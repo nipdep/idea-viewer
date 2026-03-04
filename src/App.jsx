@@ -550,7 +550,7 @@ export default function App() {
               <textarea
                 value={sparqlDraft}
                 onChange={(event) => setSparqlDraft(event.target.value)}
-                placeholder="SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), \"argument\")) }"
+                placeholder={'SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), "argument")) }'}
                 rows={5}
               />
 

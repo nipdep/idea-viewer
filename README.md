@@ -113,3 +113,52 @@ npm run preview
 - `.owl`/`.rdf` files that are RDF/XML are currently rejected in this build.
 - Turtle-family syntaxes are supported through N3 parser flow.
 - SPARQL filter should return `?entity` (or any node variable bound to graph entities).
+
+### error
+```
+$ npm run dev
+
+> idea-viewer@0.1.0 dev
+> vite
+
+
+  VITE v6.4.1  ready in 102 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help
+Error:   Failed to scan for dependencies from entries:
+  /home/nipdep/Dev/idea-viewer/index.html
+
+  ✘ [ERROR] Unexpected backslash in JSX element
+
+    src/App.jsx:553:119:
+      553 │ ...?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), \"argument\")) }"
+          ╵                                                              ^
+
+  Quoted JSX attributes use XML-style escapes instead of JavaScript-style escapes:
+
+    src/App.jsx:553:109:
+      553 │ ...?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), \"argument\")) }"
+          │                                                    ~~
+          ╵                                                    &quot;
+
+  Consider using a JavaScript string inside {...} instead of a quoted JSX attribute:
+
+    src/App.jsx:553:28:
+      553 │ ...aceholder="SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FIL...
+          │              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+          ╵              {"SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), \"argument\")) }"}
+
+
+    at failureErrorWithLog (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:1467:15)
+    at /home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:926:25
+    at runOnEndCallbacks (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:1307:45)
+    at buildResponseToResult (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:924:7)
+    at /home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:936:9
+    at new Promise (<anonymous>)
+    at requestCallbacks.on-end (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:935:54)
+    at handleRequest (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:628:17)
+    at handleIncomingPacket (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:653:7)
+    at Socket.readFromStdout (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:581:7)
+    ```

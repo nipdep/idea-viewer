@@ -173,3 +173,25 @@ npm run preview
 - `.owl`/`.rdf` files that are RDF/XML are currently rejected in this build.
 - Turtle-family syntaxes are supported through N3 parser flow.
 - SPARQL filter should return `?entity` (or any node variable bound to graph entities).
+
+## error
+```
+:8081 {
+
+    handle_path /fuseki* {
+        reverse_proxy 127.0.0.1:3030
+    }
+
+    handle_path /idea-annotator* {
+        reverse_proxy 127.0.0.1:3000
+    }
+
+    handle_path /static/* {
+        reverse_proxy 127.0.0.1:3030
+    }
+
+    handle_path /idea-viewer* {
+        reverse_proxy 127.0.0.1:5173
+    }
+}
+```

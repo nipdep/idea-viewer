@@ -94,6 +94,60 @@ npm run dev
 
 Then open the URL printed by Vite (typically [http://localhost:5173](http://localhost:5173)).
 
+## Reverse Proxy with Caddy
+
+The app now supports base-path routing and HMR settings for reverse proxy mode.
+
+### 1) Caddy-aware dev mode
+
+Run Vite in Caddy mode:
+
+```bash
+npm run dev:caddy
+```
+
+This command loads `.env.caddy` (already included in this repo).  
+Update these values in `.env.caddy` to match your endpoint:
+
+```dotenv
+VITE_BASE_PATH=/idea-viewer/
+VITE_DEV_ORIGIN=http://localhost
+VITE_HMR_PROTOCOL=ws
+VITE_HMR_HOST=localhost
+VITE_HMR_CLIENT_PORT=80
+VITE_HMR_PATH=/idea-viewer/@vite/ws
+```
+
+### 2) Caddy dev proxy example
+
+```caddy
+http://localhost {
+  reverse_proxy /idea-viewer* 127.0.0.1:5173
+}
+```
+
+Open: [http://localhost/idea-viewer/](http://localhost/idea-viewer/)
+
+### 3) Production under `/idea-viewer`
+
+Build with the same base path:
+
+```bash
+VITE_BASE_PATH=/idea-viewer/ npm run build
+```
+
+Example Caddy static config:
+
+```caddy
+http://localhost {
+  handle_path /idea-viewer/* {
+    root * /var/www/idea-viewer/dist
+    try_files {path} /index.html
+    file_server
+  }
+}
+```
+
 ## Build and Preview
 
 Production build:
@@ -113,52 +167,3 @@ npm run preview
 - `.owl`/`.rdf` files that are RDF/XML are currently rejected in this build.
 - Turtle-family syntaxes are supported through N3 parser flow.
 - SPARQL filter should return `?entity` (or any node variable bound to graph entities).
-
-### error
-```
-$ npm run dev
-
-> idea-viewer@0.1.0 dev
-> vite
-
-
-  VITE v6.4.1  ready in 102 ms
-
-  ➜  Local:   http://localhost:5173/
-  ➜  Network: use --host to expose
-  ➜  press h + enter to show help
-Error:   Failed to scan for dependencies from entries:
-  /home/nipdep/Dev/idea-viewer/index.html
-
-  ✘ [ERROR] Unexpected backslash in JSX element
-
-    src/App.jsx:553:119:
-      553 │ ...?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), \"argument\")) }"
-          ╵                                                              ^
-
-  Quoted JSX attributes use XML-style escapes instead of JavaScript-style escapes:
-
-    src/App.jsx:553:109:
-      553 │ ...?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), \"argument\")) }"
-          │                                                    ~~
-          ╵                                                    &quot;
-
-  Consider using a JavaScript string inside {...} instead of a quoted JSX attribute:
-
-    src/App.jsx:553:28:
-      553 │ ...aceholder="SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FIL...
-          │              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-          ╵              {"SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), \"argument\")) }"}
-
-
-    at failureErrorWithLog (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:1467:15)
-    at /home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:926:25
-    at runOnEndCallbacks (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:1307:45)
-    at buildResponseToResult (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:924:7)
-    at /home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:936:9
-    at new Promise (<anonymous>)
-    at requestCallbacks.on-end (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:935:54)
-    at handleRequest (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:628:17)
-    at handleIncomingPacket (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:653:7)
-    at Socket.readFromStdout (/home/nipdep/Dev/idea-viewer/node_modules/esbuild/lib/main.js:581:7)
-    ```

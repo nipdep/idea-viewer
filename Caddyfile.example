@@ -1,0 +1,13 @@
+# Development: reverse proxy to Vite under /idea-viewer
+http://localhost {
+  reverse_proxy /idea-viewer* 127.0.0.1:5173
+}
+
+# Production (static dist) alternative:
+# http://localhost {
+#   handle_path /idea-viewer/* {
+#     root * /var/www/idea-viewer/dist
+#     try_files {path} /index.html
+#     file_server
+#   }
+# }

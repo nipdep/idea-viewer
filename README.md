@@ -106,27 +106,33 @@ Run Vite in Caddy mode:
 npm run dev:caddy
 ```
 
-This command loads `.env.caddy` (already included in this repo).  
-Update these values in `.env.caddy` to match your endpoint:
+This command loads `.env.caddy` (already configured for your Tailscale URL):
 
 ```dotenv
 VITE_BASE_PATH=/idea-viewer/
-VITE_DEV_ORIGIN=http://localhost
-VITE_HMR_PROTOCOL=ws
-VITE_HMR_HOST=localhost
-VITE_HMR_CLIENT_PORT=80
+VITE_DEV_ORIGIN=https://spark-6d47.tailb1f37b.ts.net
+VITE_HMR_PROTOCOL=wss
+VITE_HMR_HOST=spark-6d47.tailb1f37b.ts.net
+VITE_HMR_CLIENT_PORT=443
 VITE_HMR_PATH=/idea-viewer/@vite/ws
+```
+
+You can also run with inline env overrides:
+
+```bash
+npm run dev:caddy:spark
 ```
 
 ### 2) Caddy dev proxy example
 
 ```caddy
-http://localhost {
+https://spark-6d47.tailb1f37b.ts.net {
+  redir /idea-viewer /idea-viewer/ 308
   reverse_proxy /idea-viewer* 127.0.0.1:5173
 }
 ```
 
-Open: [http://localhost/idea-viewer/](http://localhost/idea-viewer/)
+Open: [https://spark-6d47.tailb1f37b.ts.net/idea-viewer/](https://spark-6d47.tailb1f37b.ts.net/idea-viewer/)
 
 ### 3) Production under `/idea-viewer`
 

@@ -1,5 +1,6 @@
-# Development: reverse proxy to Vite under /idea-viewer
-http://localhost {
+# Development over HTTPS on Tailscale URL (no :5173 in browser URL)
+https://spark-6d47.tailb1f37b.ts.net {
+  redir /idea-viewer /idea-viewer/ 308
   reverse_proxy /idea-viewer* 127.0.0.1:5173
 }
 

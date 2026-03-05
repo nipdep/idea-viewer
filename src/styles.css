@@ -1,19 +1,21 @@
 :root {
   color-scheme: light;
-  --paper: #f1ece4;
-  --paper-2: #eee7dd;
-  --panel: #f6f3ee;
-  --card: #f2f0ec;
-  --line: #d8cec0;
-  --line-soft: #e4dbcf;
-  --ink: #2e2a26;
-  --muted: #6e6256;
-  --teal: #2f7c79;
-  --teal-strong: #286966;
-  --orange: #c95f3a;
-  --orange-strong: #b05332;
-  --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
-  --font-sans: 'Avenir Next', 'Nunito Sans', 'Segoe UI', sans-serif;
+  --ink: #1e1b16;
+  --muted: #6b6157;
+  --paper: #fdf8f2;
+  --accent: #c05635;
+  --accent-2: #2a6f6e;
+  --panel: rgba(255, 255, 255, 0.92);
+  --border: rgba(30, 27, 22, 0.12);
+  --shadow: 0 18px 40px rgba(30, 27, 22, 0.12);
+}
+
+@font-face {
+  font-family: \"Eternal Bloom\";
+  src: url(\"/assets/Eternal Bloom.otf\") format(\"opentype\");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 
 * {
@@ -30,12 +32,9 @@ body,
 }
 
 body {
+  font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
   color: var(--ink);
-  font-family: var(--font-serif);
-  background:
-    radial-gradient(65vw 50vh at 102% -8%, rgba(201, 95, 58, 0.13), transparent 60%),
-    radial-gradient(70vw 56vh at -15% 110%, rgba(47, 124, 121, 0.15), transparent 65%),
-    linear-gradient(180deg, #f3ece4 0%, #ece6dc 100%);
+  background: radial-gradient(circle at top left, #f8e6d6 0%, #fef6ee 40%, #f3f5f4 100%);
 }
 
 button,
@@ -56,51 +55,54 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
-  padding: 22px 34px 14px;
+  gap: 24px;
+  padding: 16px 32px 8px;
 }
 
 .brand-title {
   margin: 0;
-  font-family: var(--font-serif);
-  font-size: clamp(1.9rem, 2.6vw, 2.9rem);
+  font-size: clamp(2.4rem, 4.1vw, 4.5rem);
+  line-height: 0.95;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   font-weight: 500;
-  line-height: 1;
-  letter-spacing: 0.02em;
+  font-family: \"Eternal Bloom\", \"Palatino Linotype\", \"Book Antiqua\", Palatino, Georgia, serif;
 }
 
 .brand-star {
-  color: var(--orange);
+  color: var(--accent);
   font-weight: 700;
 }
 
 .brand-subtitle {
-  margin: 8px 0 0;
-  color: #52493f;
-  font-size: clamp(1rem, 1.2vw, 1.18rem);
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: clamp(1rem, 1.35vw, 1.2rem);
 }
 
 .header-tabs {
   display: flex;
-  gap: 10px;
-  align-items: center;
+  gap: 4px;
 }
 
 .tab {
-  border: 1px solid var(--line);
-  background: rgba(244, 236, 226, 0.84);
+  border: 1px solid var(--border);
+  background: transparent;
   color: var(--ink);
-  border-radius: 14px;
-  padding: 10px 20px;
-  font-family: var(--font-sans);
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 1rem;
   font-weight: 600;
   cursor: default;
+  transform: none;
+  box-shadow: none;
 }
 
 .tab.active {
-  border-color: #2d7471;
-  background: var(--teal);
-  color: #f8f3e7;
+  background: var(--accent-2);
+  color: #fff;
+  border-color: var(--accent-2);
 }
 
 .app-shell {
@@ -109,26 +111,26 @@ select {
     minmax(56px, var(--left-panel-width, 320px))
     minmax(0, 1fr)
     minmax(56px, var(--right-panel-width, 350px));
-  gap: 16px;
+  gap: 18px;
   height: 100%;
   min-height: 0;
-  padding: 0 28px 22px;
-  transition: grid-template-columns 200ms ease;
+  padding: 12px 32px 32px;
+  transition: grid-template-columns 220ms ease;
 }
 
 .panel,
 .graph-area {
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(246, 243, 238, 0.96), rgba(241, 236, 227, 0.94));
-  box-shadow: 0 12px 28px rgba(80, 63, 44, 0.06);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+  min-height: 0;
 }
 
 .panel {
   position: relative;
   overflow: hidden;
-  min-height: 0;
-  transition: width 200ms ease;
 }
 
 .panel.collapsed {
@@ -138,39 +140,58 @@ select {
 
 .panel-content {
   height: 100%;
-  padding: 14px;
+  min-height: 0;
+  padding: 16px;
   overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: #cbc1b4 transparent;
+  scrollbar-color: rgba(30, 27, 22, 0.24) transparent;
 }
 
 .panel-toggle {
   position: absolute;
   top: 50%;
-  right: 6px;
+  right: -6px;
   transform: translateY(-50%);
-  z-index: 3;
-  width: 24px;
-  height: 54px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: #ece5db;
-  color: #625548;
+  z-index: 4;
+  width: 20px;
+  height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #f4efe8;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   cursor: pointer;
-  font-family: var(--font-sans);
-  font-size: 0.92rem;
+  box-shadow: var(--shadow);
+  transition: none;
+}
+
+.panel.left.collapsed .panel-toggle {
+  right: 2px;
 }
 
 .panel.right .panel-toggle {
   right: auto;
-  left: 6px;
+  left: -6px;
+}
+
+.panel.right.collapsed .panel-toggle {
+  left: 2px;
+}
+
+.panel-toggle:hover {
+  transform: translateY(-50%);
+  box-shadow: var(--shadow);
 }
 
 .panel-section {
   margin-bottom: 14px;
-  border: 1px solid var(--line);
-  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 14px;
+  background: #fffdf9;
   padding: 14px;
 }
 
@@ -180,11 +201,11 @@ select {
 
 .panel-section h2 {
   margin: 0;
-  font-family: var(--font-sans);
-  font-size: 1.03rem;
-  letter-spacing: 0.16em;
-  font-weight: 700;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   text-transform: uppercase;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
 }
 
 .file-control {
@@ -195,19 +216,19 @@ select {
 }
 
 .file-control span {
-  font-family: var(--font-sans);
-  font-size: 0.84rem;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.82rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
   color: #4f473f;
+  letter-spacing: 0.04em;
 }
 
 .file-control input {
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: #f6f3ee;
-  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+  width: 100%;
 }
 
 .file-control small,
@@ -216,23 +237,38 @@ select {
   font-size: 0.9rem;
 }
 
+button {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(192, 86, 53, 0.25);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .primary,
 .mini-actions button {
-  border: 1px solid transparent;
-  border-radius: 10px;
-  padding: 8px 11px;
-  font-family: var(--font-sans);
-  font-size: 0.92rem;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   font-weight: 700;
-  cursor: pointer;
 }
 
 .primary {
   width: 100%;
   margin-top: 10px;
-  border-color: var(--orange-strong);
-  background: var(--orange);
-  color: #fff9f4;
+  background: var(--accent);
 }
 
 .mini-actions {
@@ -243,20 +279,15 @@ select {
 
 .mini-actions button {
   flex: 1;
-  border-color: var(--line);
-  background: #ece5da;
-  color: #4f473f;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
 }
 
 .mini-actions button:first-child {
-  border-color: #2d7471;
-  background: var(--teal);
-  color: #f9f5ea;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  background: var(--accent-2);
+  color: #fff;
+  border-color: var(--accent-2);
 }
 
 textarea,
@@ -264,11 +295,11 @@ select,
 input[type='text'] {
   width: 100%;
   margin-top: 8px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: #f8f6f2;
-  color: #3e342b;
-  padding: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--ink);
 }
 
 textarea {
@@ -279,9 +310,9 @@ textarea {
   margin-top: 10px;
   max-height: 240px;
   overflow-y: auto;
-  border: 1px solid var(--line-soft);
-  border-radius: 10px;
-  background: #f7f4ef;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
 }
 
 .class-item {
@@ -290,8 +321,9 @@ textarea {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-bottom: 1px dashed #dbd2c7;
-  font-family: var(--font-sans);
+  border-bottom: 1px solid var(--border);
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.9rem;
 }
 
 .class-item:last-child {
@@ -302,70 +334,62 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.9rem;
 }
 
 .graph-area {
   position: relative;
-  display: block;
-  min-width: 0;
-  min-height: 0;
-  padding: 16px;
-}
-
-.status-bar {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: #5e5347;
-  font-family: var(--font-sans);
-  font-size: 0.86rem;
-}
-
-.status-bar.overlay {
-  position: absolute;
-  left: 26px;
-  right: 26px;
-  bottom: 26px;
-  z-index: 2;
-  border: 1px solid rgba(216, 206, 192, 0.9);
-  border-radius: 10px;
-  padding: 8px 11px;
-  background: rgba(248, 244, 237, 0.86);
-  backdrop-filter: blur(2px);
-}
-
-.error-stack {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  right: 16px;
-  z-index: 4;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.error {
-  border: 1px solid #d79f88;
-  background: rgba(201, 95, 58, 0.12);
-  color: #763b27;
-  border-radius: 9px;
-  padding: 8px 10px;
-  font-family: var(--font-sans);
-  font-size: 0.88rem;
+  padding: 14px;
+  overflow: hidden;
 }
 
 .graph-canvas {
   width: 100%;
   height: 100%;
   min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 8% 16%, rgba(47, 124, 121, 0.07), transparent 24%),
-    radial-gradient(circle at 86% 76%, rgba(201, 95, 58, 0.08), transparent 30%),
-    linear-gradient(180deg, #f5f2eb 0%, #eee8de 100%);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fcfaf6 0%, #f8f3ec 100%);
+  border: 1px solid #e0d6cb;
+}
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  color: #5a524a;
+  font-size: 0.84rem;
+}
+
+.status-bar.overlay {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 24px;
+  z-index: 2;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 250, 242, 0.92);
+  padding: 7px 10px;
+}
+
+.error-stack {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  z-index: 4;
+  display: grid;
+  gap: 6px;
+}
+
+.error {
+  border: 1px solid rgba(192, 86, 53, 0.38);
+  border-radius: 8px;
+  background: rgba(192, 86, 53, 0.14);
+  color: #6e2f1d;
+  padding: 8px 10px;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.86rem;
 }
 
 .details-card {
@@ -373,9 +397,9 @@ textarea {
 }
 
 .entity-title {
-  margin-top: 10px;
-  font-size: 1.16rem;
-  line-height: 1.36;
+  margin: 10px 0 0;
+  font-size: 1.14rem;
+  line-height: 1.35;
 }
 
 .entity-meta {
@@ -386,12 +410,12 @@ textarea {
 }
 
 .entity-meta dt {
-  color: #2f7c79;
-  font-family: var(--font-sans);
-  font-size: 0.79rem;
-  letter-spacing: 0.1em;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   text-transform: uppercase;
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
   font-weight: 700;
+  color: var(--accent-2);
 }
 
 .entity-meta dd {
@@ -401,68 +425,58 @@ textarea {
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.78rem;
-  color: #625548;
+  color: #5d544b;
 }
 
 .breakable {
   overflow-wrap: anywhere;
 }
 
+.property-list,
 .neighbors {
-  display: grid;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.property-list {
   display: grid;
   gap: 8px;
   margin-top: 8px;
 }
 
-.property-row {
-  border: 1px solid var(--line);
-  border-radius: 10px;
+.property-row,
+.neighbor-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
   padding: 8px 9px;
-  background: #f7f2e9;
 }
 
 .property-name {
-  font-family: var(--font-sans);
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   font-size: 0.72rem;
-  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #2f7c79;
+  font-weight: 700;
+  color: var(--accent-2);
 }
 
 .property-value {
   margin-top: 4px;
-  font-size: 0.93rem;
-  line-height: 1.3;
   color: #3f362e;
+  line-height: 1.3;
 }
 
 .neighbor-row {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #f6f0e7;
   color: var(--ink);
-  padding: 8px;
   display: flex;
   gap: 8px;
   align-items: center;
   text-align: left;
-  cursor: pointer;
 }
 
 .badge {
-  font-size: 0.7rem;
-  font-family: var(--font-sans);
   border-radius: 999px;
   padding: 2px 8px;
-  background: #e5dbce;
-  color: #4f473f;
+  font-size: 0.7rem;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  background: #f4efe8;
+  color: #5a524a;
   white-space: nowrap;
 }
 
@@ -478,6 +492,7 @@ textarea {
       minmax(56px, var(--left-panel-width, 280px))
       minmax(0, 1fr)
       minmax(56px, var(--right-panel-width, 320px));
+    padding: 10px 20px 20px;
   }
 }
 
@@ -495,10 +510,11 @@ textarea {
   .panel.right .panel-toggle {
     top: 10px;
     left: auto;
-    right: 10px;
+    right: 8px;
     transform: none;
     width: 44px;
-    height: 24px;
+    height: 22px;
+    border-radius: 8px;
   }
 }
 
@@ -510,20 +526,21 @@ textarea {
   }
 
   .app-header {
-    padding: 16px;
+    padding: 12px 14px 8px;
     flex-direction: column;
+    align-items: flex-start;
   }
 
   .header-tabs {
     width: 100%;
-    justify-content: flex-start;
     flex-wrap: wrap;
   }
 
   .app-shell {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(460px, 1fr) auto;
-    padding: 0 12px 14px;
+    padding: 8px 12px 14px;
+    gap: 12px;
   }
 
   .panel.left,
@@ -533,26 +550,24 @@ textarea {
     grid-row: auto;
   }
 
-  .panel-toggle {
-    top: 10px;
-    right: 10px;
+  .panel-toggle,
+  .panel.right .panel-toggle {
+    top: 8px;
+    left: auto;
+    right: 8px;
     transform: none;
     width: 44px;
-    height: 24px;
+    height: 22px;
+    border-radius: 8px;
   }
 
-  .panel.right .panel-toggle {
-    left: auto;
-    right: 10px;
+  .status-bar.overlay {
+    left: 18px;
+    right: 18px;
+    bottom: 18px;
   }
 
   .graph-canvas {
     min-height: 320px;
-  }
-
-  .status-bar.overlay {
-    left: 20px;
-    right: 20px;
-    bottom: 20px;
   }
 }

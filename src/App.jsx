@@ -286,6 +286,7 @@ export default function App() {
     cy.on('tap', (event) => {
       if (event.target === cy) {
         setSelectedNodeId(null);
+        setFocusedNodeId(null);
       }
     });
 

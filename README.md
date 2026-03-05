@@ -227,3 +227,13 @@ npm run preview
 - `.owl`/`.rdf` files that are RDF/XML are currently rejected in this build.
 - Turtle-family syntaxes are supported through N3 parser flow.
 - SPARQL filter should return `?entity` (or any node variable bound to graph entities).
+
+## error
+```
+$ npm run dev:caddy:spark
+
+> idea-viewer@0.1.0 dev:caddy:spark
+> VITE_BASE_PATH=/idea-viewer/ VITE_DEV_ORIGIN=https://spark-6d47.tailb1f37b.ts.net VITE_HMR_PROTOCOL=wss VITE_HMR_HOST=spark-6d47.tailb1f37b.ts.net VITE_HMR_CLIENT_PORT=443 VITE_HMR_PATH=/idea-viewer/@vite/ws vite --host 0.0.0.0 --strictPort
+
+sh: 1: vite: not found
+```

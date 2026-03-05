@@ -11,8 +11,8 @@
 }
 
 @font-face {
-  font-family: \"Eternal Bloom\";
-  src: url(\"/assets/Eternal Bloom.otf\") format(\"opentype\");
+  font-family: "Eternal Bloom";
+  src: url("/assets/Eternal Bloom.otf") format("opentype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -37,11 +37,10 @@ body {
   background: radial-gradient(circle at top left, #f8e6d6 0%, #fef6ee 40%, #f3f5f4 100%);
 }
 
-button,
 input,
-textarea,
-select {
-  font: inherit;
+select,
+textarea {
+  font-family: inherit;
 }
 
 .page-shell {
@@ -56,17 +55,17 @@ select {
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
-  padding: 10px 24px 4px;
+  padding: 16px 32px 8px;
 }
 
 .brand-title {
   margin: 0;
-  font-size: clamp(1.45rem, 2.35vw, 2.2rem);
+  font-size: 28px;
   line-height: 0.95;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 500;
-  font-family: \"Eternal Bloom\", \"Palatino Linotype\", \"Book Antiqua\", Palatino, Georgia, serif;
+  font-family: "Eternal Bloom", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
 }
 
 .brand-star {
@@ -77,7 +76,6 @@ select {
 .brand-subtitle {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: clamp(0.84rem, 1.02vw, 0.98rem);
 }
 
 .header-tabs {
@@ -91,9 +89,7 @@ select {
   color: var(--ink);
   border-radius: 12px;
   padding: 12px 18px;
-  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   font-size: 1rem;
-  font-weight: 600;
   cursor: default;
   transform: none;
   box-shadow: none;
@@ -114,7 +110,7 @@ select {
   gap: 18px;
   height: 100%;
   min-height: 0;
-  padding: 8px 24px 20px;
+  padding: 12px 32px 32px;
   transition: grid-template-columns 220ms ease;
 }
 
@@ -146,7 +142,6 @@ select {
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(30, 27, 22, 0.24) transparent;
-  font-size: 0.9rem;
 }
 
 .panel-toggle {
@@ -204,7 +199,7 @@ select {
   margin: 0;
   font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: 0.18em;
   font-weight: 700;
 }
@@ -217,11 +212,7 @@ select {
 }
 
 .file-control span {
-  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
-  font-size: 0.76rem;
-  font-weight: 700;
   color: #4f473f;
-  letter-spacing: 0.04em;
 }
 
 .file-control input {
@@ -235,7 +226,7 @@ select {
 .file-control small,
 .muted {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.9rem;
 }
 
 button {
@@ -262,9 +253,7 @@ button:disabled {
 
 .primary,
 .mini-actions button {
-  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   font-weight: 700;
-  font-size: 0.88rem;
 }
 
 .primary {
@@ -324,8 +313,7 @@ textarea {
   gap: 8px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
-  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
 }
 
 .class-item:last-child {
@@ -357,9 +345,8 @@ textarea {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   color: #5a524a;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
 }
 
 .status-bar.overlay {
@@ -400,7 +387,7 @@ textarea {
 
 .entity-title {
   margin: 10px 0 0;
-  font-size: 0.96rem;
+  font-size: 1rem;
   line-height: 1.35;
 }
 
@@ -414,7 +401,7 @@ textarea {
 .entity-meta dt {
   font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   text-transform: uppercase;
-  font-size: 0.66rem;
+  font-size: 12px;
   letter-spacing: 0.12em;
   font-weight: 700;
   color: var(--accent-2);
@@ -422,7 +409,6 @@ textarea {
 
 .entity-meta dd {
   margin: 0;
-  font-size: 0.84rem;
 }
 
 .mono {
@@ -452,7 +438,7 @@ textarea {
 
 .property-name {
   font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
-  font-size: 0.64rem;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 700;
@@ -463,7 +449,7 @@ textarea {
   margin-top: 4px;
   color: #3f362e;
   line-height: 1.3;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
 }
 
 .neighbor-row {
@@ -477,10 +463,9 @@ textarea {
 .badge {
   border-radius: 999px;
   padding: 2px 8px;
-  font-size: 0.7rem;
-  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.75rem;
   background: #f4efe8;
-  color: #5a524a;
+  color: var(--muted);
   white-space: nowrap;
 }
 
@@ -488,7 +473,7 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 1280px) {

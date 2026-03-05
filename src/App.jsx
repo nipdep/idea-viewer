@@ -463,6 +463,11 @@ export default function App() {
     setSparqlQuery('');
   }
 
+  const appShellStyle = {
+    '--left-panel-width': leftCollapsed ? '56px' : '320px',
+    '--right-panel-width': rightCollapsed ? '56px' : '350px',
+  };
+
   return (
     <div className="page-shell">
       <header className="app-header">
@@ -486,7 +491,7 @@ export default function App() {
         </nav>
       </header>
 
-      <div className="app-shell">
+      <div className="app-shell" style={appShellStyle}>
         <aside className={`panel left ${leftCollapsed ? 'collapsed' : ''}`}>
           <button
             className="panel-toggle"
@@ -590,18 +595,6 @@ export default function App() {
         </aside>
 
         <main className="graph-area">
-          <div className="graph-head">
-            <h2>Document Graph</h2>
-            <div className="status-bar">
-              <span>{status}</span>
-              <span>
-                {isFiltering
-                  ? 'Applying filters...'
-                  : `${visibleElements.filter((entry) => !entry.data.source).length} nodes visible`}
-              </span>
-            </div>
-          </div>
-
           {(loadError || filterError) && (
             <div className="error-stack">
               {loadError && <div className="error">Load error: {loadError}</div>}
@@ -609,8 +602,15 @@ export default function App() {
             </div>
           )}
 
-          <div className="graph-canvas-wrap">
-            <div ref={graphContainerRef} className="graph-canvas" />
+          <div ref={graphContainerRef} className="graph-canvas" />
+
+          <div className="status-bar overlay">
+            <span>{status}</span>
+            <span>
+              {isFiltering
+                ? 'Applying filters...'
+                : `${visibleElements.filter((entry) => !entry.data.source).length} nodes visible`}
+            </span>
           </div>
         </main>
 

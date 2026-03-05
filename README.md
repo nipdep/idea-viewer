@@ -96,17 +96,21 @@ Then open the URL printed by Vite (typically [http://localhost:5173](http://loca
 
 ## Reverse Proxy with Caddy
 
-The app now supports base-path routing and HMR settings for reverse proxy mode.
+The app supports reverse-proxy routing under `/idea-viewer/`, including HMR over WSS.
 
-### 1) Caddy-aware dev mode
+### 1) Start the app in Caddy mode
 
-Run Vite in Caddy mode:
+Use the preconfigured script for your Tailscale host:
 
 ```bash
-npm run dev:caddy
+npm run dev:caddy:spark
 ```
 
-This command loads `.env.caddy` (already configured for your Tailscale URL):
+Expected startup output should include:
+- `Local: http://localhost:5173/`
+- no syntax/build errors
+
+The script sets:
 
 ```dotenv
 VITE_BASE_PATH=/idea-viewer/
@@ -117,24 +121,74 @@ VITE_HMR_CLIENT_PORT=443
 VITE_HMR_PATH=/idea-viewer/@vite/ws
 ```
 
-You can also run with inline env overrides:
+### 2) Use this Caddy block (for your `:8081` file)
 
-```bash
-npm run dev:caddy:spark
-```
-
-### 2) Caddy dev proxy example
+Important:
+- Keep `handle_path` for other apps if needed.
+- For `idea-viewer`, use `handle`, not `handle_path`.
+- Add redirect from `/idea-viewer` to `/idea-viewer/`.
 
 ```caddy
-https://spark-6d47.tailb1f37b.ts.net {
-  redir /idea-viewer /idea-viewer/ 308
-  reverse_proxy /idea-viewer* 127.0.0.1:5173
+:8081 {
+    handle_path /fuseki* {
+        reverse_proxy 127.0.0.1:3030
+    }
+
+    handle_path /idea-annotator* {
+        reverse_proxy 127.0.0.1:3000
+    }
+
+    handle_path /static/* {
+        reverse_proxy 127.0.0.1:3030
+    }
+
+    redir /idea-viewer /idea-viewer/ 308
+
+    handle /idea-viewer* {
+        reverse_proxy 127.0.0.1:5173
+    }
 }
 ```
 
-Open: [https://spark-6d47.tailb1f37b.ts.net/idea-viewer/](https://spark-6d47.tailb1f37b.ts.net/idea-viewer/)
+Reload Caddy after editing:
 
-### 3) Production under `/idea-viewer`
+```bash
+sudo caddy reload --config /etc/caddy/Caddyfile
+```
+
+### 3) If `spark-...` points to Caddy on `:8081`
+
+If you are using Tailscale Serve/Funnel for the external HTTPS URL, make sure it forwards to `127.0.0.1:8081`:
+
+```bash
+tailscale serve status
+```
+
+You should see HTTPS traffic for `spark-6d47.tailb1f37b.ts.net` forwarding to your local `:8081`.
+
+Open:
+[https://spark-6d47.tailb1f37b.ts.net/idea-viewer/](https://spark-6d47.tailb1f37b.ts.net/idea-viewer/)
+
+### 4) White page troubleshooting (quick checks)
+
+Run these:
+
+```bash
+curl -I https://spark-6d47.tailb1f37b.ts.net/idea-viewer/
+curl -I https://spark-6d47.tailb1f37b.ts.net/idea-viewer/@vite/client
+curl -I https://spark-6d47.tailb1f37b.ts.net/idea-viewer/src/main.jsx
+```
+
+Expected: all return `200`.
+
+If not:
+- `404` on `@vite/client` or `src/main.jsx`: route rewrite issue, `handle` is not applied correctly.
+- `502/503`: Vite is not running on `127.0.0.1:5173`.
+- HTML loads but blank page: open browser console and check first red error; most often stale cache or JS load failure.
+
+After changes, do a hard refresh once (`Ctrl+Shift+R`).
+
+### 5) Production under `/idea-viewer`
 
 Build with the same base path:
 
@@ -173,25 +227,3 @@ npm run preview
 - `.owl`/`.rdf` files that are RDF/XML are currently rejected in this build.
 - Turtle-family syntaxes are supported through N3 parser flow.
 - SPARQL filter should return `?entity` (or any node variable bound to graph entities).
-
-## error
-```
-:8081 {
-
-    handle_path /fuseki* {
-        reverse_proxy 127.0.0.1:3030
-    }
-
-    handle_path /idea-annotator* {
-        reverse_proxy 127.0.0.1:3000
-    }
-
-    handle_path /static/* {
-        reverse_proxy 127.0.0.1:3030
-    }
-
-    handle_path /idea-viewer* {
-        reverse_proxy 127.0.0.1:5173
-    }
-}
-```

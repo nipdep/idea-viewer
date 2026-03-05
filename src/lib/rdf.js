@@ -407,17 +407,14 @@ export function buildFocusedSubset(graphData, focusedNodeIds) {
     return [];
   }
 
-  const visibleNodes = new Set(focusedNodeIds);
   const visibleEdges = [];
 
   for (const edge of graphData.edges) {
-    if (focusedNodeIds.has(edge.source) || focusedNodeIds.has(edge.target)) {
+    if (focusedNodeIds.has(edge.source) && focusedNodeIds.has(edge.target)) {
       visibleEdges.push(edge);
-      visibleNodes.add(edge.source);
-      visibleNodes.add(edge.target);
     }
   }
 
-  const nodes = graphData.nodes.filter((node) => visibleNodes.has(node.id));
+  const nodes = graphData.nodes.filter((node) => focusedNodeIds.has(node.id));
   return toElements(nodes, visibleEdges);
 }

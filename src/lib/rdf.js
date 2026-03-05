@@ -132,26 +132,33 @@ function toClassBadge(label) {
     return '';
   }
 
-  const words = compact.split(' ');
-  if (words.length >= 2) {
-    return words
-      .slice(0, 3)
-      .map((word) => word[0])
-      .join('')
-      .toUpperCase();
+  if (compact.length <= 14) {
+    return compact;
   }
 
-  return compact.slice(0, 3).toUpperCase();
+  const words = compact.split(' ');
+  if (words.length > 1) {
+    const candidate = `${words[0]} ${words[1]}`;
+    if (candidate.length <= 14) {
+      return candidate;
+    }
+  }
+
+  return `${compact.slice(0, 13)}…`;
 }
 
 function makeBadgeDataUri(text) {
   if (!text) {
-    return '';
+    return { uri: '', width: 0 };
   }
 
+  const width = Math.max(50, Math.min(140, Math.ceil(text.length * 7.2 + 18)));
   const escaped = escapeXml(text);
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='48' height='24' viewBox='0 0 48 24'><rect x='1' y='1' rx='10' ry='10' width='46' height='22' fill='#c95f3a' stroke='#b05332' stroke-width='1'/><text x='24' y='16' text-anchor='middle' font-family='Avenir Next,Segoe UI,Arial,sans-serif' font-size='11' font-weight='700' fill='#fff8f2'>${escaped}</text></svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='24' viewBox='0 0 ${width} 24'><rect x='1' y='1' rx='10' ry='10' width='${width - 2}' height='22' fill='#c95f3a' stroke='#b05332' stroke-width='1'/><text x='${Math.floor(width / 2)}' y='16' text-anchor='middle' font-family='Avenir Next,Segoe UI,Arial,sans-serif' font-size='11' font-weight='700' fill='#fff8f2'>${escaped}</text></svg>`;
+  return {
+    uri: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+    width,
+  };
 }
 
 function detectFormat(fileName, text) {
@@ -324,7 +331,9 @@ export function buildGraphData(quads) {
       : '';
     node.primaryClassLabel = primaryClassLabel;
     node.classBadge = toClassBadge(primaryClassLabel);
-    node.badgeSvg = makeBadgeDataUri(node.classBadge);
+    const badge = makeBadgeDataUri(node.classBadge);
+    node.badgeSvg = badge.uri;
+    node.badgeWidth = badge.width;
     node.hasClass = node.classes.length;
 
     for (const classIri of classes) {
@@ -340,6 +349,7 @@ export function buildGraphData(quads) {
       node.hasClass = 0;
       node.classBadge = '';
       node.badgeSvg = '';
+      node.badgeWidth = 0;
       node.primaryClassLabel = '';
     }
   }
@@ -374,6 +384,7 @@ export function toElements(nodes, edges) {
         hasClass: node.hasClass,
         classBadge: node.classBadge,
         badgeSvg: node.badgeSvg,
+        badgeWidth: node.badgeWidth,
       },
     })),
     ...edges.map((edge) => ({

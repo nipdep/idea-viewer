@@ -18,6 +18,10 @@ function hashText(value) {
   return (hash >>> 0).toString(36);
 }
 
+function isEntityTerm(term) {
+  return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
+}
+
 export function getTermId(term) {
   if (!term) {
     return '';
@@ -103,6 +107,51 @@ export function makeDisplayLabel(label, maxLineLength = 24, maxLines = 3) {
   }
 
   return lines.join('\n');
+}
+
+function escapeXml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function toClassBadge(label) {
+  if (!label) {
+    return '';
+  }
+
+  const compact = label
+    .replace(/[^A-Za-z0-9 ]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+
+  if (!compact) {
+    return '';
+  }
+
+  const words = compact.split(' ');
+  if (words.length >= 2) {
+    return words
+      .slice(0, 3)
+      .map((word) => word[0])
+      .join('')
+      .toUpperCase();
+  }
+
+  return compact.slice(0, 3).toUpperCase();
+}
+
+function makeBadgeDataUri(text) {
+  if (!text) {
+    return '';
+  }
+
+  const escaped = escapeXml(text);
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='48' height='24' viewBox='0 0 48 24'><rect x='1' y='1' rx='10' ry='10' width='46' height='22' fill='#c95f3a' stroke='#b05332' stroke-width='1'/><text x='24' y='16' text-anchor='middle' font-family='Avenir Next,Segoe UI,Arial,sans-serif' font-size='11' font-weight='700' fill='#fff8f2'>${escaped}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 function detectFormat(fileName, text) {
@@ -202,34 +251,50 @@ export function buildGraphData(quads) {
   const edgeMap = new Map();
   const classMap = new Map();
   const classAssignments = new Map();
+  const dataProperties = new Map();
 
   let edgeCounter = 0;
   for (const quad of quads) {
-    const sourceId = getTermId(quad.subject);
-    const targetId = getTermId(quad.object);
+    if (!isEntityTerm(quad.subject)) {
+      continue;
+    }
 
+    const sourceId = getTermId(quad.subject);
     if (!nodeMap.has(sourceId)) {
       nodeMap.set(sourceId, makeNodeData(quad.subject, labelIndex));
     }
-    if (!nodeMap.has(targetId)) {
-      nodeMap.set(targetId, makeNodeData(quad.object, labelIndex));
+
+    if (isEntityTerm(quad.object)) {
+      const targetId = getTermId(quad.object);
+      if (!nodeMap.has(targetId)) {
+        nodeMap.set(targetId, makeNodeData(quad.object, labelIndex));
+      }
+
+      const predicateLabel = compactIri(quad.predicate.value);
+      const edgeId = `e${edgeCounter}`;
+
+      edgeMap.set(edgeId, {
+        id: edgeId,
+        source: sourceId,
+        target: targetId,
+        predicate: quad.predicate.value,
+        predicateLabel,
+      });
+      edgeCounter += 1;
+    } else if (quad.object.termType === 'Literal') {
+      const rows = dataProperties.get(sourceId) ?? [];
+      rows.push({
+        predicate: quad.predicate.value,
+        predicateLabel: compactIri(quad.predicate.value),
+        value: quad.object.value,
+        language: quad.object.language || '',
+        datatype: quad.object.datatype?.value || '',
+      });
+      dataProperties.set(sourceId, rows);
     }
-
-    const predicateLabel = compactIri(quad.predicate.value);
-    const edgeId = `e${edgeCounter}`;
-
-    edgeMap.set(edgeId, {
-      id: edgeId,
-      source: sourceId,
-      target: targetId,
-      predicate: quad.predicate.value,
-      predicateLabel,
-    });
-    edgeCounter += 1;
 
     if (
       quad.predicate.value === RDF_TYPE &&
-      quad.subject.termType !== 'Literal' &&
       quad.object.termType === 'NamedNode'
     ) {
       const subjectClasses = classAssignments.get(sourceId) ?? new Set();
@@ -253,11 +318,29 @@ export function buildGraphData(quads) {
     }
 
     node.classes = Array.from(classes);
+    const primaryClass = node.classes[0] ?? '';
+    const primaryClassLabel = primaryClass
+      ? labelIndex.get(primaryClass) ?? compactIri(primaryClass)
+      : '';
+    node.primaryClassLabel = primaryClassLabel;
+    node.classBadge = toClassBadge(primaryClassLabel);
+    node.badgeSvg = makeBadgeDataUri(node.classBadge);
+    node.hasClass = node.classes.length;
+
     for (const classIri of classes) {
       const classEntry = classMap.get(classIri);
       if (classEntry) {
         classEntry.count += 1;
       }
+    }
+  }
+
+  for (const node of nodeMap.values()) {
+    if (typeof node.hasClass !== 'number') {
+      node.hasClass = 0;
+      node.classBadge = '';
+      node.badgeSvg = '';
+      node.primaryClassLabel = '';
     }
   }
 
@@ -270,6 +353,7 @@ export function buildGraphData(quads) {
     nodes,
     edges,
     classes,
+    dataProperties,
     nodeMap,
     edgeMap,
     elements: toElements(nodes, edges),
@@ -287,6 +371,9 @@ export function toElements(nodes, edges) {
         kind: node.kind,
         termType: node.termType,
         labelLength: node.labelLength,
+        hasClass: node.hasClass,
+        classBadge: node.classBadge,
+        badgeSvg: node.badgeSvg,
       },
     })),
     ...edges.map((edge) => ({

@@ -132,6 +132,11 @@ export default function App() {
     [selectedNodeId, graphData],
   );
 
+  const selectedNodeDataProperties = useMemo(
+    () => (selectedNodeId && graphData ? graphData.dataProperties.get(selectedNodeId) ?? [] : []),
+    [selectedNodeId, graphData],
+  );
+
   const neighborRows = useMemo(
     () => buildNeighborRows(selectedNodeId, visibleElements, graphData),
     [selectedNodeId, visibleElements, graphData],
@@ -173,6 +178,22 @@ export default function App() {
           },
         },
         {
+          selector: 'node[hasClass > 0]',
+          style: {
+            'background-image': 'data(badgeSvg)',
+            'background-image-opacity': 1,
+            'background-image-containment': 'over',
+            'background-width': 48,
+            'background-height': 24,
+            'background-position-x': '100%',
+            'background-position-y': '0%',
+            'background-offset-x': 14,
+            'background-offset-y': -12,
+            'background-repeat': 'no-repeat',
+            'background-fit': 'none',
+          },
+        },
+        {
           selector: 'node[kind = "literal"]',
           style: {
             'background-color': '#c96440',
@@ -193,6 +214,19 @@ export default function App() {
         {
           selector: 'edge',
           style: {
+            label: 'data(predicateLabel)',
+            color: '#5e5347',
+            'font-size': 8,
+            'font-family': 'Avenir Next, Nunito Sans, Segoe UI, sans-serif',
+            'text-wrap': 'wrap',
+            'text-max-width': 110,
+            'text-background-opacity': 1,
+            'text-background-color': '#f7f2e9',
+            'text-background-padding': 2,
+            'text-border-width': 0.5,
+            'text-border-color': '#d8cec0',
+            'text-border-opacity': 1,
+            'text-rotation': 'autorotate',
             width: 1.4,
             'line-color': '#7b7469',
             'target-arrow-color': '#7b7469',
@@ -649,13 +683,30 @@ export default function App() {
                         </>
                       )}
 
-                      {selectedNode.classes.length > 0 && (
-                        <>
-                          <dt>Classes</dt>
-                          <dd className="breakable">{selectedNode.classes.join(', ')}</dd>
-                        </>
+                    {selectedNode.classes.length > 0 && (
+                      <>
+                        <dt>Classes</dt>
+                        <dd className="breakable">{selectedNode.classes.join(', ')}</dd>
+                      </>
+                    )}
+                  </dl>
+
+                    <h4>Data properties ({selectedNodeDataProperties.length})</h4>
+                    <div className="property-list">
+                      {selectedNodeDataProperties.length === 0 && (
+                        <p className="muted">No literal properties available for this node.</p>
                       )}
-                    </dl>
+                      {selectedNodeDataProperties.map((property, index) => (
+                        <div
+                          key={`${property.predicate}-${property.value.slice(0, 18)}-${index}`}
+                          className="property-row"
+                          title={property.predicate}
+                        >
+                          <div className="property-name">{property.predicateLabel}</div>
+                          <div className="property-value breakable">{property.value}</div>
+                        </div>
+                      ))}
+                    </div>
 
                     <div className="mini-actions">
                       <button type="button" onClick={() => setFocusedNodeId(selectedNode.id)}>
@@ -666,7 +717,7 @@ export default function App() {
                       </button>
                     </div>
 
-                    <h4>Visible connections ({neighborRows.length})</h4>
+                    <h4>Object connections ({neighborRows.length})</h4>
                     <div className="neighbors">
                       {neighborRows.length === 0 && <p className="muted">No visible edges for this node.</p>}
                       {neighborRows.map((row) => (

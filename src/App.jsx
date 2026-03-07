@@ -117,13 +117,26 @@ function buildNeighborRows(selectedNodeId, visibleElements, graphData) {
   return rows;
 }
 
+function formatSelectedFiles(files, emptyLabel) {
+  if (files.length === 0) {
+    return emptyLabel;
+  }
+
+  if (files.length <= 2) {
+    return files.map((file) => file.name).join(', ');
+  }
+
+  const shown = files.slice(0, 2).map((file) => file.name).join(', ');
+  return `${files.length} files selected (${shown} +${files.length - 2} more)`;
+}
+
 export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
   const queryEngineRef = useRef(new QueryEngine());
 
-  const [kgFile, setKgFile] = useState(null);
-  const [ontologyFile, setOntologyFile] = useState(null);
+  const [kgFiles, setKgFiles] = useState([]);
+  const [ontologyFiles, setOntologyFiles] = useState([]);
   const [graphData, setGraphData] = useState(null);
   const [visibleElements, setVisibleElements] = useState([]);
 
@@ -138,7 +151,7 @@ export default function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
 
-  const [status, setStatus] = useState('Upload a Turtle file to initialize the graph.');
+  const [status, setStatus] = useState('Upload Turtle KG file(s) to initialize the graph.');
   const [loadError, setLoadError] = useState('');
   const [filterError, setFilterError] = useState('');
 
@@ -463,7 +476,7 @@ export default function App() {
   }, [visibleElements, selectedNodeId]);
 
   async function handleLoadGraph() {
-    if (!kgFile) {
+    if (kgFiles.length === 0) {
       return;
     }
 
@@ -472,16 +485,20 @@ export default function App() {
     setFilterError('');
 
     try {
-      const kgText = await kgFile.text();
-      const kgQuads = parseRdfText(kgText, kgFile.name);
+      const kgQuadGroups = await Promise.all(
+        kgFiles.map(async (file) => {
+          const text = await file.text();
+          return parseRdfText(text, file.name);
+        }),
+      );
+      const ontologyQuadGroups = await Promise.all(
+        ontologyFiles.map(async (file) => {
+          const text = await file.text();
+          return parseRdfText(text, file.name);
+        }),
+      );
 
-      let ontologyQuads = [];
-      if (ontologyFile) {
-        const ontologyText = await ontologyFile.text();
-        ontologyQuads = parseRdfText(ontologyText, ontologyFile.name);
-      }
-
-      const mergedQuads = [...kgQuads, ...ontologyQuads];
+      const mergedQuads = [...kgQuadGroups.flat(), ...ontologyQuadGroups.flat()];
       const nextGraphData = buildGraphData(mergedQuads);
 
       setGraphData(nextGraphData);
@@ -493,8 +510,12 @@ export default function App() {
       setFocusedNodeId(null);
 
       setStatus(
-        `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${kgFile.name}${
-          ontologyFile ? ` + ${ontologyFile.name}` : ''
+        `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${kgFiles.length} KG file${
+          kgFiles.length === 1 ? '' : 's'
+        }${
+          ontologyFiles.length > 0
+            ? ` + ${ontologyFiles.length} ontology file${ontologyFiles.length === 1 ? '' : 's'}`
+            : ''
         }`,
       );
     } catch (error) {
@@ -592,26 +613,33 @@ export default function App() {
                 <h2>Source File</h2>
 
                 <label className="file-control">
-                  <span>KG file (.ttl)</span>
+                  <span>KG files (.ttl/.n3/.nt/.nq/.trig)</span>
                   <input
                     type="file"
                     accept=".ttl,.n3,.nt,.nq,.trig"
-                    onChange={(event) => setKgFile(event.target.files?.[0] ?? null)}
+                    multiple
+                    onChange={(event) => setKgFiles(Array.from(event.target.files ?? []))}
                   />
-                  <small>{kgFile ? kgFile.name : 'No KG file selected'}</small>
+                  <small>{formatSelectedFiles(kgFiles, 'No KG files selected')}</small>
                 </label>
 
                 <label className="file-control">
-                  <span>Ontology (optional: .owl/.rdf/.ttl)</span>
+                  <span>Ontology files (optional: .owl/.rdf/.ttl)</span>
                   <input
                     type="file"
                     accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
-                    onChange={(event) => setOntologyFile(event.target.files?.[0] ?? null)}
+                    multiple
+                    onChange={(event) => setOntologyFiles(Array.from(event.target.files ?? []))}
                   />
-                  <small>{ontologyFile ? ontologyFile.name : 'No ontology file selected'}</small>
+                  <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
                 </label>
 
-                <button type="button" className="primary" disabled={!kgFile || isLoading} onClick={handleLoadGraph}>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={kgFiles.length === 0 || isLoading}
+                  onClick={handleLoadGraph}
+                >
                   {isLoading ? 'Parsing...' : 'Build graph'}
                 </button>
               </section>

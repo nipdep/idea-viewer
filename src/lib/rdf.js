@@ -1,6 +1,14 @@
-import { Parser, Store } from 'n3';
+import { DataFactory, Parser, Store } from 'n3';
 
 export const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const XML_NS = 'http://www.w3.org/XML/1998/namespace';
+const RDF_DESCRIPTION = `${RDF_NS}Description`;
+const RDF_FIRST = `${RDF_NS}first`;
+const RDF_REST = `${RDF_NS}rest`;
+const RDF_NIL = `${RDF_NS}nil`;
+
+const { namedNode, literal, quad, blankNode } = DataFactory;
 
 const LABEL_PREDICATES = new Set([
   'http://www.w3.org/2000/01/rdf-schema#label',
@@ -185,11 +193,21 @@ function makeBadgeDataUri(text) {
 }
 
 function detectFormat(fileName, text) {
-  if (/<rdf:RDF[\s>]/i.test(text.slice(0, 4000))) {
+  const sample = text.slice(0, 4000);
+
+  if (
+    /<\?xml[\s>]/i.test(sample) ||
+    /<rdf:RDF[\s>]/i.test(sample) ||
+    /xmlns:rdf\s*=\s*["']http:\/\/www\.w3\.org\/1999\/02\/22-rdf-syntax-ns#["']/i.test(sample)
+  ) {
     return 'RDFXML';
   }
 
   const lower = fileName.toLowerCase();
+  if (lower.endsWith('.rdf') && /^\s*</.test(sample)) {
+    return 'RDFXML';
+  }
+
   if (lower.endsWith('.nt')) {
     return 'N-Triples';
   }
@@ -209,12 +227,258 @@ function detectFormat(fileName, text) {
   return 'Turtle';
 }
 
+function isElementNode(node) {
+  return node?.nodeType === 1;
+}
+
+function splitAttributes(attributes) {
+  const propertyAttrs = [];
+
+  for (const attr of Array.from(attributes)) {
+    const isXmlns = attr.name === 'xmlns' || attr.prefix === 'xmlns';
+    if (isXmlns) {
+      continue;
+    }
+
+    if (attr.namespaceURI === RDF_NS) {
+      continue;
+    }
+
+    if (attr.namespaceURI === XML_NS) {
+      continue;
+    }
+
+    propertyAttrs.push(attr);
+  }
+
+  return { propertyAttrs };
+}
+
+function resolveIri(value, baseIri) {
+  if (!value) {
+    return '';
+  }
+
+  try {
+    return new URL(value, baseIri).toString();
+  } catch {
+    return value;
+  }
+}
+
+function literalFromText(text, datatypeIri, lang) {
+  if (datatypeIri) {
+    return literal(text, namedNode(datatypeIri));
+  }
+
+  if (lang) {
+    return literal(text, lang);
+  }
+
+  return literal(text);
+}
+
+function parseRdfXml(text, fileName) {
+  if (typeof DOMParser === 'undefined') {
+    throw new Error(`File ${fileName} is RDF/XML but no XML parser is available in this runtime.`);
+  }
+
+  const document = new DOMParser().parseFromString(text, 'application/xml');
+  const parserErrors = document.getElementsByTagName('parsererror');
+  if (parserErrors.length > 0) {
+    const message = parserErrors[0].textContent?.trim() || 'Invalid XML content.';
+    throw new Error(`Failed to parse RDF/XML in ${fileName}: ${message}`);
+  }
+
+  const fallbackBase = `https://idea-viewer.local/${encodeURIComponent(fileName)}`;
+  const root = document.documentElement;
+  const docBase = resolveIri(root.getAttributeNS(XML_NS, 'base') || fallbackBase, fallbackBase);
+  const docLang = root.getAttributeNS(XML_NS, 'lang') || '';
+  const quads = [];
+  const nodeIdMap = new Map();
+
+  function getNodeIdBlank(nodeId) {
+    const existing = nodeIdMap.get(nodeId);
+    if (existing) {
+      return existing;
+    }
+
+    const next = blankNode();
+    nodeIdMap.set(nodeId, next);
+    return next;
+  }
+
+  function collectElementChildren(node) {
+    return Array.from(node.childNodes).filter(isElementNode);
+  }
+
+  function collectText(node) {
+    let output = '';
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3 || child.nodeType === 4) {
+        output += child.textContent || '';
+      }
+    }
+    return output.trim();
+  }
+
+  function serializeChildrenXml(node) {
+    const serializer = new XMLSerializer();
+    let output = '';
+    for (const child of node.childNodes) {
+      output += serializer.serializeToString(child);
+    }
+    return output;
+  }
+
+  function getElementIri(element) {
+    if (!element.namespaceURI || !element.localName) {
+      throw new Error(`Unsupported RDF/XML element in ${fileName}: missing namespace/local name.`);
+    }
+    return `${element.namespaceURI}${element.localName}`;
+  }
+
+  function subjectFromNodeElement(nodeElement, baseIri) {
+    const about = nodeElement.getAttributeNS(RDF_NS, 'about');
+    if (about) {
+      return namedNode(resolveIri(about, baseIri));
+    }
+
+    const id = nodeElement.getAttributeNS(RDF_NS, 'ID');
+    if (id) {
+      return namedNode(resolveIri(`#${id}`, baseIri));
+    }
+
+    const nodeId = nodeElement.getAttributeNS(RDF_NS, 'nodeID');
+    if (nodeId) {
+      return getNodeIdBlank(nodeId);
+    }
+
+    return blankNode();
+  }
+
+  function parseNodeElement(nodeElement, baseIri, lang) {
+    const elementBase = resolveIri(nodeElement.getAttributeNS(XML_NS, 'base') || baseIri, baseIri);
+    const elementLang = nodeElement.getAttributeNS(XML_NS, 'lang') || lang;
+    const subject = subjectFromNodeElement(nodeElement, elementBase);
+    const nodeTypeIri = getElementIri(nodeElement);
+
+    if (nodeTypeIri !== RDF_DESCRIPTION) {
+      quads.push(quad(subject, namedNode(RDF_TYPE), namedNode(nodeTypeIri)));
+    }
+
+    const { propertyAttrs } = splitAttributes(nodeElement.attributes);
+    for (const attr of propertyAttrs) {
+      if (!attr.namespaceURI || !attr.localName) {
+        continue;
+      }
+
+      quads.push(
+        quad(
+          subject,
+          namedNode(`${attr.namespaceURI}${attr.localName}`),
+          literalFromText(attr.value, '', elementLang),
+        ),
+      );
+    }
+
+    for (const propertyElement of collectElementChildren(nodeElement)) {
+      parsePropertyElement(subject, propertyElement, elementBase, elementLang);
+    }
+
+    return subject;
+  }
+
+  function parseCollection(subject, predicate, propertyElement, baseIri, lang) {
+    const itemElements = collectElementChildren(propertyElement);
+    if (itemElements.length === 0) {
+      quads.push(quad(subject, predicate, namedNode(RDF_NIL)));
+      return;
+    }
+
+    const listNodes = itemElements.map(() => blankNode());
+    quads.push(quad(subject, predicate, listNodes[0]));
+
+    for (let index = 0; index < itemElements.length; index += 1) {
+      const itemTerm = parseNodeElement(itemElements[index], baseIri, lang);
+      quads.push(quad(listNodes[index], namedNode(RDF_FIRST), itemTerm));
+      quads.push(
+        quad(
+          listNodes[index],
+          namedNode(RDF_REST),
+          index + 1 < listNodes.length ? listNodes[index + 1] : namedNode(RDF_NIL),
+        ),
+      );
+    }
+  }
+
+  function parsePropertyElement(subject, propertyElement, baseIri, lang) {
+    const propertyBase = resolveIri(propertyElement.getAttributeNS(XML_NS, 'base') || baseIri, baseIri);
+    const propertyLang = propertyElement.getAttributeNS(XML_NS, 'lang') || lang;
+    const predicate = namedNode(getElementIri(propertyElement));
+    const resource = propertyElement.getAttributeNS(RDF_NS, 'resource');
+    const nodeId = propertyElement.getAttributeNS(RDF_NS, 'nodeID');
+    const parseType = propertyElement.getAttributeNS(RDF_NS, 'parseType');
+    const datatype = propertyElement.getAttributeNS(RDF_NS, 'datatype');
+
+    if (resource) {
+      quads.push(quad(subject, predicate, namedNode(resolveIri(resource, propertyBase))));
+      return;
+    }
+
+    if (nodeId) {
+      quads.push(quad(subject, predicate, getNodeIdBlank(nodeId)));
+      return;
+    }
+
+    if (parseType === 'Collection') {
+      parseCollection(subject, predicate, propertyElement, propertyBase, propertyLang);
+      return;
+    }
+
+    if (parseType === 'Resource') {
+      const object = blankNode();
+      quads.push(quad(subject, predicate, object));
+      for (const childProperty of collectElementChildren(propertyElement)) {
+        parsePropertyElement(object, childProperty, propertyBase, propertyLang);
+      }
+      return;
+    }
+
+    if (parseType === 'Literal') {
+      const literalValue = serializeChildrenXml(propertyElement);
+      quads.push(quad(subject, predicate, literalFromText(literalValue, datatype, propertyLang)));
+      return;
+    }
+
+    const childElements = collectElementChildren(propertyElement);
+    const textValue = collectText(propertyElement);
+
+    if (childElements.length > 0) {
+      const object = parseNodeElement(childElements[0], propertyBase, propertyLang);
+      quads.push(quad(subject, predicate, object));
+      return;
+    }
+
+    quads.push(quad(subject, predicate, literalFromText(textValue, datatype, propertyLang)));
+  }
+
+  const rootIri = root.namespaceURI && root.localName ? `${root.namespaceURI}${root.localName}` : '';
+  if (rootIri === `${RDF_NS}RDF`) {
+    for (const child of collectElementChildren(root)) {
+      parseNodeElement(child, docBase, docLang);
+    }
+  } else {
+    parseNodeElement(root, docBase, docLang);
+  }
+
+  return quads;
+}
+
 export function parseRdfText(text, fileName) {
   const format = detectFormat(fileName, text);
   if (format === 'RDFXML') {
-    throw new Error(
-      `File ${fileName} looks like RDF/XML. This build currently parses Turtle-family syntaxes with N3.`,
-    );
+    return parseRdfXml(text, fileName);
   }
 
   const parser = new Parser({ format });

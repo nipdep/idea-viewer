@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
-import { buildFocusedSubset, buildGraphData, getTermId, parseRdfText } from './lib/rdf';
+import { buildFocusedSubset, buildGraphData, extractOntologyClassIds, getTermId, parseRdfText } from './lib/rdf';
 import './styles.css';
 
 function isEntityTerm(term) {
@@ -547,8 +547,13 @@ export default function App() {
         }),
       );
 
-      const mergedQuads = [...kgQuadGroups.flat(), ...ontologyQuadGroups.flat()];
-      const nextGraphData = buildGraphData(mergedQuads);
+      const kgQuads = kgQuadGroups.flat();
+      const ontologyQuads = ontologyQuadGroups.flat();
+      const mergedQuads = [...kgQuads, ...ontologyQuads];
+      const nextGraphData = buildGraphData(mergedQuads, {
+        hasOntology: ontologyQuads.length > 0,
+        ontologyClassIds: extractOntologyClassIds(ontologyQuads),
+      });
 
       setGraphData(nextGraphData);
       setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));

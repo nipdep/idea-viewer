@@ -668,9 +668,41 @@ function isHiddenBackgroundClassIri(iri) {
   return HIDDEN_BACKGROUND_CLASS_IRIS.has(iri);
 }
 
-export function buildGraphData(quads) {
+export function extractOntologyClassIds(quads) {
+  const ontologyClassIds = new Set();
+
+  for (const quad of quads) {
+    if (!isEntityTerm(quad.subject)) {
+      continue;
+    }
+    if (quad.subject.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.subject.value)) {
+      continue;
+    }
+
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      CLASS_TYPE_IRIS.has(quad.object.value)
+    ) {
+      ontologyClassIds.add(getTermId(quad.subject));
+    }
+
+    if (quad.predicate.value === RDFS_SUBCLASS_OF && isEntityTerm(quad.object)) {
+      ontologyClassIds.add(getTermId(quad.subject));
+      if (!(quad.object.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.object.value))) {
+        ontologyClassIds.add(getTermId(quad.object));
+      }
+    }
+  }
+
+  return ontologyClassIds;
+}
+
+export function buildGraphData(quads, options = {}) {
   const store = new Store(quads);
   const labelIndex = buildLabelIndex(quads);
+  const hasOntology = Boolean(options.hasOntology);
+  const ontologyClassIds = options.ontologyClassIds instanceof Set ? options.ontologyClassIds : new Set();
 
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -825,12 +857,15 @@ export function buildGraphData(quads) {
     const primaryClassLabel = primaryClass
       ? labelIndex.get(primaryClass) ?? compactIri(primaryClass)
       : '';
+    const hasOntologyMappedClass =
+      hasOntology && node.classes.some((classIri) => ontologyClassIds.has(classIri));
+
     node.primaryClassLabel = primaryClassLabel;
-    node.classBadge = toClassBadge(primaryClassLabel);
+    node.classBadge = hasOntologyMappedClass ? '' : toClassBadge(primaryClassLabel);
     const badge = makeBadgeDataUri(node.classBadge);
     node.badgeSvg = badge.uri;
     node.badgeWidth = badge.width;
-    node.hasClass = node.classes.length;
+    node.hasClass = hasOntologyMappedClass ? 0 : node.classes.length;
 
     for (const classIri of classes) {
       const classEntry = classMap.get(classIri);
@@ -875,6 +910,8 @@ export function buildGraphData(quads) {
     baseIris,
     classNodeIds,
     namedIndividualNodeIds,
+    hasOntology,
+    ontologyClassIds,
     dataProperties,
     nodeMap,
     edgeMap,
@@ -1010,7 +1047,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     visibleNodeIds.add(edge.target);
   }
 
-  if (!focusedNodeIds || classStructureOnly) {
+  if (graphData.hasOntology && (!focusedNodeIds || classStructureOnly)) {
     for (const classNodeId of graphData.classNodeIds) {
       if (!focusedNodeIds || focusedNodeIds.has(classNodeId)) {
         visibleNodeIds.add(classNodeId);

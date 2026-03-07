@@ -72,18 +72,17 @@ function getBaseIri(iri) {
     return '';
   }
 
-  const hashIndex = iri.lastIndexOf('#');
-  if (hashIndex >= 0) {
-    return iri.slice(0, hashIndex + 1);
-  }
-
-  // For slash-based IRIs, use ontology-root style base:
-  // <some-url>/<ontology-acronym>/...
-  // This avoids over-fragmenting by last path segment.
+  // For HTTP(S) IRIs, derive a single ontology-root base in the form:
+  // <some-url>/<ontology-acronym>
+  // (no trailing slash), so deeper paths collapse under that base.
   try {
     const url = new URL(iri);
-    const pathSegments = url.pathname.split('/').filter(Boolean);
-    if (pathSegments.length > 0) {
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      const pathSegments = url.pathname.split('/').filter(Boolean);
+      if (pathSegments.length === 0) {
+        return url.origin;
+      }
+
       const stopWords = new Set([
         'ontology',
         'ontologies',
@@ -113,7 +112,6 @@ function getBaseIri(iri) {
           return false;
         }
 
-        // Common acronym-like tokens: AIF, IDEA, sio, foaf, obo, etc.
         const compact = segment.replace(/[-_]/g, '');
         if (!/[a-zA-Z]/.test(compact) || compact.length < 2 || compact.length > 12) {
           return false;
@@ -124,24 +122,21 @@ function getBaseIri(iri) {
         return hasUpper || isShortLowercaseToken;
       };
 
-      let cutIndex = -1;
-      for (let index = 0; index < pathSegments.length; index += 1) {
-        if (isLikelyOntologyAcronym(pathSegments[index])) {
-          cutIndex = index;
-          break;
-        }
+      let ontologyIndex = pathSegments.findIndex((segment) => isLikelyOntologyAcronym(segment));
+      if (ontologyIndex === -1) {
+        ontologyIndex = 0;
       }
 
-      // Fallback: keep first two segments when no clear acronym is found.
-      if (cutIndex === -1) {
-        cutIndex = Math.min(pathSegments.length - 1, 1);
-      }
-
-      const basePath = pathSegments.slice(0, cutIndex + 1).join('/');
-      return `${url.origin}/${basePath}/`;
+      const basePath = pathSegments.slice(0, ontologyIndex + 1).join('/');
+      return `${url.origin}/${basePath}`;
     }
   } catch {
     // Ignore URL parse failures and continue with generic fallbacks.
+  }
+
+  const hashIndex = iri.lastIndexOf('#');
+  if (hashIndex >= 0) {
+    return iri.slice(0, hashIndex + 1);
   }
 
   const slashIndex = iri.lastIndexOf('/');

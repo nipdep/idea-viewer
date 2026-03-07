@@ -22,6 +22,29 @@ function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
 }
 
+function getBaseIri(iri) {
+  if (!iri) {
+    return '';
+  }
+
+  const hashIndex = iri.lastIndexOf('#');
+  if (hashIndex >= 0) {
+    return iri.slice(0, hashIndex + 1);
+  }
+
+  const slashIndex = iri.lastIndexOf('/');
+  if (slashIndex >= 0) {
+    return iri.slice(0, slashIndex + 1);
+  }
+
+  const colonIndex = iri.lastIndexOf(':');
+  if (colonIndex >= 0) {
+    return iri.slice(0, colonIndex + 1);
+  }
+
+  return iri;
+}
+
 export function getTermId(term) {
   if (!term) {
     return '';
@@ -241,6 +264,7 @@ function makeNodeData(term, labelIndex) {
   return {
     id,
     iri: term.value,
+    baseIri: termType === 'NamedNode' ? getBaseIri(term.value) : '',
     termType,
     kind: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
     fullLabel,
@@ -259,6 +283,7 @@ export function buildGraphData(quads) {
   const classMap = new Map();
   const classAssignments = new Map();
   const dataProperties = new Map();
+  const baseIriCounts = new Map();
 
   let edgeCounter = 0;
   for (const quad of quads) {
@@ -345,6 +370,10 @@ export function buildGraphData(quads) {
   }
 
   for (const node of nodeMap.values()) {
+    if (node.baseIri) {
+      baseIriCounts.set(node.baseIri, (baseIriCounts.get(node.baseIri) ?? 0) + 1);
+    }
+
     if (typeof node.hasClass !== 'number') {
       node.hasClass = 0;
       node.classBadge = '';
@@ -357,12 +386,16 @@ export function buildGraphData(quads) {
   const nodes = Array.from(nodeMap.values());
   const edges = Array.from(edgeMap.values());
   const classes = Array.from(classMap.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const baseIris = Array.from(baseIriCounts.entries())
+    .map(([id, count]) => ({ id, label: id, count }))
+    .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
 
   return {
     store,
     nodes,
     edges,
     classes,
+    baseIris,
     dataProperties,
     nodeMap,
     edgeMap,

@@ -70,6 +70,23 @@ async function runSparqlFilter(engine, store, query) {
   return collectEntityIds(bindingsStream);
 }
 
+function runBaseIriFilter(graphData, baseIris) {
+  if (!graphData || baseIris.length === 0) {
+    return new Set();
+  }
+
+  const allowedBaseIris = new Set(baseIris);
+  const matchedNodeIds = new Set();
+
+  for (const node of graphData.nodes) {
+    if (node.baseIri && allowedBaseIris.has(node.baseIri)) {
+      matchedNodeIds.add(node.id);
+    }
+  }
+
+  return matchedNodeIds;
+}
+
 function buildNeighborRows(selectedNodeId, visibleElements, graphData) {
   if (!selectedNodeId || !graphData) {
     return [];
@@ -111,6 +128,7 @@ export default function App() {
   const [visibleElements, setVisibleElements] = useState([]);
 
   const [selectedClassIris, setSelectedClassIris] = useState([]);
+  const [selectedBaseIris, setSelectedBaseIris] = useState([]);
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
 
@@ -143,10 +161,14 @@ export default function App() {
   );
 
   const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
+  const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
 
   const isAllClassesSelected =
     allClassIris.length === 0 ||
     (selectedClassIris.length === allClassIris.length && allClassIris.every((iri) => selectedClassIris.includes(iri)));
+  const isAllBaseIrisSelected =
+    allBaseIris.length === 0 ||
+    (selectedBaseIris.length === allBaseIris.length && allBaseIris.every((iri) => selectedBaseIris.includes(iri)));
 
   useEffect(() => {
     if (!graphContainerRef.current) {
@@ -378,9 +400,11 @@ export default function App() {
       try {
         const classFilterActive =
           graphData.classes.length > 0 && selectedClassIris.length !== graphData.classes.length;
+        const baseIriFilterActive =
+          graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
         const sparqlActive = sparqlQuery.trim().length > 0;
 
-        if (!classFilterActive && !sparqlActive) {
+        if (!classFilterActive && !baseIriFilterActive && !sparqlActive) {
           if (!cancelled) {
             setVisibleElements(graphData.elements);
           }
@@ -390,8 +414,13 @@ export default function App() {
         const engine = queryEngineRef.current;
         let selectedEntities = null;
 
+        if (baseIriFilterActive) {
+          selectedEntities = runBaseIriFilter(graphData, selectedBaseIris);
+        }
+
         if (classFilterActive) {
-          selectedEntities = await runClassFilter(engine, graphData.store, selectedClassIris);
+          const classMatches = await runClassFilter(engine, graphData.store, selectedClassIris);
+          selectedEntities = selectedEntities ? intersectSets(selectedEntities, classMatches) : classMatches;
         }
 
         if (sparqlActive) {
@@ -419,7 +448,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [graphData, selectedClassIris, sparqlQuery]);
+  }, [graphData, selectedClassIris, selectedBaseIris, sparqlQuery]);
 
   useEffect(() => {
     if (!selectedNodeId) {
@@ -457,6 +486,7 @@ export default function App() {
 
       setGraphData(nextGraphData);
       setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
+      setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
       setSparqlDraft('');
       setSparqlQuery('');
       setSelectedNodeId(null);
@@ -489,6 +519,23 @@ export default function App() {
 
   function clearClassSelection() {
     setSelectedClassIris([]);
+  }
+
+  function toggleBaseIri(baseIri) {
+    setSelectedBaseIris((current) => {
+      if (current.includes(baseIri)) {
+        return current.filter((entry) => entry !== baseIri);
+      }
+      return [...current, baseIri];
+    });
+  }
+
+  function selectAllBaseIris() {
+    setSelectedBaseIris(allBaseIris);
+  }
+
+  function clearBaseIris() {
+    setSelectedBaseIris([]);
   }
 
   function applySparqlFilter() {
@@ -571,6 +618,7 @@ export default function App() {
 
               <section className="panel-section">
                 <h2>Graph Filters</h2>
+                <h3 className="filter-group-title">Class type</h3>
                 <div className="mini-actions">
                   <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
                     Select all
@@ -596,6 +644,37 @@ export default function App() {
                           type="checkbox"
                           checked={selectedClassIris.includes(entry.id)}
                           onChange={() => toggleClass(entry.id)}
+                        />
+                        <span className="class-label" title={entry.id}>
+                          {entry.label}
+                        </span>
+                        <small>{entry.count}</small>
+                      </label>
+                    ))}
+                </div>
+
+                <h3 className="filter-group-title">Base IRI (ontology)</h3>
+                <div className="mini-actions">
+                  <button type="button" onClick={selectAllBaseIris} disabled={!graphData || isAllBaseIrisSelected}>
+                    Select all
+                  </button>
+                  <button type="button" onClick={clearBaseIris} disabled={!graphData || selectedBaseIris.length === 0}>
+                    Clear
+                  </button>
+                </div>
+
+                <div className="class-list">
+                  {!graphData && <p className="muted">Load data to list ontology IRIs.</p>}
+                  {graphData && graphData.baseIris.length === 0 && (
+                    <p className="muted">No named-node IRIs available for base extraction.</p>
+                  )}
+                  {graphData &&
+                    graphData.baseIris.map((entry) => (
+                      <label key={entry.id} className="class-item">
+                        <input
+                          type="checkbox"
+                          checked={selectedBaseIris.includes(entry.id)}
+                          onChange={() => toggleBaseIri(entry.id)}
                         />
                         <span className="class-label" title={entry.id}>
                           {entry.label}

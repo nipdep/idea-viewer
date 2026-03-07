@@ -13,9 +13,20 @@ const RDF_NIL = `${RDF_NS}nil`;
 const RDFS_CLASS = `${RDFS_NS}Class`;
 const OWL_CLASS = `${OWL_NS}Class`;
 const OWL_OBJECT_PROPERTY = `${OWL_NS}ObjectProperty`;
+const OWL_DATATYPE_PROPERTY = `${OWL_NS}DatatypeProperty`;
 const OWL_ANNOTATION_PROPERTY = `${OWL_NS}AnnotationProperty`;
+const OWL_NAMED_INDIVIDUAL = `${OWL_NS}NamedIndividual`;
+const OWL_ONTOLOGY = `${OWL_NS}Ontology`;
 
 const CLASS_TYPE_IRIS = new Set([RDFS_CLASS, OWL_CLASS]);
+const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
+  OWL_DATATYPE_PROPERTY,
+  OWL_NAMED_INDIVIDUAL,
+  OWL_OBJECT_PROPERTY,
+  OWL_ONTOLOGY,
+  OWL_CLASS,
+  RDFS_CLASS,
+]);
 const BUILTIN_ANNOTATION_PREDICATES = new Set([
   `${RDFS_NS}label`,
   `${RDFS_NS}comment`,
@@ -591,6 +602,10 @@ function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIri
   return 'other';
 }
 
+function isHiddenBackgroundClassIri(iri) {
+  return HIDDEN_BACKGROUND_CLASS_IRIS.has(iri);
+}
+
 export function buildGraphData(quads) {
   const store = new Store(quads);
   const labelIndex = buildLabelIndex(quads);
@@ -634,6 +649,9 @@ export function buildGraphData(quads) {
     if (!isEntityTerm(quad.subject)) {
       continue;
     }
+    if (quad.subject.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.subject.value)) {
+      continue;
+    }
 
     const sourceId = getTermId(quad.subject);
     if (!nodeMap.has(sourceId)) {
@@ -648,6 +666,10 @@ export function buildGraphData(quads) {
     );
 
     if (isEntityTerm(quad.object)) {
+      if (quad.object.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.object.value)) {
+        continue;
+      }
+
       const targetId = getTermId(quad.object);
       if (!nodeMap.has(targetId)) {
         nodeMap.set(targetId, makeNodeData(quad.object, labelIndex));
@@ -703,7 +725,11 @@ export function buildGraphData(quads) {
       dataProperties.set(sourceId, rows);
     }
 
-    if (quad.predicate.value === RDF_TYPE && quad.object.termType === 'NamedNode') {
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      !isHiddenBackgroundClassIri(quad.object.value)
+    ) {
       const subjectClasses = classAssignments.get(sourceId) ?? new Set();
       subjectClasses.add(quad.object.value);
       classAssignments.set(sourceId, subjectClasses);

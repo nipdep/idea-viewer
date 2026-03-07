@@ -77,6 +77,73 @@ function getBaseIri(iri) {
     return iri.slice(0, hashIndex + 1);
   }
 
+  // For slash-based IRIs, use ontology-root style base:
+  // <some-url>/<ontology-acronym>/...
+  // This avoids over-fragmenting by last path segment.
+  try {
+    const url = new URL(iri);
+    const pathSegments = url.pathname.split('/').filter(Boolean);
+    if (pathSegments.length > 0) {
+      const stopWords = new Set([
+        'ontology',
+        'ontologies',
+        'resource',
+        'resources',
+        'class',
+        'classes',
+        'individual',
+        'individuals',
+        'instance',
+        'instances',
+        'entity',
+        'entities',
+        'vocabulary',
+        'schema',
+        'model',
+        'data',
+      ]);
+
+      const isLikelyOntologyAcronym = (segment) => {
+        if (!segment || segment.length > 24 || /^\d+$/.test(segment)) {
+          return false;
+        }
+
+        const lower = segment.toLowerCase();
+        if (stopWords.has(lower)) {
+          return false;
+        }
+
+        // Common acronym-like tokens: AIF, IDEA, sio, foaf, obo, etc.
+        const compact = segment.replace(/[-_]/g, '');
+        if (!/[a-zA-Z]/.test(compact) || compact.length < 2 || compact.length > 12) {
+          return false;
+        }
+
+        const hasUpper = /[A-Z]/.test(compact);
+        const isShortLowercaseToken = compact.length <= 5;
+        return hasUpper || isShortLowercaseToken;
+      };
+
+      let cutIndex = -1;
+      for (let index = 0; index < pathSegments.length; index += 1) {
+        if (isLikelyOntologyAcronym(pathSegments[index])) {
+          cutIndex = index;
+          break;
+        }
+      }
+
+      // Fallback: keep first two segments when no clear acronym is found.
+      if (cutIndex === -1) {
+        cutIndex = Math.min(pathSegments.length - 1, 1);
+      }
+
+      const basePath = pathSegments.slice(0, cutIndex + 1).join('/');
+      return `${url.origin}/${basePath}/`;
+    }
+  } catch {
+    // Ignore URL parse failures and continue with generic fallbacks.
+  }
+
   const slashIndex = iri.lastIndexOf('/');
   if (slashIndex >= 0) {
     return iri.slice(0, slashIndex + 1);

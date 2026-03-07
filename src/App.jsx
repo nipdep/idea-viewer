@@ -156,7 +156,7 @@ export default function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
 
-  const [status, setStatus] = useState('Upload Turtle KG file(s) to initialize the graph.');
+  const [status, setStatus] = useState('Upload KG and/or ontology files to initialize the graph.');
   const [loadError, setLoadError] = useState('');
   const [filterError, setFilterError] = useState('');
 
@@ -500,7 +500,7 @@ export default function App() {
   }, [visibleElements, selectedNodeId]);
 
   async function handleLoadGraph() {
-    if (kgFiles.length === 0) {
+    if (kgFiles.length === 0 && ontologyFiles.length === 0) {
       return;
     }
 
@@ -637,7 +637,7 @@ export default function App() {
                 <h2>Source File</h2>
 
                 <label className="file-control">
-                  <span>KG files (.ttl/.n3/.nt/.nq/.trig)</span>
+                  <span>KG files (optional: .ttl/.n3/.nt/.nq/.trig)</span>
                   <input
                     type="file"
                     accept=".ttl,.n3,.nt,.nq,.trig"
@@ -661,7 +661,7 @@ export default function App() {
                 <button
                   type="button"
                   className="primary"
-                  disabled={kgFiles.length === 0 || isLoading}
+                  disabled={(kgFiles.length === 0 && ontologyFiles.length === 0) || isLoading}
                   onClick={handleLoadGraph}
                 >
                   {isLoading ? 'Parsing...' : 'Build graph'}

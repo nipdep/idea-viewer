@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
-import { buildFocusedSubset, buildGraphData, extractOntologyClassIds, getTermId, parseRdfText } from './lib/rdf';
+import { buildFocusedSubset, buildGraphData, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
 import './styles.css';
 
 function isEntityTerm(term) {
@@ -282,6 +282,34 @@ export default function App() {
           },
         },
         {
+          selector: 'node[ontologyKind = "data-property"]',
+          style: {
+            shape: 'diamond',
+            'background-color': '#e6f1ff',
+            'border-color': '#4b7bb0',
+            color: '#1e1b16',
+          },
+        },
+        {
+          selector: 'node[ontologyKind = "object-property"]',
+          style: {
+            shape: 'hexagon',
+            'background-color': '#e7f4ef',
+            'border-color': '#3a8f86',
+            color: '#1e1b16',
+          },
+        },
+        {
+          selector: 'node[ontologyKind = "annotation-property"]',
+          style: {
+            shape: 'round-rectangle',
+            'background-color': '#f3ece4',
+            'border-color': '#9b8770',
+            'border-style': 'dashed',
+            color: '#1e1b16',
+          },
+        },
+        {
           selector: 'node[kind = "blank"]',
           style: {
             'background-color': '#ece7e1',
@@ -453,7 +481,10 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = toViewOptions(ontologyViewMode);
+        const viewOptions = {
+          ...toViewOptions(ontologyViewMode),
+          showTypeLinks: graphData.hasOntology && graphData.hasKg,
+        };
         const classFilterActive =
           graphData.classes.length > 0 && selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
@@ -490,7 +521,12 @@ export default function App() {
       } catch (error) {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
-          setVisibleElements(buildFocusedSubset(graphData, null, toViewOptions(ontologyViewMode)));
+          setVisibleElements(
+            buildFocusedSubset(graphData, null, {
+              ...toViewOptions(ontologyViewMode),
+              showTypeLinks: graphData.hasOntology && graphData.hasKg,
+            }),
+          );
         }
       } finally {
         if (!cancelled) {
@@ -550,9 +586,11 @@ export default function App() {
       const kgQuads = kgQuadGroups.flat();
       const ontologyQuads = ontologyQuadGroups.flat();
       const mergedQuads = [...kgQuads, ...ontologyQuads];
+      const ontologyModel = extractOntologyModel(ontologyQuads);
       const nextGraphData = buildGraphData(mergedQuads, {
+        hasKg: kgQuads.length > 0,
         hasOntology: ontologyQuads.length > 0,
-        ontologyClassIds: extractOntologyClassIds(ontologyQuads),
+        ontologyModel,
       });
 
       setGraphData(nextGraphData);

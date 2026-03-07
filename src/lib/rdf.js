@@ -11,6 +11,8 @@ const RDF_FIRST = `${RDF_NS}first`;
 const RDF_REST = `${RDF_NS}rest`;
 const RDF_NIL = `${RDF_NS}nil`;
 const RDFS_CLASS = `${RDFS_NS}Class`;
+const RDFS_DOMAIN = `${RDFS_NS}domain`;
+const RDFS_RANGE = `${RDFS_NS}range`;
 const OWL_CLASS = `${OWL_NS}Class`;
 const OWL_OBJECT_PROPERTY = `${OWL_NS}ObjectProperty`;
 const OWL_DATATYPE_PROPERTY = `${OWL_NS}DatatypeProperty`;
@@ -43,6 +45,7 @@ export const DEFAULT_VIEW_OPTIONS = Object.freeze({
   showAnnotationProperties: false,
   showObjectProperties: true,
   showNamedIndividuals: false,
+  showTypeLinks: false,
 });
 
 const { namedNode, literal, quad, blankNode } = DataFactory;
@@ -630,6 +633,7 @@ function makeNodeData(term, labelIndex) {
     baseIri: termType === 'NamedNode' ? getBaseIri(term.value) : '',
     termType,
     kind: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
+    ontologyKind: '',
     fullLabel,
     displayLabel: makeDisplayLabel(fullLabel),
     labelLength: Math.min(Math.max(fullLabel.length, 4), 120),
@@ -668,8 +672,56 @@ function isHiddenBackgroundClassIri(iri) {
   return HIDDEN_BACKGROUND_CLASS_IRIS.has(iri);
 }
 
-export function extractOntologyClassIds(quads) {
-  const ontologyClassIds = new Set();
+export function extractOntologyModel(quads) {
+  const classIds = new Set();
+  const objectPropertyIds = new Set();
+  const dataPropertyIds = new Set();
+  const annotationPropertyIds = new Set();
+  const namedIndividualIds = new Set();
+
+  for (const quad of quads) {
+    if (!isEntityTerm(quad.subject)) {
+      continue;
+    }
+    if (quad.subject.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.subject.value)) {
+      continue;
+    }
+
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_OBJECT_PROPERTY
+    ) {
+      objectPropertyIds.add(getTermId(quad.subject));
+      continue;
+    }
+
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_DATATYPE_PROPERTY
+    ) {
+      dataPropertyIds.add(getTermId(quad.subject));
+      continue;
+    }
+
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_ANNOTATION_PROPERTY
+    ) {
+      annotationPropertyIds.add(getTermId(quad.subject));
+      continue;
+    }
+
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_NAMED_INDIVIDUAL
+    ) {
+      namedIndividualIds.add(getTermId(quad.subject));
+    }
+  }
 
   for (const quad of quads) {
     if (!isEntityTerm(quad.subject)) {
@@ -684,25 +736,66 @@ export function extractOntologyClassIds(quads) {
       quad.object.termType === 'NamedNode' &&
       CLASS_TYPE_IRIS.has(quad.object.value)
     ) {
-      ontologyClassIds.add(getTermId(quad.subject));
+      classIds.add(getTermId(quad.subject));
     }
 
     if (quad.predicate.value === RDFS_SUBCLASS_OF && isEntityTerm(quad.object)) {
-      ontologyClassIds.add(getTermId(quad.subject));
+      classIds.add(getTermId(quad.subject));
       if (!(quad.object.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.object.value))) {
-        ontologyClassIds.add(getTermId(quad.object));
+        classIds.add(getTermId(quad.object));
       }
+    }
+
+    if (
+      quad.predicate.value === RDFS_DOMAIN &&
+      quad.subject.termType === 'NamedNode' &&
+      quad.object.termType === 'NamedNode'
+    ) {
+      const subjectId = getTermId(quad.subject);
+      const objectId = getTermId(quad.object);
+      if (objectPropertyIds.has(subjectId)) {
+        classIds.add(objectId);
+      } else if (dataPropertyIds.has(subjectId)) {
+        classIds.add(objectId);
+      }
+    }
+
+    if (
+      quad.predicate.value === RDFS_RANGE &&
+      quad.subject.termType === 'NamedNode' &&
+      quad.object.termType === 'NamedNode' &&
+      objectPropertyIds.has(getTermId(quad.subject))
+    ) {
+      classIds.add(getTermId(quad.object));
     }
   }
 
-  return ontologyClassIds;
+  return {
+    classIds,
+    objectPropertyIds,
+    dataPropertyIds,
+    annotationPropertyIds,
+    namedIndividualIds,
+  };
+}
+
+export function extractOntologyClassIds(quads) {
+  return extractOntologyModel(quads).classIds;
 }
 
 export function buildGraphData(quads, options = {}) {
   const store = new Store(quads);
   const labelIndex = buildLabelIndex(quads);
   const hasOntology = Boolean(options.hasOntology);
-  const ontologyClassIds = options.ontologyClassIds instanceof Set ? options.ontologyClassIds : new Set();
+  const hasKg = Boolean(options.hasKg);
+  const ontologyModel = options.ontologyModel ?? {};
+  const ontologyClassIds = ontologyModel.classIds instanceof Set ? ontologyModel.classIds : new Set();
+  const ontologyObjectPropertyNodeIds =
+    ontologyModel.objectPropertyIds instanceof Set ? ontologyModel.objectPropertyIds : new Set();
+  const ontologyDataPropertyNodeIds =
+    ontologyModel.dataPropertyIds instanceof Set ? ontologyModel.dataPropertyIds : new Set();
+  const ontologyAnnotationPropertyNodeIds =
+    ontologyModel.annotationPropertyIds instanceof Set ? ontologyModel.annotationPropertyIds : new Set();
 
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -880,6 +973,24 @@ export function buildGraphData(quads, options = {}) {
   }
 
   for (const node of nodeMap.values()) {
+    if (node.termType !== 'NamedNode') {
+      continue;
+    }
+
+    if (ontologyDataPropertyNodeIds.has(node.id)) {
+      node.ontologyKind = 'data-property';
+    } else if (ontologyObjectPropertyNodeIds.has(node.id)) {
+      node.ontologyKind = 'object-property';
+    } else if (ontologyAnnotationPropertyNodeIds.has(node.id)) {
+      node.ontologyKind = 'annotation-property';
+    } else if (ontologyClassIds.has(node.id)) {
+      node.ontologyKind = 'class';
+    } else if (namedIndividualNodeIds.has(node.id)) {
+      node.ontologyKind = 'individual';
+    }
+  }
+
+  for (const node of nodeMap.values()) {
     if (node.baseIri) {
       baseIriCounts.set(node.baseIri, (baseIriCounts.get(node.baseIri) ?? 0) + 1);
     }
@@ -911,7 +1022,11 @@ export function buildGraphData(quads, options = {}) {
     classNodeIds,
     namedIndividualNodeIds,
     hasOntology,
+    hasKg,
     ontologyClassIds,
+    ontologyObjectPropertyNodeIds,
+    ontologyDataPropertyNodeIds,
+    ontologyAnnotationPropertyNodeIds,
     dataProperties,
     nodeMap,
     edgeMap,
@@ -931,6 +1046,7 @@ export function toElements(nodes, edges) {
         fullLabel: node.fullLabel,
         iri: node.iri,
         kind: node.kind,
+        ontologyKind: node.ontologyKind ?? '',
         termType: node.termType,
         labelLength: node.labelLength,
         hasClass: node.hasClass,
@@ -958,6 +1074,7 @@ function normalizeViewOptions(viewOptions) {
     showAnnotationProperties: Boolean(viewOptions?.showAnnotationProperties),
     showObjectProperties: Boolean(viewOptions?.showObjectProperties),
     showNamedIndividuals: Boolean(viewOptions?.showNamedIndividuals),
+    showTypeLinks: Boolean(viewOptions?.showTypeLinks),
   };
 }
 
@@ -1005,12 +1122,22 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
   const visibleEdges = [];
   const isNamedIndividualVisible = (nodeId) =>
     options.showNamedIndividuals || !graphData.namedIndividualNodeIds.has(nodeId);
+  const isOntologyObjectPropertyNodeVisible = (nodeId) =>
+    !(graphData.hasOntology && graphData.hasKg && graphData.ontologyObjectPropertyNodeIds.has(nodeId));
 
   for (const edge of graphData.objectEdges) {
-    if (!shouldIncludeObjectEdge(edge, options)) {
+    if (edge.category === 'type') {
+      if (!options.showTypeLinks || !graphData.ontologyClassIds.has(edge.target)) {
+        continue;
+      }
+    } else if (!shouldIncludeObjectEdge(edge, options)) {
       continue;
     }
+
     if (!isNamedIndividualVisible(edge.source) || !isNamedIndividualVisible(edge.target)) {
+      continue;
+    }
+    if (!isOntologyObjectPropertyNodeVisible(edge.source) || !isOntologyObjectPropertyNodeVisible(edge.target)) {
       continue;
     }
 
@@ -1037,6 +1164,9 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     if (!isNamedIndividualVisible(edge.source) || !isNamedIndividualVisible(edge.target)) {
       continue;
     }
+    if (!isOntologyObjectPropertyNodeVisible(edge.source) || !isOntologyObjectPropertyNodeVisible(edge.target)) {
+      continue;
+    }
 
     if (focusedNodeIds && !focusedNodeIds.has(edge.source)) {
       continue;
@@ -1055,6 +1185,8 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     }
   }
 
-  const nodes = graphData.nodes.filter((node) => visibleNodeIds.has(node.id));
+  const nodes = graphData.nodes.filter(
+    (node) => visibleNodeIds.has(node.id) && isOntologyObjectPropertyNodeVisible(node.id),
+  );
   return toElements(nodes, visibleEdges);
 }

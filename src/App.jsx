@@ -144,18 +144,21 @@ function toViewOptions(mode) {
         showDataProperties: false,
         showAnnotationProperties: false,
         showObjectProperties: false,
+        showNamedIndividuals: false,
       };
     case ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA:
       return {
         showDataProperties: true,
         showAnnotationProperties: false,
         showObjectProperties: true,
+        showNamedIndividuals: false,
       };
     case ONTOLOGY_VIEW_MODES.FULL:
       return {
         showDataProperties: true,
         showAnnotationProperties: true,
         showObjectProperties: true,
+        showNamedIndividuals: true,
       };
     case ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT:
     default:
@@ -163,6 +166,7 @@ function toViewOptions(mode) {
         showDataProperties: false,
         showAnnotationProperties: false,
         showObjectProperties: true,
+        showNamedIndividuals: false,
       };
   }
 }

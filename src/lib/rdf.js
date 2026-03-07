@@ -21,7 +21,6 @@ const OWL_ONTOLOGY = `${OWL_NS}Ontology`;
 const CLASS_TYPE_IRIS = new Set([RDFS_CLASS, OWL_CLASS]);
 const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
   OWL_DATATYPE_PROPERTY,
-  OWL_NAMED_INDIVIDUAL,
   OWL_OBJECT_PROPERTY,
   OWL_ONTOLOGY,
   OWL_CLASS,
@@ -43,6 +42,7 @@ export const DEFAULT_VIEW_OPTIONS = Object.freeze({
   showDataProperties: false,
   showAnnotationProperties: false,
   showObjectProperties: true,
+  showNamedIndividuals: false,
 });
 
 const { namedNode, literal, quad, blankNode } = DataFactory;
@@ -619,6 +619,7 @@ export function buildGraphData(quads) {
   const dataProperties = new Map();
   const baseIriCounts = new Map();
   const classNodeIds = new Set();
+  const namedIndividualNodeIds = new Set();
   const objectPropertyIris = new Set();
   const annotationPropertyIris = new Set(BUILTIN_ANNOTATION_PREDICATES);
 
@@ -628,6 +629,8 @@ export function buildGraphData(quads) {
         objectPropertyIris.add(quad.subject.value);
       } else if (quad.object.value === OWL_ANNOTATION_PROPERTY) {
         annotationPropertyIris.add(quad.subject.value);
+      } else if (quad.object.value === OWL_NAMED_INDIVIDUAL) {
+        namedIndividualNodeIds.add(getTermId(quad.subject));
       } else if (CLASS_TYPE_IRIS.has(quad.object.value)) {
         classNodeIds.add(getTermId(quad.subject));
       }
@@ -728,7 +731,8 @@ export function buildGraphData(quads) {
     if (
       quad.predicate.value === RDF_TYPE &&
       quad.object.termType === 'NamedNode' &&
-      !isHiddenBackgroundClassIri(quad.object.value)
+      !isHiddenBackgroundClassIri(quad.object.value) &&
+      quad.object.value !== OWL_NAMED_INDIVIDUAL
     ) {
       const subjectClasses = classAssignments.get(sourceId) ?? new Set();
       subjectClasses.add(quad.object.value);
@@ -808,6 +812,7 @@ export function buildGraphData(quads) {
     classes,
     baseIris,
     classNodeIds,
+    namedIndividualNodeIds,
     dataProperties,
     nodeMap,
     edgeMap,
@@ -853,6 +858,7 @@ function normalizeViewOptions(viewOptions) {
     showDataProperties: Boolean(viewOptions?.showDataProperties),
     showAnnotationProperties: Boolean(viewOptions?.showAnnotationProperties),
     showObjectProperties: Boolean(viewOptions?.showObjectProperties),
+    showNamedIndividuals: Boolean(viewOptions?.showNamedIndividuals),
   };
 }
 
@@ -898,9 +904,14 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     !options.showDataProperties && !options.showAnnotationProperties && !options.showObjectProperties;
   const visibleNodeIds = new Set();
   const visibleEdges = [];
+  const isNamedIndividualVisible = (nodeId) =>
+    options.showNamedIndividuals || !graphData.namedIndividualNodeIds.has(nodeId);
 
   for (const edge of graphData.objectEdges) {
     if (!shouldIncludeObjectEdge(edge, options)) {
+      continue;
+    }
+    if (!isNamedIndividualVisible(edge.source) || !isNamedIndividualVisible(edge.target)) {
       continue;
     }
 
@@ -922,6 +933,9 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
 
   for (const edge of graphData.literalEdges) {
     if (!shouldIncludeLiteralEdge(edge, options)) {
+      continue;
+    }
+    if (!isNamedIndividualVisible(edge.source) || !isNamedIndividualVisible(edge.target)) {
       continue;
     }
 

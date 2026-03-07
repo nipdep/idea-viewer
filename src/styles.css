@@ -214,6 +214,32 @@ textarea {
   color: #5a524a;
 }
 
+.option-list {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.option-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.84rem;
+  color: #4a433b;
+}
+
+.option-item:last-child {
+  border-bottom: none;
+}
+
+.option-item input[type='checkbox'] {
+  margin-top: 3px;
+}
+
 .file-control {
   display: flex;
   flex-direction: column;

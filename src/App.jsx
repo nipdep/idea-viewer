@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
-import { buildFocusedSubset, buildGraphData, getTermId, parseRdfText } from './lib/rdf';
+import { DEFAULT_VIEW_OPTIONS, buildFocusedSubset, buildGraphData, getTermId, parseRdfText } from './lib/rdf';
 import './styles.css';
 
 function isEntityTerm(term) {
@@ -144,6 +144,11 @@ export default function App() {
   const [selectedBaseIris, setSelectedBaseIris] = useState([]);
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
+  const [showDataProperties, setShowDataProperties] = useState(DEFAULT_VIEW_OPTIONS.showDataProperties);
+  const [showAnnotationProperties, setShowAnnotationProperties] = useState(
+    DEFAULT_VIEW_OPTIONS.showAnnotationProperties,
+  );
+  const [showObjectProperties, setShowObjectProperties] = useState(DEFAULT_VIEW_OPTIONS.showObjectProperties);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [focusedNodeId, setFocusedNodeId] = useState(null);
@@ -411,6 +416,11 @@ export default function App() {
       setFilterError('');
 
       try {
+        const viewOptions = {
+          showDataProperties,
+          showAnnotationProperties,
+          showObjectProperties,
+        };
         const classFilterActive =
           graphData.classes.length > 0 && selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
@@ -419,7 +429,7 @@ export default function App() {
 
         if (!classFilterActive && !baseIriFilterActive && !sparqlActive) {
           if (!cancelled) {
-            setVisibleElements(graphData.elements);
+            setVisibleElements(buildFocusedSubset(graphData, null, viewOptions));
           }
           return;
         }
@@ -442,12 +452,18 @@ export default function App() {
         }
 
         if (!cancelled) {
-          setVisibleElements(buildFocusedSubset(graphData, selectedEntities ?? new Set()));
+          setVisibleElements(buildFocusedSubset(graphData, selectedEntities, viewOptions));
         }
       } catch (error) {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
-          setVisibleElements(graphData.elements);
+          setVisibleElements(
+            buildFocusedSubset(graphData, null, {
+              showDataProperties,
+              showAnnotationProperties,
+              showObjectProperties,
+            }),
+          );
         }
       } finally {
         if (!cancelled) {
@@ -461,7 +477,15 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [graphData, selectedClassIris, selectedBaseIris, sparqlQuery]);
+  }, [
+    graphData,
+    selectedClassIris,
+    selectedBaseIris,
+    sparqlQuery,
+    showDataProperties,
+    showAnnotationProperties,
+    showObjectProperties,
+  ]);
 
   useEffect(() => {
     if (!selectedNodeId) {
@@ -646,6 +670,36 @@ export default function App() {
 
               <section className="panel-section">
                 <h2>Graph Filters</h2>
+                <h3 className="filter-group-title">Ontology view</h3>
+                <div className="option-list">
+                  <label className="option-item">
+                    <input
+                      type="checkbox"
+                      checked={showDataProperties}
+                      onChange={(event) => setShowDataProperties(event.target.checked)}
+                    />
+                    <span>Show data properties (literal nodes)</span>
+                  </label>
+
+                  <label className="option-item">
+                    <input
+                      type="checkbox"
+                      checked={showAnnotationProperties}
+                      onChange={(event) => setShowAnnotationProperties(event.target.checked)}
+                    />
+                    <span>Show annotation properties</span>
+                  </label>
+
+                  <label className="option-item">
+                    <input
+                      type="checkbox"
+                      checked={showObjectProperties}
+                      onChange={(event) => setShowObjectProperties(event.target.checked)}
+                    />
+                    <span>Show object properties except `rdfs:subClassOf`</span>
+                  </label>
+                </div>
+
                 <h3 className="filter-group-title">Class type</h3>
                 <div className="mini-actions">
                   <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>

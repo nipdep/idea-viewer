@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
-import { DEFAULT_VIEW_OPTIONS, buildFocusedSubset, buildGraphData, getTermId, parseRdfText } from './lib/rdf';
+import { buildFocusedSubset, buildGraphData, getTermId, parseRdfText } from './lib/rdf';
 import './styles.css';
 
 function isEntityTerm(term) {
@@ -130,6 +130,43 @@ function formatSelectedFiles(files, emptyLabel) {
   return `${files.length} files selected (${shown} +${files.length - 2} more)`;
 }
 
+const ONTOLOGY_VIEW_MODES = {
+  CLASS_ONLY: 'class-only',
+  CLASS_AND_OBJECT: 'class-and-object',
+  CLASS_OBJECT_DATA: 'class-object-data',
+  FULL: 'full',
+};
+
+function toViewOptions(mode) {
+  switch (mode) {
+    case ONTOLOGY_VIEW_MODES.CLASS_ONLY:
+      return {
+        showDataProperties: false,
+        showAnnotationProperties: false,
+        showObjectProperties: false,
+      };
+    case ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA:
+      return {
+        showDataProperties: true,
+        showAnnotationProperties: false,
+        showObjectProperties: true,
+      };
+    case ONTOLOGY_VIEW_MODES.FULL:
+      return {
+        showDataProperties: true,
+        showAnnotationProperties: true,
+        showObjectProperties: true,
+      };
+    case ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT:
+    default:
+      return {
+        showDataProperties: false,
+        showAnnotationProperties: false,
+        showObjectProperties: true,
+      };
+  }
+}
+
 export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
@@ -144,11 +181,7 @@ export default function App() {
   const [selectedBaseIris, setSelectedBaseIris] = useState([]);
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
-  const [showDataProperties, setShowDataProperties] = useState(DEFAULT_VIEW_OPTIONS.showDataProperties);
-  const [showAnnotationProperties, setShowAnnotationProperties] = useState(
-    DEFAULT_VIEW_OPTIONS.showAnnotationProperties,
-  );
-  const [showObjectProperties, setShowObjectProperties] = useState(DEFAULT_VIEW_OPTIONS.showObjectProperties);
+  const [ontologyViewMode, setOntologyViewMode] = useState(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [focusedNodeId, setFocusedNodeId] = useState(null);
@@ -416,11 +449,7 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = {
-          showDataProperties,
-          showAnnotationProperties,
-          showObjectProperties,
-        };
+        const viewOptions = toViewOptions(ontologyViewMode);
         const classFilterActive =
           graphData.classes.length > 0 && selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
@@ -457,13 +486,7 @@ export default function App() {
       } catch (error) {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
-          setVisibleElements(
-            buildFocusedSubset(graphData, null, {
-              showDataProperties,
-              showAnnotationProperties,
-              showObjectProperties,
-            }),
-          );
+          setVisibleElements(buildFocusedSubset(graphData, null, toViewOptions(ontologyViewMode)));
         }
       } finally {
         if (!cancelled) {
@@ -482,9 +505,7 @@ export default function App() {
     selectedClassIris,
     selectedBaseIris,
     sparqlQuery,
-    showDataProperties,
-    showAnnotationProperties,
-    showObjectProperties,
+    ontologyViewMode,
   ]);
 
   useEffect(() => {
@@ -674,29 +695,42 @@ export default function App() {
                 <div className="option-list">
                   <label className="option-item">
                     <input
-                      type="checkbox"
-                      checked={showDataProperties}
-                      onChange={(event) => setShowDataProperties(event.target.checked)}
+                      type="radio"
+                      name="ontology-view-mode"
+                      checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
+                      onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
                     />
-                    <span>Show data properties (literal nodes)</span>
+                    <span>Class structure only (`rdfs:subClassOf`)</span>
                   </label>
 
                   <label className="option-item">
                     <input
-                      type="checkbox"
-                      checked={showAnnotationProperties}
-                      onChange={(event) => setShowAnnotationProperties(event.target.checked)}
+                      type="radio"
+                      name="ontology-view-mode"
+                      checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
+                      onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
                     />
-                    <span>Show annotation properties</span>
+                    <span>Classes with object properties (default)</span>
                   </label>
 
                   <label className="option-item">
                     <input
-                      type="checkbox"
-                      checked={showObjectProperties}
-                      onChange={(event) => setShowObjectProperties(event.target.checked)}
+                      type="radio"
+                      name="ontology-view-mode"
+                      checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
+                      onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
                     />
-                    <span>Show object properties except `rdfs:subClassOf`</span>
+                    <span>Class structure + object + data properties</span>
+                  </label>
+
+                  <label className="option-item">
+                    <input
+                      type="radio"
+                      name="ontology-view-mode"
+                      checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
+                      onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
+                    />
+                    <span>Class structure + object + data + annotation properties</span>
                   </label>
                 </div>
 

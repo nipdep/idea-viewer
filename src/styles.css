@@ -236,7 +236,8 @@ textarea {
   border-bottom: none;
 }
 
-.option-item input[type='checkbox'] {
+.option-item input[type='checkbox'],
+.option-item input[type='radio'] {
   margin-top: 3px;
 }
 

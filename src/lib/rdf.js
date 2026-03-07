@@ -31,7 +31,7 @@ const BUILTIN_ANNOTATION_PREDICATES = new Set([
 export const DEFAULT_VIEW_OPTIONS = Object.freeze({
   showDataProperties: false,
   showAnnotationProperties: false,
-  showObjectProperties: false,
+  showObjectProperties: true,
 });
 
 const { namedNode, literal, quad, blankNode } = DataFactory;
@@ -908,7 +908,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     visibleNodeIds.add(edge.target);
   }
 
-  if (classStructureOnly) {
+  if (!focusedNodeIds || classStructureOnly) {
     for (const classNodeId of graphData.classNodeIds) {
       if (!focusedNodeIds || focusedNodeIds.has(classNodeId)) {
         visibleNodeIds.add(classNodeId);

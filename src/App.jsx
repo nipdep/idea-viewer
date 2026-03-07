@@ -273,40 +273,32 @@ export default function App() {
           },
         },
         {
-          selector: 'node[graphRole = "ontology-class"]',
+          selector: 'node[ontologyKind = "class"]',
           style: {
-            shape: 'round-rectangle',
-            'background-color': '#e8f0fb',
-            'border-color': '#3d6fa6',
-            'border-width': 2,
-            color: '#1a2c44',
+            shape: 'ellipse',
           },
         },
         {
-          selector: 'node[graphRole = "kg-instance"]',
+          selector: 'node[ontologyKind = "individual"]',
           style: {
-            shape: 'ellipse',
-            'background-color': '#f9efe5',
-            'border-color': '#be6843',
-            'border-width': 1.5,
-            color: '#3f2b20',
+            shape: 'round-rectangle',
           },
         },
         {
           selector: 'node[kind = "literal"]',
           style: {
-            'background-color': '#ffe7d6',
-            'border-color': '#c05635',
+            'background-color': '#f0e4d7',
+            'border-color': '#9b7458',
             color: '#1e1b16',
-            shape: 'round-octagon',
+            shape: 'rectangle',
           },
         },
         {
           selector: 'node[ontologyKind = "data-property"]',
           style: {
             shape: 'diamond',
-            'background-color': '#e6f1ff',
-            'border-color': '#4b7bb0',
+            'background-color': '#f0e7db',
+            'border-color': '#9b7f66',
             color: '#1e1b16',
           },
         },
@@ -314,8 +306,8 @@ export default function App() {
           selector: 'node[ontologyKind = "object-property"]',
           style: {
             shape: 'hexagon',
-            'background-color': '#e7f4ef',
-            'border-color': '#3a8f86',
+            'background-color': '#efe4d7',
+            'border-color': '#9f7a57',
             color: '#1e1b16',
           },
         },
@@ -323,10 +315,18 @@ export default function App() {
           selector: 'node[ontologyKind = "annotation-property"]',
           style: {
             shape: 'round-rectangle',
-            'background-color': '#f3ece4',
-            'border-color': '#9b8770',
+            'background-color': '#efe6dd',
+            'border-color': '#9e846b',
             'border-style': 'dashed',
             color: '#1e1b16',
+          },
+        },
+        {
+          selector: 'node[mixedMode = 1][isOntologyNode = 1]',
+          style: {
+            'background-color': '#e5d5c4',
+            'border-color': '#86684f',
+            color: '#2d2218',
           },
         },
         {

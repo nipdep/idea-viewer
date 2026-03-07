@@ -997,6 +997,9 @@ export function buildGraphData(quads, options = {}) {
         node.graphRole = 'kg-instance';
       }
     }
+
+    node.isOntologyNode = node.ontologyKind ? 1 : 0;
+    node.mixedMode = hasOntology && hasKg ? 1 : 0;
   }
 
   for (const node of nodeMap.values()) {
@@ -1057,6 +1060,8 @@ export function toElements(nodes, edges) {
         kind: node.kind,
         ontologyKind: node.ontologyKind ?? '',
         graphRole: node.graphRole ?? '',
+        isOntologyNode: node.isOntologyNode ?? 0,
+        mixedMode: node.mixedMode ?? 0,
         termType: node.termType,
         labelLength: node.labelLength,
         hasClass: node.hasClass,

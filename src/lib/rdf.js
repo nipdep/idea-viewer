@@ -634,6 +634,7 @@ function makeNodeData(term, labelIndex) {
     termType,
     kind: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
     ontologyKind: '',
+    graphRole: '',
     fullLabel,
     displayLabel: makeDisplayLabel(fullLabel),
     labelLength: Math.min(Math.max(fullLabel.length, 4), 120),
@@ -988,6 +989,14 @@ export function buildGraphData(quads, options = {}) {
     } else if (namedIndividualNodeIds.has(node.id)) {
       node.ontologyKind = 'individual';
     }
+
+    if (hasOntology && hasKg) {
+      if (ontologyClassIds.has(node.id)) {
+        node.graphRole = 'ontology-class';
+      } else if (node.classes.length > 0 || namedIndividualNodeIds.has(node.id)) {
+        node.graphRole = 'kg-instance';
+      }
+    }
   }
 
   for (const node of nodeMap.values()) {
@@ -1047,6 +1056,7 @@ export function toElements(nodes, edges) {
         iri: node.iri,
         kind: node.kind,
         ontologyKind: node.ontologyKind ?? '',
+        graphRole: node.graphRole ?? '',
         termType: node.termType,
         labelLength: node.labelLength,
         hasClass: node.hasClass,

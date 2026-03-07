@@ -273,6 +273,26 @@ export default function App() {
           },
         },
         {
+          selector: 'node[graphRole = "ontology-class"]',
+          style: {
+            shape: 'round-rectangle',
+            'background-color': '#e8f0fb',
+            'border-color': '#3d6fa6',
+            'border-width': 2,
+            color: '#1a2c44',
+          },
+        },
+        {
+          selector: 'node[graphRole = "kg-instance"]',
+          style: {
+            shape: 'ellipse',
+            'background-color': '#f9efe5',
+            'border-color': '#be6843',
+            'border-width': 1.5,
+            color: '#3f2b20',
+          },
+        },
+        {
           selector: 'node[kind = "literal"]',
           style: {
             'background-color': '#ffe7d6',

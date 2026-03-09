@@ -710,18 +710,6 @@ export default function App() {
           </h1>
           <p className="brand-subtitle">Argument discourse visualization in scientific knowledge graphs.</p>
         </div>
-
-        <nav className="header-tabs" aria-label="Viewer modes">
-          <button type="button" className="tab active">
-            Graph
-          </button>
-          <button type="button" className="tab">
-            Filters
-          </button>
-          <button type="button" className="tab">
-            Inspector
-          </button>
-        </nav>
       </header>
 
       <div className="app-shell" style={appShellStyle}>

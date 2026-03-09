@@ -52,7 +52,7 @@ textarea {
 
 .app-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: flex-start;
   gap: 24px;
   padding: 16px 32px 8px;
@@ -76,29 +76,6 @@ textarea {
 .brand-subtitle {
   margin: 6px 0 0;
   color: var(--muted);
-}
-
-.header-tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.tab {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--ink);
-  border-radius: 12px;
-  padding: 12px 18px;
-  font-size: 1rem;
-  cursor: default;
-  transform: none;
-  box-shadow: none;
-}
-
-.tab.active {
-  background: var(--accent-2);
-  color: #fff;
-  border-color: var(--accent-2);
 }
 
 .app-shell {
@@ -556,11 +533,6 @@ textarea {
     padding: 12px 14px 8px;
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .header-tabs {
-    width: 100%;
-    flex-wrap: wrap;
   }
 
   .app-shell {

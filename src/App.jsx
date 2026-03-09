@@ -174,6 +174,7 @@ function toViewOptions(mode) {
 export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
+  const previousFocusedNodeIdRef = useRef(null);
   const queryEngineRef = useRef(new QueryEngine());
 
   const [kgFiles, setKgFiles] = useState([]);
@@ -455,6 +456,8 @@ export default function App() {
       return;
     }
 
+    const wasFocused = Boolean(previousFocusedNodeIdRef.current);
+
     cy.batch(() => {
       cy.elements().removeClass('faded focus-node focus-neighbor focus-edge');
 
@@ -485,7 +488,20 @@ export default function App() {
           duration: 250,
         });
       }
+    } else if (wasFocused) {
+      const visibleNodes = cy.nodes();
+      if (visibleNodes.length > 0) {
+        cy.animate({
+          fit: {
+            eles: cy.elements(),
+            padding: 42,
+          },
+          duration: 250,
+        });
+      }
     }
+
+    previousFocusedNodeIdRef.current = focusedNodeId;
   }, [focusedNodeId, visibleElements]);
 
   useEffect(() => {

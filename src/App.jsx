@@ -171,6 +171,19 @@ function toViewOptions(mode) {
   }
 }
 
+function modelHasOntologySchema(model) {
+  if (!model) {
+    return false;
+  }
+
+  return (
+    (model.classIds?.size ?? 0) > 0 ||
+    (model.objectPropertyIds?.size ?? 0) > 0 ||
+    (model.dataPropertyIds?.size ?? 0) > 0 ||
+    (model.annotationPropertyIds?.size ?? 0) > 0
+  );
+}
+
 export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
@@ -612,20 +625,40 @@ export default function App() {
           return parseRdfText(text, file.name);
         }),
       );
-      const ontologyQuadGroups = await Promise.all(
+      const ontologyParsedFiles = await Promise.all(
         ontologyFiles.map(async (file) => {
           const text = await file.text();
-          return parseRdfText(text, file.name);
+          const quads = await parseRdfText(text, file.name);
+          const model = extractOntologyModel(quads);
+          const hasSchema = modelHasOntologySchema(model);
+          return { quads, hasSchema };
         }),
       );
 
       const kgQuads = kgQuadGroups.flat();
-      const ontologyQuads = ontologyQuadGroups.flat();
-      const mergedQuads = [...kgQuads, ...ontologyQuads];
-      const ontologyModel = extractOntologyModel(ontologyQuads);
+      const schemaOntologyQuads = [];
+      const instanceOntologyQuads = [];
+      let schemaOntologyFileCount = 0;
+      let instanceOntologyFileCount = 0;
+
+      for (const parsed of ontologyParsedFiles) {
+        if (parsed.hasSchema) {
+          schemaOntologyQuads.push(...parsed.quads);
+          schemaOntologyFileCount += 1;
+        } else {
+          instanceOntologyQuads.push(...parsed.quads);
+          instanceOntologyFileCount += 1;
+        }
+      }
+
+      const effectiveKgQuads = [...kgQuads, ...instanceOntologyQuads];
+      const mergedQuads = [...effectiveKgQuads, ...schemaOntologyQuads];
+      const ontologyModel = extractOntologyModel(schemaOntologyQuads);
+      const hasOntology = modelHasOntologySchema(ontologyModel) && schemaOntologyQuads.length > 0;
+      const hasKg = effectiveKgQuads.length > 0;
       const nextGraphData = buildGraphData(mergedQuads, {
-        hasKg: kgQuads.length > 0,
-        hasOntology: ontologyQuads.length > 0,
+        hasKg,
+        hasOntology,
         ontologyModel,
       });
 
@@ -638,11 +671,11 @@ export default function App() {
       setFocusedNodeId(null);
 
       setStatus(
-        `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${kgFiles.length} KG file${
-          kgFiles.length === 1 ? '' : 's'
-        }${
-          ontologyFiles.length > 0
-            ? ` + ${ontologyFiles.length} ontology file${ontologyFiles.length === 1 ? '' : 's'}`
+        `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${
+          kgFiles.length + instanceOntologyFileCount
+        } KG file${kgFiles.length + instanceOntologyFileCount === 1 ? '' : 's'}${
+          schemaOntologyFileCount > 0
+            ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
             : ''
         }`,
       );

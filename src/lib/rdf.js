@@ -969,8 +969,15 @@ export function buildGraphData(quads, options = {}) {
     }
   }
 
-  for (const classIri of classMap.keys()) {
-    classNodeIds.add(classIri);
+  if (hasOntology) {
+    classNodeIds.clear();
+    for (const ontologyClassId of ontologyClassIds) {
+      classNodeIds.add(ontologyClassId);
+    }
+  } else {
+    for (const classIri of classMap.keys()) {
+      classNodeIds.add(classIri);
+    }
   }
 
   for (const node of nodeMap.values()) {

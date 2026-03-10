@@ -247,6 +247,7 @@ export default function App() {
     const cy = cytoscape({
       container: graphContainerRef.current,
       elements: [],
+      wheelSensitivity: 0.2,
       style: [
         {
           selector: 'node',

@@ -262,11 +262,11 @@ export default function App() {
             'text-max-width': 'data(textMaxWidth)',
             'text-justification': 'center',
             'text-valign': 'center',
-            'border-width': 1,
+            'border-width': 0.8,
             'border-color': '#7e6f60',
             width: 'data(nodeWidth)',
             height: 'data(nodeHeight)',
-            padding: '8px',
+            padding: '6px',
           },
         },
         {

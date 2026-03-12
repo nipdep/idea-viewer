@@ -193,7 +193,11 @@ export function compactIri(iri) {
   return iri;
 }
 
-export function makeDisplayLabel(label, maxLineLength = 24, maxLines = 3) {
+const NODE_TEXT_LINE_LENGTH = 26;
+const NODE_TEXT_TRUNCATE_AT = 220;
+const NODE_TEXT_MAX_LINES = 12;
+
+export function makeDisplayLabel(label, maxLineLength = NODE_TEXT_LINE_LENGTH, truncateAt = NODE_TEXT_TRUNCATE_AT) {
   if (!label) {
     return '';
   }
@@ -203,40 +207,56 @@ export function makeDisplayLabel(label, maxLineLength = 24, maxLines = 3) {
     return '';
   }
 
-  const words = sanitized.split(' ');
+  const shouldTruncate = sanitized.length > truncateAt;
+  const sourceText = shouldTruncate ? `${sanitized.slice(0, truncateAt).trimEnd()}…` : sanitized;
+  const words = sourceText.split(' ');
   const lines = [];
   let current = '';
 
   for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length <= maxLineLength) {
-      current = next;
+    if (current) {
+      const next = `${current} ${word}`;
+      if (next.length <= maxLineLength) {
+        current = next;
+        continue;
+      }
+
+      lines.push(current);
+      current = '';
+      if (lines.length >= NODE_TEXT_MAX_LINES) {
+        break;
+      }
+    }
+
+    if (word.length <= maxLineLength) {
+      current = word;
       continue;
     }
 
-    if (current) {
-      lines.push(current);
-      current = word;
-    } else {
-      lines.push(word.slice(0, maxLineLength));
-      current = word.slice(maxLineLength);
+    let remainder = word;
+    while (remainder.length > maxLineLength && lines.length < NODE_TEXT_MAX_LINES) {
+      lines.push(remainder.slice(0, maxLineLength));
+      remainder = remainder.slice(maxLineLength);
     }
 
-    if (lines.length >= maxLines) {
+    if (lines.length >= NODE_TEXT_MAX_LINES) {
+      current = '';
       break;
     }
+
+    current = remainder;
   }
 
-  if (lines.length < maxLines && current) {
+  if (lines.length < NODE_TEXT_MAX_LINES && current) {
     lines.push(current);
   }
 
-  const needsEllipsis =
-    lines.length === maxLines &&
-    (words.join(' ').length > lines.join(' ').length || lines[maxLines - 1].length > maxLineLength);
+  if (lines.length > NODE_TEXT_MAX_LINES) {
+    lines.length = NODE_TEXT_MAX_LINES;
+  }
 
-  if (needsEllipsis) {
-    lines[maxLines - 1] = `${lines[maxLines - 1].slice(0, Math.max(maxLineLength - 1, 1)).trimEnd()}…`;
+  if (shouldTruncate && lines.length > 0 && !lines[lines.length - 1].endsWith('…')) {
+    lines[lines.length - 1] = `${lines[lines.length - 1].replace(/…+$/, '').trimEnd()}…`;
   }
 
   return lines.join('\n');
@@ -253,9 +273,9 @@ function computeNodeMetrics(displayLabel) {
     }
   }
 
-  const nodeWidth = Math.max(64, Math.min(194, Math.round(maxLineLength * 6.3 + 28)));
-  const nodeHeight = Math.max(36, Math.min(122, Math.round(lineCount * 17 + 14)));
-  const textMaxWidth = Math.max(48, nodeWidth - 18);
+  const nodeWidth = Math.max(64, Math.min(214, Math.round(maxLineLength * 6.2 + 26)));
+  const nodeHeight = Math.max(34, Math.min(176, Math.round(lineCount * 16 + 14)));
+  const textMaxWidth = Math.max(48, nodeWidth - 16);
 
   return {
     nodeWidth,

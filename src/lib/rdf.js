@@ -242,6 +242,30 @@ export function makeDisplayLabel(label, maxLineLength = 24, maxLines = 3) {
   return lines.join('\n');
 }
 
+function computeNodeMetrics(displayLabel) {
+  const lines = (displayLabel || '').split('\n').filter((line) => line.length > 0);
+  const lineCount = Math.max(lines.length, 1);
+  let maxLineLength = 1;
+
+  for (const line of lines) {
+    if (line.length > maxLineLength) {
+      maxLineLength = line.length;
+    }
+  }
+
+  const nodeWidth = Math.max(64, Math.min(194, Math.round(maxLineLength * 6.3 + 28)));
+  const nodeHeight = Math.max(36, Math.min(122, Math.round(lineCount * 17 + 14)));
+  const textMaxWidth = Math.max(48, nodeWidth - 18);
+
+  return {
+    nodeWidth,
+    nodeHeight,
+    textMaxWidth,
+    lineCount,
+    maxLineLength,
+  };
+}
+
 function escapeXml(value) {
   return value
     .replace(/&/g, '&amp;')
@@ -627,6 +651,9 @@ function makeNodeData(term, labelIndex) {
     fullLabel = `[Blank ${term.value}]`;
   }
 
+  const displayLabel = makeDisplayLabel(fullLabel);
+  const metrics = computeNodeMetrics(displayLabel);
+
   return {
     id,
     iri: term.value,
@@ -636,8 +663,11 @@ function makeNodeData(term, labelIndex) {
     ontologyKind: '',
     graphRole: '',
     fullLabel,
-    displayLabel: makeDisplayLabel(fullLabel),
-    labelLength: Math.min(Math.max(fullLabel.length, 4), 120),
+    displayLabel,
+    labelLength: Math.min(Math.max(metrics.maxLineLength * metrics.lineCount, 4), 120),
+    nodeWidth: metrics.nodeWidth,
+    nodeHeight: metrics.nodeHeight,
+    textMaxWidth: metrics.textMaxWidth,
     classes: [],
   };
 }
@@ -1071,6 +1101,9 @@ export function toElements(nodes, edges) {
         mixedMode: node.mixedMode ?? 0,
         termType: node.termType,
         labelLength: node.labelLength,
+        nodeWidth: node.nodeWidth ?? 96,
+        nodeHeight: node.nodeHeight ?? 52,
+        textMaxWidth: node.textMaxWidth ?? 78,
         hasClass: node.hasClass,
         classBadge: node.classBadge,
         badgeSvg: node.badgeSvg,

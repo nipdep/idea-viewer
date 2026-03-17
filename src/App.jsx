@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
-import { buildFocusedSubset, buildGraphData, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
+import { buildFocusedSubset, buildGraphData, compactIri, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
 import './styles.css';
 
 function isEntityTerm(term) {
@@ -130,6 +130,101 @@ function formatSelectedFiles(files, emptyLabel) {
   return `${files.length} files selected (${shown} +${files.length - 2} more)`;
 }
 
+function getNamespaceIri(iri) {
+  if (!iri) {
+    return '';
+  }
+
+  const hashIndex = iri.lastIndexOf('#');
+  if (hashIndex >= 0) {
+    return iri.slice(0, hashIndex + 1);
+  }
+
+  const slashIndex = iri.lastIndexOf('/');
+  if (slashIndex >= 0) {
+    return iri.slice(0, slashIndex + 1);
+  }
+
+  return '';
+}
+
+function getPrefixFromBaseIri(baseIri) {
+  if (!baseIri) {
+    return 'ns';
+  }
+
+  const cleaned = baseIri.replace(/[\/#]+$/, '');
+  const parts = cleaned.split('/').filter(Boolean);
+  const token = (parts[parts.length - 1] || 'ns')
+    .replace(/[^A-Za-z0-9_]/g, '')
+    .toLowerCase();
+  return token || 'ns';
+}
+
+function toPrefixedName(iri) {
+  if (!iri) {
+    return '';
+  }
+
+  const namespace = getNamespaceIri(iri);
+  const prefix = getPrefixFromBaseIri(namespace);
+  const local = compactIri(iri);
+  return `${prefix}:${local}`;
+}
+
+function orderClassesSubToSuper(classIris, graphData) {
+  if (!graphData || classIris.length <= 1) {
+    return classIris;
+  }
+
+  const classSet = new Set(classIris);
+  const parentMap = new Map();
+
+  for (const edge of graphData.objectEdges) {
+    if (edge.category !== 'subclass') {
+      continue;
+    }
+    if (!classSet.has(edge.source) || !classSet.has(edge.target)) {
+      continue;
+    }
+    const parents = parentMap.get(edge.source) ?? [];
+    parents.push(edge.target);
+    parentMap.set(edge.source, parents);
+  }
+
+  const depthMemo = new Map();
+  const visiting = new Set();
+
+  const depth = (classIri) => {
+    if (depthMemo.has(classIri)) {
+      return depthMemo.get(classIri);
+    }
+
+    if (visiting.has(classIri)) {
+      return 0;
+    }
+    visiting.add(classIri);
+
+    const parents = parentMap.get(classIri) ?? [];
+    let value = 0;
+    for (const parent of parents) {
+      value = Math.max(value, depth(parent) + 1);
+    }
+
+    visiting.delete(classIri);
+    depthMemo.set(classIri, value);
+    return value;
+  };
+
+  return [...classIris].sort((left, right) => {
+    const depthDiff = depth(right) - depth(left);
+    if (depthDiff !== 0) {
+      return depthDiff;
+    }
+    return toPrefixedName(left).localeCompare(toPrefixedName(right));
+  });
+}
+
 const ONTOLOGY_VIEW_MODES = {
   CLASS_ONLY: 'class-only',
   CLASS_AND_OBJECT: 'class-and-object',
@@ -223,6 +318,26 @@ export default function App() {
     () => (selectedNodeId && graphData ? graphData.dataProperties.get(selectedNodeId) ?? [] : []),
     [selectedNodeId, graphData],
   );
+  const selectedNodeClasses = useMemo(() => {
+    if (!selectedNode || !graphData || selectedNode.classes.length === 0) {
+      return [];
+    }
+
+    return orderClassesSubToSuper(selectedNode.classes, graphData).map((classIri) => ({
+      iri: classIri,
+      prefixed: toPrefixedName(classIri),
+    }));
+  }, [selectedNode, graphData]);
+  const selectedNodeBaseOntology = useMemo(() => {
+    if (!selectedNode?.baseIri) {
+      return null;
+    }
+
+    return {
+      prefix: `${getPrefixFromBaseIri(selectedNode.baseIri)}:`,
+      iri: selectedNode.baseIri,
+    };
+  }, [selectedNode]);
 
   const neighborRows = useMemo(
     () => buildNeighborRows(selectedNodeId, visibleElements, graphData),
@@ -977,19 +1092,41 @@ export default function App() {
                       <dd>{selectedNode.termType}</dd>
 
                       <dt>ID</dt>
-                      <dd className="mono">{selectedNode.id}</dd>
+                      <dd>
+                        <div className="copy-row">
+                          <textarea className="copy-field mono" rows={3} readOnly value={selectedNode.id} />
+                          <button
+                            type="button"
+                            className="copy-action"
+                            onClick={() => navigator.clipboard?.writeText(selectedNode.id)}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </dd>
 
-                      {selectedNode.iri && (
+                      {selectedNodeBaseOntology && (
                         <>
-                          <dt>IRI/Literal</dt>
-                          <dd className="breakable">{selectedNode.iri}</dd>
+                          <dt>Base ontology</dt>
+                          <dd className="breakable base-ontology-row">
+                            <span className="prefix-chip mono">{selectedNodeBaseOntology.prefix}</span>
+                            <span>{selectedNodeBaseOntology.iri}</span>
+                          </dd>
                         </>
                       )}
 
-                    {selectedNode.classes.length > 0 && (
+                    {selectedNodeClasses.length > 0 && (
                       <>
                         <dt>Classes</dt>
-                        <dd className="breakable">{selectedNode.classes.join(', ')}</dd>
+                        <dd>
+                          <ol className="class-chain">
+                            {selectedNodeClasses.map((entry) => (
+                              <li key={entry.iri} title={entry.iri}>
+                                {entry.prefixed}
+                              </li>
+                            ))}
+                          </ol>
+                        </dd>
                       </>
                     )}
                   </dl>

@@ -423,6 +423,7 @@ textarea {
 
 .entity-meta dd {
   margin: 0;
+  min-width: 0;
 }
 
 .mono {
@@ -432,6 +433,61 @@ textarea {
 }
 
 .breakable {
+  overflow-wrap: anywhere;
+}
+
+.copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+}
+
+.copy-field {
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: #5d544b;
+  resize: none;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.copy-action {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+
+.base-ontology-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.prefix-chip {
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  background: #f7f2ea;
+  color: #2e706f;
+  font-size: 0.75rem;
+}
+
+.class-chain {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 2px;
+}
+
+.class-chain li {
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 

@@ -603,6 +603,13 @@ textarea {
   color: var(--accent-2);
 }
 
+.property-meta {
+  margin-top: 3px;
+  color: #6d6359;
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
 .property-value {
   margin-top: 4px;
   color: #3f362e;

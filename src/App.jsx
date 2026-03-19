@@ -4,6 +4,17 @@ import { QueryEngine } from '@comunica/query-sparql';
 import { buildFocusedSubset, buildGraphData, compactIri, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
 import './styles.css';
 
+const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+const OWL_ONTOLOGY_IRI = 'http://www.w3.org/2002/07/owl#Ontology';
+const KNOWN_NAMESPACE_PREFIXES = {
+  'http://www.w3.org/1999/02/22-rdf-syntax-ns#': 'rdf',
+  'http://www.w3.org/2000/01/rdf-schema#': 'rdfs',
+  'http://www.w3.org/2002/07/owl#': 'owl',
+  'http://www.w3.org/2001/XMLSchema#': 'xsd',
+  'http://www.w3.org/ns/prov#': 'prov',
+  'http://www.w3.org/2004/02/skos/core#': 'skos',
+};
+
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
 }
@@ -153,6 +164,10 @@ function getPrefixFromBaseIri(baseIri) {
     return 'ns';
   }
 
+  if (KNOWN_NAMESPACE_PREFIXES[baseIri]) {
+    return KNOWN_NAMESPACE_PREFIXES[baseIri];
+  }
+
   const cleaned = baseIri.replace(/[\/#]+$/, '');
   const parts = cleaned.split('/').filter(Boolean);
   const token = (parts[parts.length - 1] || 'ns')
@@ -170,6 +185,68 @@ function toPrefixedName(iri) {
   const prefix = getPrefixFromBaseIri(namespace);
   const local = compactIri(iri);
   return `${prefix}:${local}`;
+}
+
+function partitionOntologyHeaderQuads(quads) {
+  if (!quads || quads.length === 0) {
+    return {
+      headerQuads: [],
+      contentQuads: [],
+    };
+  }
+
+  const ontologySubjectIds = new Set();
+  for (const quad of quads) {
+    if (
+      quad.predicate.value === RDF_TYPE_IRI &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_ONTOLOGY_IRI
+    ) {
+      ontologySubjectIds.add(getTermId(quad.subject));
+    }
+  }
+
+  if (ontologySubjectIds.size === 0) {
+    return {
+      headerQuads: [],
+      contentQuads: quads,
+    };
+  }
+
+  const headerQuads = [];
+  const contentQuads = [];
+  for (const quad of quads) {
+    if (ontologySubjectIds.has(getTermId(quad.subject))) {
+      headerQuads.push(quad);
+    } else {
+      contentQuads.push(quad);
+    }
+  }
+
+  return {
+    headerQuads,
+    contentQuads,
+  };
+}
+
+function formatTermForInspector(term) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'NamedNode') {
+    return toPrefixedName(term.value);
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `[Blank ${term.value}]`;
+  }
+
+  if (term.termType === 'Literal') {
+    return term.value;
+  }
+
+  return term.value || '';
 }
 
 function orderClassesSubToSuper(classIris, graphData) {
@@ -315,6 +392,7 @@ export default function App() {
   const [status, setStatus] = useState('Upload KG and/or ontology files to initialize the graph.');
   const [loadError, setLoadError] = useState('');
   const [filterError, setFilterError] = useState('');
+  const [ontologyMetadataRows, setOntologyMetadataRows] = useState([]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
@@ -743,6 +821,7 @@ export default function App() {
     setIsLoading(true);
     setLoadError('');
     setFilterError('');
+    setOntologyMetadataRows([]);
 
     try {
       const kgQuadGroups = await Promise.all(
@@ -755,9 +834,10 @@ export default function App() {
         ontologyFiles.map(async (file) => {
           const text = await file.text();
           const quads = await parseRdfText(text, file.name);
-          const model = extractOntologyModel(quads);
+          const { headerQuads, contentQuads } = partitionOntologyHeaderQuads(quads);
+          const model = extractOntologyModel(contentQuads);
           const hasSchema = modelHasOntologySchema(model);
-          return { quads, hasSchema };
+          return { fileName: file.name, headerQuads, contentQuads, hasSchema };
         }),
       );
 
@@ -766,13 +846,24 @@ export default function App() {
       const instanceOntologyQuads = [];
       let schemaOntologyFileCount = 0;
       let instanceOntologyFileCount = 0;
+      const metadataRows = [];
 
       for (const parsed of ontologyParsedFiles) {
+        parsed.headerQuads.forEach((quad, index) => {
+          metadataRows.push({
+            id: `${parsed.fileName}-${index}-${getTermId(quad.subject)}-${getTermId(quad.object)}`,
+            fileName: parsed.fileName,
+            subject: formatTermForInspector(quad.subject),
+            predicate: formatTermForInspector(quad.predicate),
+            value: formatTermForInspector(quad.object),
+          });
+        });
+
         if (parsed.hasSchema) {
-          schemaOntologyQuads.push(...parsed.quads);
+          schemaOntologyQuads.push(...parsed.contentQuads);
           schemaOntologyFileCount += 1;
         } else {
-          instanceOntologyQuads.push(...parsed.quads);
+          instanceOntologyQuads.push(...parsed.contentQuads);
           instanceOntologyFileCount += 1;
         }
       }
@@ -795,6 +886,7 @@ export default function App() {
       setSparqlQuery('');
       setSelectedNodeId(null);
       setFocusedNodeId(null);
+      setOntologyMetadataRows(metadataRows);
 
       setStatus(
         `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${
@@ -807,6 +899,7 @@ export default function App() {
       );
     } catch (error) {
       setLoadError(error.message || 'Unable to parse one of the uploaded files.');
+      setOntologyMetadataRows([]);
     } finally {
       setIsLoading(false);
     }
@@ -1291,7 +1384,24 @@ export default function App() {
               <section className="panel-section details-card">
                 <h2>Entity Inspector</h2>
 
-                {!selectedNode && <p className="muted">Click a node to inspect properties and neighbors.</p>}
+                {!selectedNode && ontologyMetadataRows.length === 0 && (
+                  <p className="muted">Click a node to inspect properties and neighbors.</p>
+                )}
+
+                {!selectedNode && ontologyMetadataRows.length > 0 && (
+                  <>
+                    <h4>Ontology header metadata ({ontologyMetadataRows.length})</h4>
+                    <div className="property-list">
+                      {ontologyMetadataRows.map((row) => (
+                        <div key={row.id} className="property-row" title={row.fileName}>
+                          <div className="property-name">{row.predicate}</div>
+                          <div className="property-meta breakable">{row.subject}</div>
+                          <div className="property-value breakable">{row.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
 
                 {selectedNode && (
                   <>

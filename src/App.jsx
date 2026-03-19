@@ -589,9 +589,9 @@ export default function App() {
     const maxWidth = container?.clientWidth ?? 1200;
     const maxHeight = container?.clientHeight ?? 800;
     const fanWidth = 260;
-    const fanHeight = Math.min(220, 34 + classes.length * 14);
+    const fanHeight = Math.min(360, 52 + classes.length * 26);
     const left = Math.min(Math.max(8, badgeRight + 10), Math.max(8, maxWidth - fanWidth - 8));
-    const top = Math.min(Math.max(8, badgeTop - 10), Math.max(8, maxHeight - fanHeight - 8));
+    const top = Math.min(Math.max(8, badgeTop - 4), Math.max(8, maxHeight - fanHeight - 8));
 
     return {
       left,
@@ -2099,7 +2099,7 @@ export default function App() {
           {multiClassBadgeTooltip && (
             <div className="badge-fanout" style={{ left: multiClassBadgeTooltip.left, top: multiClassBadgeTooltip.top }}>
               <div className="badge-fanout-count">{multiClassBadgeTooltip.count} classes</div>
-              <div className="badge-fanout-stack">
+              <div className="badge-fanout-stack" style={{ '--fan-count': multiClassBadgeTooltip.classes.length }}>
                 {multiClassBadgeTooltip.classes.map((entry, index) => (
                   <div
                     key={`${entry}-${index}`}

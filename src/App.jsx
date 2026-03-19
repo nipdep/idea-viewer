@@ -477,6 +477,9 @@ export default function App() {
   const hasAppliedInitialLayoutRef = useRef(false);
   const groupDragStateRef = useRef(null);
   const shouldFitAfterFocusClearRef = useRef(false);
+  const detachedPanModeRef = useRef(false);
+  const detachedPanLastMouseRef = useRef(null);
+  const suppressNextTapRef = useRef(false);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -510,6 +513,7 @@ export default function App() {
   const [isGraphFullscreen, setIsGraphFullscreen] = useState(false);
   const [leftFlyoutOpen, setLeftFlyoutOpen] = useState(false);
   const [rightFlyoutOpen, setRightFlyoutOpen] = useState(false);
+  const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
 
   const [status, setStatus] = useState('Upload KG and/or ontology files to initialize the graph.');
   const [loadError, setLoadError] = useState('');
@@ -780,12 +784,20 @@ export default function App() {
     });
 
     cy.on('tap', 'node', (event) => {
+      if (suppressNextTapRef.current) {
+        suppressNextTapRef.current = false;
+        return;
+      }
       const nodeId = event.target.id();
       setSelectedNodeId(nodeId);
       setFocusedNodeId(nodeId);
     });
 
     cy.on('tap', (event) => {
+      if (suppressNextTapRef.current) {
+        suppressNextTapRef.current = false;
+        return;
+      }
       if (event.target === cy) {
         setSelectedNodeId(null);
         setFocusedNodeId(null);
@@ -886,11 +898,92 @@ export default function App() {
       }
     });
 
+    const container = cy.container();
+    const enterDetachedPanMode = (event) => {
+      detachedPanModeRef.current = true;
+      detachedPanLastMouseRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+      setIsDetachedPanMode(true);
+    };
+    const exitDetachedPanMode = () => {
+      detachedPanModeRef.current = false;
+      detachedPanLastMouseRef.current = null;
+      setIsDetachedPanMode(false);
+    };
+
+    const onMouseDownCapture = (event) => {
+      const isLeftOrRightClick = event.button === 0 || event.button === 2;
+      const bothPressed = (event.buttons & 1) !== 0 && (event.buttons & 2) !== 0;
+
+      if (detachedPanModeRef.current) {
+        if (isLeftOrRightClick) {
+          suppressNextTapRef.current = event.button === 0;
+          exitDetachedPanMode();
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
+
+      if (bothPressed) {
+        enterDetachedPanMode(event);
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    const onMouseMove = (event) => {
+      if (!detachedPanModeRef.current) {
+        return;
+      }
+
+      const lastMouse = detachedPanLastMouseRef.current;
+      if (!lastMouse) {
+        detachedPanLastMouseRef.current = { x: event.clientX, y: event.clientY };
+        return;
+      }
+
+      const dx = event.clientX - lastMouse.x;
+      const dy = event.clientY - lastMouse.y;
+      detachedPanLastMouseRef.current = { x: event.clientX, y: event.clientY };
+      if (dx !== 0 || dy !== 0) {
+        cy.panBy({ x: dx, y: dy });
+      }
+      event.preventDefault();
+    };
+
+    const onMouseLeave = () => {
+      if (detachedPanModeRef.current) {
+        detachedPanLastMouseRef.current = null;
+      }
+    };
+
+    const onContextMenu = (event) => {
+      const bothPressed = (event.buttons & 1) !== 0 && (event.buttons & 2) !== 0;
+      if (detachedPanModeRef.current || bothPressed) {
+        event.preventDefault();
+      }
+    };
+
+    container.addEventListener('mousedown', onMouseDownCapture, true);
+    container.addEventListener('mousemove', onMouseMove);
+    container.addEventListener('mouseleave', onMouseLeave);
+    container.addEventListener('contextmenu', onContextMenu);
+
     cyRef.current = cy;
 
     return () => {
+      container.removeEventListener('mousedown', onMouseDownCapture, true);
+      container.removeEventListener('mousemove', onMouseMove);
+      container.removeEventListener('mouseleave', onMouseLeave);
+      container.removeEventListener('contextmenu', onContextMenu);
       groupDragStateRef.current = null;
       shouldFitAfterFocusClearRef.current = false;
+      detachedPanModeRef.current = false;
+      detachedPanLastMouseRef.current = null;
+      suppressNextTapRef.current = false;
       cyRef.current = null;
       cy.destroy();
     };
@@ -1510,7 +1603,11 @@ export default function App() {
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
 
   return (
-    <div className={`page-shell ${isGraphFullscreen ? 'fullscreen-mode' : ''} ${isPanelResizing ? 'resizing' : ''}`}>
+    <div
+      className={`page-shell ${isGraphFullscreen ? 'fullscreen-mode' : ''} ${isPanelResizing ? 'resizing' : ''} ${
+        isDetachedPanMode ? 'detached-pan' : ''
+      }`}
+    >
       <header className="app-header">
         <div>
           <h1 className="brand-title">
@@ -1919,7 +2016,7 @@ export default function App() {
             </button>
           </div>
 
-          <div ref={graphContainerRef} className="graph-canvas" />
+          <div ref={graphContainerRef} className={`graph-canvas ${isDetachedPanMode ? 'detached-pan-mode' : ''}`} />
 
           <div className="status-bar overlay">
             <span>{status}</span>

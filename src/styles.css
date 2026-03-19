@@ -637,6 +637,11 @@ textarea {
   border: 1px solid #e0d6cb;
 }
 
+.graph-canvas.detached-pan-mode {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .status-bar {
   display: flex;
   justify-content: space-between;

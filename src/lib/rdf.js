@@ -1181,6 +1181,39 @@ function shouldIncludeLiteralEdge(edge, options) {
   return false;
 }
 
+function shouldIncludeStandaloneNode(node, graphData, options) {
+  if (!node || node.termType === 'Literal' || node.termType === 'BlankNode') {
+    return false;
+  }
+
+  if (!graphData.hasOntology) {
+    return true;
+  }
+
+  if (node.ontologyKind === 'class') {
+    return true;
+  }
+
+  if (node.ontologyKind === 'individual') {
+    return options.showNamedIndividuals;
+  }
+
+  if (node.ontologyKind === 'object-property') {
+    return options.showObjectProperties;
+  }
+
+  if (node.ontologyKind === 'data-property') {
+    return options.showDataProperties;
+  }
+
+  if (node.ontologyKind === 'annotation-property') {
+    return options.showAnnotationProperties;
+  }
+
+  // KG instances and other named nodes should stay visible even without edges.
+  return true;
+}
+
 export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
   if (!graphData) {
     return [];
@@ -1288,6 +1321,26 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
         visibleNodeIds.add(classNodeId);
       }
     }
+  }
+
+  const candidateNodes = focusedNodeIds
+    ? graphData.nodes.filter((node) => focusedNodeIds.has(node.id))
+    : graphData.nodes;
+
+  for (const node of candidateNodes) {
+    if (isOntologyStructuralNodeHidden(node.id)) {
+      continue;
+    }
+    if (!isNamedIndividualVisible(node.id)) {
+      continue;
+    }
+    if (!isOntologyObjectPropertyNodeVisible(node.id)) {
+      continue;
+    }
+    if (!shouldIncludeStandaloneNode(node, graphData, options)) {
+      continue;
+    }
+    visibleNodeIds.add(node.id);
   }
 
   const nodes = graphData.nodes.filter(

@@ -187,6 +187,73 @@ function toPrefixedName(iri) {
   return `${prefix}:${local}`;
 }
 
+function normalizePrefixName(prefix, fallback = 'ns') {
+  const cleaned = (prefix || '')
+    .trim()
+    .replace(/[^A-Za-z0-9_]/g, '_')
+    .replace(/^[^A-Za-z_]+/, '');
+  return cleaned || fallback;
+}
+
+function makeDefaultSparqlPrefixes(baseIris) {
+  const uniqueIris = Array.from(new Set(baseIris.filter(Boolean)));
+  const used = new Set();
+
+  return uniqueIris.map((iri, index) => {
+    const namespace = getNamespaceIri(iri) || iri;
+    const basePrefix = normalizePrefixName(getPrefixFromBaseIri(namespace), `ns${index + 1}`);
+    let prefix = basePrefix;
+    let dedupeCounter = 2;
+    while (used.has(prefix)) {
+      prefix = `${basePrefix}${dedupeCounter}`;
+      dedupeCounter += 1;
+    }
+    used.add(prefix);
+
+    return {
+      id: `prefix-${index}-${prefix}`,
+      prefix,
+      iri,
+    };
+  });
+}
+
+function buildExecutableSparqlQuery(coreQuery, prefixRows) {
+  const queryCore = coreQuery
+    .replace(/^\s*PREFIX\s+[A-Za-z_][A-Za-z0-9_-]*:\s*<[^>]+>\s*$/gim, '')
+    .trim();
+  if (!queryCore) {
+    return '';
+  }
+
+  const used = new Set();
+  const prefixLines = [];
+
+  for (let index = 0; index < prefixRows.length; index += 1) {
+    const row = prefixRows[index];
+    const iri = (row.iri || '').trim().replace(/^<|>$/g, '');
+    if (!iri) {
+      continue;
+    }
+
+    const basePrefix = normalizePrefixName(row.prefix, `ns${index + 1}`);
+    let prefix = basePrefix;
+    let dedupeCounter = 2;
+    while (used.has(prefix)) {
+      prefix = `${basePrefix}${dedupeCounter}`;
+      dedupeCounter += 1;
+    }
+    used.add(prefix);
+    prefixLines.push(`PREFIX ${prefix}: <${iri}>`);
+  }
+
+  if (prefixLines.length === 0) {
+    return queryCore;
+  }
+
+  return `${prefixLines.join('\n')}\n${queryCore}`;
+}
+
 function partitionOntologyHeaderQuads(quads) {
   if (!quads || quads.length === 0) {
     return {
@@ -374,6 +441,7 @@ export default function App() {
   const [selectedBaseIris, setSelectedBaseIris] = useState([]);
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
+  const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
   const [ontologyViewMode, setOntologyViewMode] = useState(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
@@ -442,6 +510,29 @@ export default function App() {
   const isAllBaseIrisSelected =
     allBaseIris.length === 0 ||
     (selectedBaseIris.length === allBaseIris.length && allBaseIris.every((iri) => selectedBaseIris.includes(iri)));
+
+  useEffect(() => {
+    if (!graphData) {
+      setSparqlPrefixes([]);
+      return;
+    }
+
+    const defaults = makeDefaultSparqlPrefixes(graphData.baseIris.map((entry) => entry.id));
+    setSparqlPrefixes((current) => {
+      const existingByIri = new Map(current.map((row) => [row.iri, row]));
+      return defaults.map((row) => {
+        const existing = existingByIri.get(row.iri);
+        if (!existing) {
+          return row;
+        }
+        return {
+          ...row,
+          prefix: existing.prefix,
+          iri: existing.iri,
+        };
+      });
+    });
+  }, [graphData]);
 
   useEffect(() => {
     if (!graphContainerRef.current) {
@@ -963,8 +1054,36 @@ export default function App() {
     setSelectedBaseIris([]);
   }
 
+  function updateSparqlPrefixName(rowId, prefix) {
+    setSparqlPrefixes((current) =>
+      current.map((row) => {
+        if (row.id !== rowId) {
+          return row;
+        }
+        return {
+          ...row,
+          prefix,
+        };
+      }),
+    );
+  }
+
+  function updateSparqlPrefixIri(rowId, iri) {
+    setSparqlPrefixes((current) =>
+      current.map((row) => {
+        if (row.id !== rowId) {
+          return row;
+        }
+        return {
+          ...row,
+          iri,
+        };
+      }),
+    );
+  }
+
   function applySparqlFilter() {
-    setSparqlQuery(sparqlDraft.trim());
+    setSparqlQuery(buildExecutableSparqlQuery(sparqlDraft, sparqlPrefixes));
   }
 
   function clearSparqlFilter() {
@@ -1312,12 +1431,37 @@ export default function App() {
 
                 {leftSectionOpen.sparql && (
                   <div className="section-body">
+                    <div className="sparql-prefixes">
+                      <p className="muted">Auto `PREFIX` declarations (editable):</p>
+                      {sparqlPrefixes.length === 0 && <p className="muted">Load data to generate base IRI prefixes.</p>}
+                      {sparqlPrefixes.length > 0 && (
+                        <div className="sparql-prefix-list">
+                          {sparqlPrefixes.map((row) => (
+                            <div key={row.id} className="sparql-prefix-row">
+                              <input
+                                type="text"
+                                value={row.prefix}
+                                onChange={(event) => updateSparqlPrefixName(row.id, event.target.value)}
+                                aria-label="SPARQL prefix name"
+                                className="sparql-prefix-name"
+                              />
+                              <input
+                                type="text"
+                                value={row.iri}
+                                onChange={(event) => updateSparqlPrefixIri(row.id, event.target.value)}
+                                aria-label="SPARQL prefix IRI"
+                                className="sparql-prefix-iri"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <textarea
                       value={sparqlDraft}
                       onChange={(event) => setSparqlDraft(event.target.value)}
-                      placeholder={
-                        'SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), "argument")) }'
-                      }
+                      placeholder={'SELECT DISTINCT ?entity WHERE { ?entity a ns1:Argument . }'}
                       rows={5}
                     />
 
@@ -1329,7 +1473,7 @@ export default function App() {
                         Clear
                       </button>
                     </div>
-                    <p className="muted">Return `?entity` (or any node variable) from your query.</p>
+                    <p className="muted">Write core query only. Prefix lines are prepended automatically at runtime.</p>
                   </div>
                 )}
               </section>

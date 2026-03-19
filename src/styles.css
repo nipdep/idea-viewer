@@ -386,6 +386,46 @@ textarea {
   resize: vertical;
 }
 
+.sparql-prefixes {
+  margin-top: 2px;
+}
+
+.sparql-prefix-list {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.sparql-prefix-row {
+  display: grid;
+  grid-template-columns: minmax(88px, 120px) 1fr;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sparql-prefix-row:last-child {
+  border-bottom: none;
+}
+
+.sparql-prefix-row input {
+  margin: 0;
+  padding: 6px 8px;
+  min-height: 30px;
+  font-size: 0.82rem;
+}
+
+.sparql-prefix-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sparql-prefix-iri {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .class-list {
   margin-top: 10px;
   max-height: 240px;

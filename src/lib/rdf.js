@@ -1181,12 +1181,17 @@ function shouldIncludeLiteralEdge(edge, options) {
   return false;
 }
 
-function shouldIncludeStandaloneNode(node, graphData, options) {
+function shouldIncludeStandaloneNode(node, graphData, options, kgClassNodeIds = null) {
   if (!node || node.termType === 'Literal' || node.termType === 'BlankNode') {
     return false;
   }
 
   if (!graphData.hasOntology) {
+    // In KG-only mode, do not render class target nodes from `<entity> rdf:type <Class>`.
+    // Class information is represented on instance nodes as badges.
+    if (kgClassNodeIds?.has(node.id)) {
+      return false;
+    }
     return true;
   }
 
@@ -1224,6 +1229,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
   }
 
   const options = normalizeViewOptions(viewOptions);
+  const kgClassNodeIds = graphData.hasOntology ? null : new Set((graphData.classes ?? []).map((entry) => entry.id));
   const classStructureOnly =
     !options.showDataProperties && !options.showAnnotationProperties && !options.showObjectProperties;
   const visibleNodeIds = new Set();
@@ -1337,7 +1343,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     if (!isOntologyObjectPropertyNodeVisible(node.id)) {
       continue;
     }
-    if (!shouldIncludeStandaloneNode(node, graphData, options)) {
+    if (!shouldIncludeStandaloneNode(node, graphData, options, kgClassNodeIds)) {
       continue;
     }
     visibleNodeIds.add(node.id);

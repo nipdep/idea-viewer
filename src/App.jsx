@@ -1343,7 +1343,7 @@ export default function App() {
               <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 {isGraphFullscreen ? (
                   <path
-                    d="M2 6V2H6 M10 2H14V6 M2 10V14H6 M10 14H14V10"
+                    d="M6 2H3V5 M10 2H13V5 M6 14H3V11 M10 14H13V11"
                     stroke="currentColor"
                     strokeWidth="1.5"
                     strokeLinecap="round"

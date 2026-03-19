@@ -284,6 +284,8 @@ export default function App() {
   const cyRef = useRef(null);
   const previousFocusedNodeIdRef = useRef(null);
   const queryEngineRef = useRef(new QueryEngine());
+  const leftFlyoutTimerRef = useRef(null);
+  const rightFlyoutTimerRef = useRef(null);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -301,6 +303,14 @@ export default function App() {
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [leftSectionOpen, setLeftSectionOpen] = useState({
+    source: true,
+    filters: true,
+    sparql: true,
+  });
+  const [isGraphFullscreen, setIsGraphFullscreen] = useState(false);
+  const [leftFlyoutOpen, setLeftFlyoutOpen] = useState(false);
+  const [rightFlyoutOpen, setRightFlyoutOpen] = useState(false);
 
   const [status, setStatus] = useState('Upload KG and/or ontology files to initialize the graph.');
   const [loadError, setLoadError] = useState('');
@@ -845,11 +855,106 @@ export default function App() {
     setSparqlQuery('');
   }
 
+  function toggleLeftSection(sectionKey) {
+    setLeftSectionOpen((current) => ({
+      ...current,
+      [sectionKey]: !current[sectionKey],
+    }));
+  }
+
+  function clearLeftFlyoutTimer() {
+    if (leftFlyoutTimerRef.current) {
+      clearTimeout(leftFlyoutTimerRef.current);
+      leftFlyoutTimerRef.current = null;
+    }
+  }
+
+  function clearRightFlyoutTimer() {
+    if (rightFlyoutTimerRef.current) {
+      clearTimeout(rightFlyoutTimerRef.current);
+      rightFlyoutTimerRef.current = null;
+    }
+  }
+
+  function scheduleLeftFlyoutOpen(delay = 240) {
+    clearLeftFlyoutTimer();
+    leftFlyoutTimerRef.current = setTimeout(() => {
+      setLeftFlyoutOpen(true);
+      leftFlyoutTimerRef.current = null;
+    }, delay);
+  }
+
+  function scheduleRightFlyoutOpen(delay = 240) {
+    clearRightFlyoutTimer();
+    rightFlyoutTimerRef.current = setTimeout(() => {
+      setRightFlyoutOpen(true);
+      rightFlyoutTimerRef.current = null;
+    }, delay);
+  }
+
+  function scheduleLeftFlyoutClose(delay = 120) {
+    clearLeftFlyoutTimer();
+    leftFlyoutTimerRef.current = setTimeout(() => {
+      setLeftFlyoutOpen(false);
+      leftFlyoutTimerRef.current = null;
+    }, delay);
+  }
+
+  function scheduleRightFlyoutClose(delay = 120) {
+    clearRightFlyoutTimer();
+    rightFlyoutTimerRef.current = setTimeout(() => {
+      setRightFlyoutOpen(false);
+      rightFlyoutTimerRef.current = null;
+    }, delay);
+  }
+
+  function closeFloatingPanels(delay = 100) {
+    scheduleLeftFlyoutClose(delay);
+    scheduleRightFlyoutClose(delay);
+  }
+
+  useEffect(
+    () => () => {
+      clearLeftFlyoutTimer();
+      clearRightFlyoutTimer();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!isGraphFullscreen) {
+      setLeftFlyoutOpen(false);
+      setRightFlyoutOpen(false);
+      clearLeftFlyoutTimer();
+      clearRightFlyoutTimer();
+    }
+  }, [isGraphFullscreen]);
+
+  useEffect(() => {
+    if (!isGraphFullscreen) {
+      return undefined;
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsGraphFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isGraphFullscreen]);
+
+  const showLeftPanelContent = isGraphFullscreen ? leftFlyoutOpen : !leftCollapsed;
+  const showRightPanelContent = isGraphFullscreen ? rightFlyoutOpen : !rightCollapsed;
+
   const appShellStyle = {
-    '--left-panel-width': leftCollapsed ? '0px' : 'var(--left-panel-open-width, 320px)',
-    '--right-panel-width': rightCollapsed ? '0px' : 'var(--right-panel-open-width, 350px)',
-    '--left-gap': leftCollapsed ? '0px' : '18px',
-    '--right-gap': rightCollapsed ? '0px' : '18px',
+    '--left-panel-width': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : 'var(--left-panel-open-width, 320px)',
+    '--right-panel-width':
+      isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : 'var(--right-panel-open-width, 350px)',
+    '--left-gap': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : '18px',
+    '--right-gap': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : '18px',
   };
 
   return (
@@ -863,198 +968,286 @@ export default function App() {
         </div>
       </header>
 
-      <div className="app-shell" style={appShellStyle}>
-        <aside className={`panel left ${leftCollapsed ? 'collapsed' : ''}`}>
-          <button
-            className="panel-toggle"
-            type="button"
-            onClick={() => setLeftCollapsed((value) => !value)}
-            aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse left panel'}
-          >
-            {leftCollapsed ? '>' : '<'}
-          </button>
+      <div className={`app-shell ${isGraphFullscreen ? 'fullscreen' : ''}`} style={appShellStyle}>
+        <aside
+          className={`panel left ${!isGraphFullscreen && leftCollapsed ? 'collapsed' : ''} ${
+            isGraphFullscreen ? 'floating' : ''
+          } ${isGraphFullscreen && leftFlyoutOpen ? 'floating-open' : ''}`}
+          onMouseEnter={
+            isGraphFullscreen
+              ? () => {
+                  clearLeftFlyoutTimer();
+                  setLeftFlyoutOpen(true);
+                }
+              : undefined
+          }
+          onMouseLeave={isGraphFullscreen ? () => scheduleLeftFlyoutClose(120) : undefined}
+        >
+          {!isGraphFullscreen && (
+            <button
+              className="panel-toggle"
+              type="button"
+              onClick={() => setLeftCollapsed((value) => !value)}
+              aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse left panel'}
+            >
+              {leftCollapsed ? '>' : '<'}
+            </button>
+          )}
 
-          {!leftCollapsed && (
+          {showLeftPanelContent && (
             <div className="panel-content">
-              <section className="panel-section">
-                <h2>Source File</h2>
-
-                <label className="file-control">
-                  <span>KG files (optional: .ttl/.n3/.nt/.nq/.trig)</span>
-                  <input
-                    type="file"
-                    accept=".ttl,.n3,.nt,.nq,.trig"
-                    multiple
-                    onChange={(event) => setKgFiles(Array.from(event.target.files ?? []))}
-                  />
-                  <small>{formatSelectedFiles(kgFiles, 'No KG files selected')}</small>
-                </label>
-
-                <label className="file-control">
-                  <span>Ontology files (optional: .owl/.rdf/.ttl)</span>
-                  <input
-                    type="file"
-                    accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
-                    multiple
-                    onChange={(event) => setOntologyFiles(Array.from(event.target.files ?? []))}
-                  />
-                  <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
-                </label>
-
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={(kgFiles.length === 0 && ontologyFiles.length === 0) || isLoading}
-                  onClick={handleLoadGraph}
-                >
-                  {isLoading ? 'Parsing...' : 'Build graph'}
-                </button>
-              </section>
-
-              <section className="panel-section">
-                <h2>Graph Filters</h2>
-                <h3 className="filter-group-title">Ontology view</h3>
-                <div className="option-list">
-                  <label className="option-item">
-                    <input
-                      type="radio"
-                      name="ontology-view-mode"
-                      checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
-                      onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
-                    />
-                    <span>Class structure only (`rdfs:subClassOf`)</span>
-                  </label>
-
-                  <label className="option-item">
-                    <input
-                      type="radio"
-                      name="ontology-view-mode"
-                      checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
-                      onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
-                    />
-                    <span>Classes with object properties (default)</span>
-                  </label>
-
-                  <label className="option-item">
-                    <input
-                      type="radio"
-                      name="ontology-view-mode"
-                      checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
-                      onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
-                    />
-                    <span>Class structure + object + data properties</span>
-                  </label>
-
-                  <label className="option-item">
-                    <input
-                      type="radio"
-                      name="ontology-view-mode"
-                      checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
-                      onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
-                    />
-                    <span>Class structure + object + data + annotation properties</span>
-                  </label>
-                </div>
-
-                <h3 className="filter-group-title">Class type</h3>
-                <div className="mini-actions">
-                  <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
-                    Select all
-                  </button>
+              <section className={`panel-section ${leftSectionOpen.source ? '' : 'collapsed-section'}`}>
+                <div className="section-header">
                   <button
                     type="button"
-                    onClick={clearClassSelection}
-                    disabled={!graphData || selectedClassIris.length === 0}
+                    className="section-toggle"
+                    onClick={() => toggleLeftSection('source')}
+                    aria-label={leftSectionOpen.source ? 'Minimize Source File section' : 'Expand Source File section'}
+                    title={leftSectionOpen.source ? 'Minimize' : 'Expand'}
                   >
-                    Clear
+                    {leftSectionOpen.source ? '-' : '+'}
                   </button>
+                  <h2>Source File</h2>
                 </div>
 
-                <div className="class-list">
-                  {!graphData && <p className="muted">Load data to list class types.</p>}
-                  {graphData && graphData.classes.length === 0 && (
-                    <p className="muted">No explicit `rdf:type` triples detected.</p>
-                  )}
-                  {graphData &&
-                    graphData.classes.map((entry) => (
-                      <label key={entry.id} className="class-item">
-                        <input
-                          type="checkbox"
-                          checked={selectedClassIris.includes(entry.id)}
-                          onChange={() => toggleClass(entry.id)}
-                        />
-                        <span className="class-label" title={entry.id}>
-                          {entry.label}
-                        </span>
-                        <small>{entry.count}</small>
-                      </label>
-                    ))}
-                </div>
+                {leftSectionOpen.source && (
+                  <div className="section-body">
+                    <label className="file-control">
+                      <span>KG files (optional: .ttl/.n3/.nt/.nq/.trig)</span>
+                      <input
+                        type="file"
+                        accept=".ttl,.n3,.nt,.nq,.trig"
+                        multiple
+                        onChange={(event) => setKgFiles(Array.from(event.target.files ?? []))}
+                      />
+                      <small>{formatSelectedFiles(kgFiles, 'No KG files selected')}</small>
+                    </label>
 
-                <h3 className="filter-group-title">Base IRI (ontology)</h3>
-                <div className="mini-actions">
-                  <button type="button" onClick={selectAllBaseIris} disabled={!graphData || isAllBaseIrisSelected}>
-                    Select all
-                  </button>
-                  <button type="button" onClick={clearBaseIris} disabled={!graphData || selectedBaseIris.length === 0}>
-                    Clear
-                  </button>
-                </div>
+                    <label className="file-control">
+                      <span>Ontology files (optional: .owl/.rdf/.ttl)</span>
+                      <input
+                        type="file"
+                        accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
+                        multiple
+                        onChange={(event) => setOntologyFiles(Array.from(event.target.files ?? []))}
+                      />
+                      <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
+                    </label>
 
-                <div className="class-list">
-                  {!graphData && <p className="muted">Load data to list ontology IRIs.</p>}
-                  {graphData && graphData.baseIris.length === 0 && (
-                    <p className="muted">No named-node IRIs available for base extraction.</p>
-                  )}
-                  {graphData &&
-                    graphData.baseIris.map((entry) => (
-                      <label key={entry.id} className="class-item">
-                        <input
-                          type="checkbox"
-                          checked={selectedBaseIris.includes(entry.id)}
-                          onChange={() => toggleBaseIri(entry.id)}
-                        />
-                        <span className="class-label" title={entry.id}>
-                          {entry.label}
-                        </span>
-                        <small>{entry.count}</small>
-                      </label>
-                    ))}
-                </div>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={(kgFiles.length === 0 && ontologyFiles.length === 0) || isLoading}
+                      onClick={handleLoadGraph}
+                    >
+                      {isLoading ? 'Parsing...' : 'Build graph'}
+                    </button>
+                  </div>
+                )}
               </section>
 
-              <section className="panel-section">
-                <h2>SPARQL Filter</h2>
-                <textarea
-                  value={sparqlDraft}
-                  onChange={(event) => setSparqlDraft(event.target.value)}
-                  placeholder={
-                    'SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), "argument")) }'
-                  }
-                  rows={5}
-                />
-
-                <div className="mini-actions">
-                  <button type="button" onClick={applySparqlFilter} disabled={!graphData || !sparqlDraft.trim()}>
-                    Apply
+              <section className={`panel-section ${leftSectionOpen.filters ? '' : 'collapsed-section'}`}>
+                <div className="section-header">
+                  <button
+                    type="button"
+                    className="section-toggle"
+                    onClick={() => toggleLeftSection('filters')}
+                    aria-label={leftSectionOpen.filters ? 'Minimize Graph Filters section' : 'Expand Graph Filters section'}
+                    title={leftSectionOpen.filters ? 'Minimize' : 'Expand'}
+                  >
+                    {leftSectionOpen.filters ? '-' : '+'}
                   </button>
-                  <button type="button" onClick={clearSparqlFilter} disabled={!sparqlQuery && !sparqlDraft}>
-                    Clear
-                  </button>
+                  <h2>Graph Filters</h2>
                 </div>
-                <p className="muted">Return `?entity` (or any node variable) from your query.</p>
+
+                {leftSectionOpen.filters && (
+                  <div className="section-body">
+                    <h3 className="filter-group-title">Ontology view</h3>
+                    <div className="option-list">
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="ontology-view-mode"
+                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
+                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
+                        />
+                        <span>Class structure only (`rdfs:subClassOf`)</span>
+                      </label>
+
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="ontology-view-mode"
+                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
+                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
+                        />
+                        <span>Classes with object properties (default)</span>
+                      </label>
+
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="ontology-view-mode"
+                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
+                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
+                        />
+                        <span>Class structure + object + data properties</span>
+                      </label>
+
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="ontology-view-mode"
+                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
+                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
+                        />
+                        <span>Class structure + object + data + annotation properties</span>
+                      </label>
+                    </div>
+
+                    <h3 className="filter-group-title">Class type</h3>
+                    <div className="mini-actions">
+                      <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearClassSelection}
+                        disabled={!graphData || selectedClassIris.length === 0}
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    <div className="class-list">
+                      {!graphData && <p className="muted">Load data to list class types.</p>}
+                      {graphData && graphData.classes.length === 0 && (
+                        <p className="muted">No explicit `rdf:type` triples detected.</p>
+                      )}
+                      {graphData &&
+                        graphData.classes.map((entry) => (
+                          <label key={entry.id} className="class-item">
+                            <input
+                              type="checkbox"
+                              checked={selectedClassIris.includes(entry.id)}
+                              onChange={() => toggleClass(entry.id)}
+                            />
+                            <span className="class-label" title={entry.id}>
+                              {entry.label}
+                            </span>
+                            <small>{entry.count}</small>
+                          </label>
+                        ))}
+                    </div>
+
+                    <h3 className="filter-group-title">Base IRI (ontology)</h3>
+                    <div className="mini-actions">
+                      <button type="button" onClick={selectAllBaseIris} disabled={!graphData || isAllBaseIrisSelected}>
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearBaseIris}
+                        disabled={!graphData || selectedBaseIris.length === 0}
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    <div className="class-list">
+                      {!graphData && <p className="muted">Load data to list ontology IRIs.</p>}
+                      {graphData && graphData.baseIris.length === 0 && (
+                        <p className="muted">No named-node IRIs available for base extraction.</p>
+                      )}
+                      {graphData &&
+                        graphData.baseIris.map((entry) => (
+                          <label key={entry.id} className="class-item">
+                            <input
+                              type="checkbox"
+                              checked={selectedBaseIris.includes(entry.id)}
+                              onChange={() => toggleBaseIri(entry.id)}
+                            />
+                            <span className="class-label" title={entry.id}>
+                              {entry.label}
+                            </span>
+                            <small>{entry.count}</small>
+                          </label>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section className={`panel-section ${leftSectionOpen.sparql ? '' : 'collapsed-section'}`}>
+                <div className="section-header">
+                  <button
+                    type="button"
+                    className="section-toggle"
+                    onClick={() => toggleLeftSection('sparql')}
+                    aria-label={leftSectionOpen.sparql ? 'Minimize SPARQL Filter section' : 'Expand SPARQL Filter section'}
+                    title={leftSectionOpen.sparql ? 'Minimize' : 'Expand'}
+                  >
+                    {leftSectionOpen.sparql ? '-' : '+'}
+                  </button>
+                  <h2>SPARQL Filter</h2>
+                </div>
+
+                {leftSectionOpen.sparql && (
+                  <div className="section-body">
+                    <textarea
+                      value={sparqlDraft}
+                      onChange={(event) => setSparqlDraft(event.target.value)}
+                      placeholder={
+                        'SELECT DISTINCT ?entity WHERE { ?entity ?p ?o . FILTER(CONTAINS(LCASE(STR(?o)), "argument")) }'
+                      }
+                      rows={5}
+                    />
+
+                    <div className="mini-actions">
+                      <button type="button" onClick={applySparqlFilter} disabled={!graphData || !sparqlDraft.trim()}>
+                        Apply
+                      </button>
+                      <button type="button" onClick={clearSparqlFilter} disabled={!sparqlQuery && !sparqlDraft}>
+                        Clear
+                      </button>
+                    </div>
+                    <p className="muted">Return `?entity` (or any node variable) from your query.</p>
+                  </div>
+                )}
               </section>
             </div>
           )}
         </aside>
 
-        <main className="graph-area">
+        <main
+          className="graph-area"
+          onMouseEnter={
+            isGraphFullscreen
+              ? () => {
+                  closeFloatingPanels(100);
+                }
+              : undefined
+          }
+        >
           {(loadError || filterError) && (
             <div className="error-stack">
               {loadError && <div className="error">Load error: {loadError}</div>}
               {filterError && <div className="error">Filter error: {filterError}</div>}
             </div>
           )}
+
+          <div className="graph-tools">
+            <button
+              type="button"
+              className="graph-tool-button"
+              onClick={() => {
+                setIsGraphFullscreen((value) => !value);
+              }}
+              title={isGraphFullscreen ? 'Exit full screen (Esc)' : 'Full screen center panel'}
+            >
+              {isGraphFullscreen ? 'Exit full screen' : 'Full screen'}
+            </button>
+          </div>
 
           <div ref={graphContainerRef} className="graph-canvas" />
 
@@ -1068,17 +1261,32 @@ export default function App() {
           </div>
         </main>
 
-        <aside className={`panel right ${rightCollapsed ? 'collapsed' : ''}`}>
-          <button
-            className="panel-toggle"
-            type="button"
-            onClick={() => setRightCollapsed((value) => !value)}
-            aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse right panel'}
-          >
-            {rightCollapsed ? '<' : '>'}
-          </button>
+        <aside
+          className={`panel right ${!isGraphFullscreen && rightCollapsed ? 'collapsed' : ''} ${
+            isGraphFullscreen ? 'floating' : ''
+          } ${isGraphFullscreen && rightFlyoutOpen ? 'floating-open' : ''}`}
+          onMouseEnter={
+            isGraphFullscreen
+              ? () => {
+                  clearRightFlyoutTimer();
+                  setRightFlyoutOpen(true);
+                }
+              : undefined
+          }
+          onMouseLeave={isGraphFullscreen ? () => scheduleRightFlyoutClose(120) : undefined}
+        >
+          {!isGraphFullscreen && (
+            <button
+              className="panel-toggle"
+              type="button"
+              onClick={() => setRightCollapsed((value) => !value)}
+              aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse right panel'}
+            >
+              {rightCollapsed ? '<' : '>'}
+            </button>
+          )}
 
-          {!rightCollapsed && (
+          {showRightPanelContent && (
             <div className="panel-content">
               <section className="panel-section details-card">
                 <h2>Entity Inspector</h2>
@@ -1186,6 +1394,21 @@ export default function App() {
             </div>
           )}
         </aside>
+
+        {isGraphFullscreen && (
+          <>
+            <div
+              className="flyout-hover-zone left"
+              onMouseEnter={() => scheduleLeftFlyoutOpen(260)}
+              onMouseLeave={() => scheduleLeftFlyoutClose(180)}
+            />
+            <div
+              className="flyout-hover-zone right"
+              onMouseEnter={() => scheduleRightFlyoutOpen(260)}
+              onMouseLeave={() => scheduleRightFlyoutClose(180)}
+            />
+          </>
+        )}
       </div>
     </div>
   );

@@ -295,11 +295,13 @@ function escapeXml(value) {
     .replace(/'/g, '&apos;');
 }
 
-function toClassBadge(label) {
+function toClassBadge(label, hasMore = false) {
   if (!label) {
     return '';
   }
 
+  const suffix = hasMore ? ' +' : '';
+  const maxCoreLength = hasMore ? 11 : 14;
   const compact = label
     .replace(/[^A-Za-z0-9 ]+/g, ' ')
     .trim()
@@ -309,19 +311,19 @@ function toClassBadge(label) {
     return '';
   }
 
-  if (compact.length <= 14) {
-    return compact;
+  if (compact.length <= maxCoreLength) {
+    return `${compact}${suffix}`;
   }
 
   const words = compact.split(' ');
   if (words.length > 1) {
     const candidate = `${words[0]} ${words[1]}`;
-    if (candidate.length <= 14) {
-      return candidate;
+    if (candidate.length <= maxCoreLength) {
+      return `${candidate}${suffix}`;
     }
   }
 
-  return `${compact.slice(0, 13)}…`;
+  return `${compact.slice(0, Math.max(1, maxCoreLength - 1))}…${suffix}`;
 }
 
 function makeBadgeDataUri(text) {
@@ -1001,15 +1003,22 @@ export function buildGraphData(quads, options = {}) {
     const primaryClassLabel = primaryClass
       ? labelIndex.get(primaryClass) ?? compactIri(primaryClass)
       : '';
+    const hasMultipleClasses = node.classes.length > 1;
     const hasOntologyMappedClass =
       hasOntology && node.classes.some((classIri) => ontologyClassIds.has(classIri));
+    const classLabelList = node.classes
+      .map((classIri) => labelIndex.get(classIri) ?? compactIri(classIri))
+      .filter(Boolean)
+      .sort((left, right) => left.localeCompare(right));
 
     node.primaryClassLabel = primaryClassLabel;
-    node.classBadge = hasOntologyMappedClass ? '' : toClassBadge(primaryClassLabel);
+    node.classBadge = hasOntologyMappedClass ? '' : toClassBadge(primaryClassLabel, !hasOntology && hasMultipleClasses);
     const badge = makeBadgeDataUri(node.classBadge);
     node.badgeSvg = badge.uri;
     node.badgeWidth = badge.width;
     node.hasClass = hasOntologyMappedClass ? 0 : node.classes.length;
+    node.classCount = node.classes.length;
+    node.classTooltip = !hasOntology && hasMultipleClasses ? classLabelList.join('\n') : '';
 
     for (const classIri of classes) {
       const classEntry = classMap.get(classIri);
@@ -1070,6 +1079,8 @@ export function buildGraphData(quads, options = {}) {
       node.badgeSvg = '';
       node.badgeWidth = 0;
       node.primaryClassLabel = '';
+      node.classCount = 0;
+      node.classTooltip = '';
     }
   }
 
@@ -1125,9 +1136,11 @@ export function toElements(nodes, edges) {
         nodeHeight: node.nodeHeight ?? 52,
         textMaxWidth: node.textMaxWidth ?? 78,
         hasClass: node.hasClass,
+        classCount: node.classCount ?? 0,
         classBadge: node.classBadge,
         badgeSvg: node.badgeSvg,
         badgeWidth: node.badgeWidth,
+        classTooltip: node.classTooltip ?? '',
       },
     })),
     ...edges.map((edge) => ({

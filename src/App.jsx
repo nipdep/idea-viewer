@@ -519,6 +519,7 @@ export default function App() {
   const [loadError, setLoadError] = useState('');
   const [filterError, setFilterError] = useState('');
   const [ontologyMetadataRows, setOntologyMetadataRows] = useState([]);
+  const [multiClassBadgeTooltip, setMultiClassBadgeTooltip] = useState(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
@@ -540,6 +541,64 @@ export default function App() {
       },
       duration,
     });
+  }
+
+  function buildClassBadgeTooltipPayload(event) {
+    const node = event.target;
+    if (!node || !event.renderedPosition) {
+      return null;
+    }
+
+    const classCount = Number(node.data('classCount') ?? node.data('hasClass') ?? 0);
+    const mixedMode = Number(node.data('mixedMode') ?? 0);
+    const tooltipText = String(node.data('classTooltip') ?? '');
+    const badgeWidth = Number(node.data('badgeWidth') ?? 0);
+
+    if (mixedMode !== 0 || classCount < 2 || !tooltipText || badgeWidth <= 0) {
+      return null;
+    }
+
+    const center = node.renderedPosition();
+    const nodeWidth = node.renderedWidth();
+    const nodeHeight = node.renderedHeight();
+    const badgeRight = center.x + nodeWidth / 2 + 26;
+    const badgeLeft = badgeRight - badgeWidth;
+    const badgeTop = center.y - nodeHeight / 2 - 7;
+    const badgeBottom = badgeTop + 24;
+
+    const cursor = event.renderedPosition;
+    const isOverBadge =
+      cursor.x >= badgeLeft - 4 &&
+      cursor.x <= badgeRight + 4 &&
+      cursor.y >= badgeTop - 4 &&
+      cursor.y <= badgeBottom + 4;
+
+    if (!isOverBadge) {
+      return null;
+    }
+
+    const classes = tooltipText
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (classes.length === 0) {
+      return null;
+    }
+
+    const container = graphContainerRef.current;
+    const maxWidth = container?.clientWidth ?? 1200;
+    const maxHeight = container?.clientHeight ?? 800;
+    const tooltipWidth = 240;
+    const tooltipHeight = Math.min(180, 48 + classes.length * 20);
+    const left = Math.min(Math.max(8, cursor.x + 12), Math.max(8, maxWidth - tooltipWidth - 8));
+    const top = Math.min(Math.max(8, cursor.y + 12), Math.max(8, maxHeight - tooltipHeight - 8));
+
+    return {
+      left,
+      top,
+      classes,
+      count: classCount,
+    };
   }
 
   const selectedNodeDataProperties = useMemo(
@@ -788,6 +847,7 @@ export default function App() {
         suppressNextTapRef.current = false;
         return;
       }
+      setMultiClassBadgeTooltip(null);
       const nodeId = event.target.id();
       setSelectedNodeId(nodeId);
       setFocusedNodeId(nodeId);
@@ -798,6 +858,7 @@ export default function App() {
         suppressNextTapRef.current = false;
         return;
       }
+      setMultiClassBadgeTooltip(null);
       if (event.target === cy) {
         setSelectedNodeId(null);
         setFocusedNodeId(null);
@@ -896,6 +957,19 @@ export default function App() {
       if (groupDragStateRef.current?.grabbedNodeId === event.target.id()) {
         groupDragStateRef.current = null;
       }
+    });
+
+    const updateClassBadgeTooltip = (event) => {
+      setMultiClassBadgeTooltip(buildClassBadgeTooltipPayload(event));
+    };
+
+    cy.on('mouseover', 'node', updateClassBadgeTooltip);
+    cy.on('mousemove', 'node', updateClassBadgeTooltip);
+    cy.on('mouseout', 'node', () => {
+      setMultiClassBadgeTooltip(null);
+    });
+    cy.on('pan zoom', () => {
+      setMultiClassBadgeTooltip(null);
     });
 
     const container = cy.container();
@@ -999,6 +1073,10 @@ export default function App() {
   useEffect(() => {
     hasAppliedInitialLayoutRef.current = false;
   }, [graphData]);
+
+  useEffect(() => {
+    setMultiClassBadgeTooltip(null);
+  }, [visibleElements]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -2017,6 +2095,19 @@ export default function App() {
           </div>
 
           <div ref={graphContainerRef} className={`graph-canvas ${isDetachedPanMode ? 'detached-pan-mode' : ''}`} />
+
+          {multiClassBadgeTooltip && (
+            <div className="badge-tooltip" style={{ left: multiClassBadgeTooltip.left, top: multiClassBadgeTooltip.top }}>
+              <div className="badge-tooltip-title">Classes ({multiClassBadgeTooltip.count})</div>
+              <div className="badge-tooltip-list">
+                {multiClassBadgeTooltip.classes.map((entry, index) => (
+                  <div key={`${entry}-${index}`} className="badge-tooltip-item">
+                    {entry}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="status-bar overlay">
             <span>{status}</span>

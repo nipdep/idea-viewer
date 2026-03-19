@@ -476,6 +476,7 @@ export default function App() {
   const resizeStateRef = useRef(null);
   const hasAppliedInitialLayoutRef = useRef(false);
   const groupDragStateRef = useRef(null);
+  const shouldFitAfterFocusClearRef = useRef(false);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -522,6 +523,20 @@ export default function App() {
     () => (selectedNodeId && graphData ? graphData.nodeMap.get(selectedNodeId) : null),
     [selectedNodeId, graphData],
   );
+
+  function fitCurrentGraphViewport(cy, duration = 250) {
+    const visibleElementsForFit = cy.elements(':visible');
+    if (visibleElementsForFit.length === 0) {
+      return;
+    }
+    cy.animate({
+      fit: {
+        eles: visibleElementsForFit,
+        padding: 42,
+      },
+      duration,
+    });
+  }
 
   const selectedNodeDataProperties = useMemo(
     () => (selectedNodeId && graphData ? graphData.dataProperties.get(selectedNodeId) ?? [] : []),
@@ -777,6 +792,25 @@ export default function App() {
       }
     });
 
+    cy.on('dbltap', (event) => {
+      if (event.target !== cy) {
+        return;
+      }
+      if (event.originalEvent instanceof MouseEvent && event.originalEvent.button !== 0) {
+        return;
+      }
+
+      const activeFocusNodeId = focusedNodeIdRef.current;
+      if (activeFocusNodeId) {
+        shouldFitAfterFocusClearRef.current = true;
+        setFocusedNodeId(null);
+        setSelectedNodeId(null);
+        return;
+      }
+
+      fitCurrentGraphViewport(cy);
+    });
+
     cy.on('grab', 'node', (event) => {
       const activeFocusNodeId = focusedNodeIdRef.current;
       if (!activeFocusNodeId) {
@@ -856,6 +890,7 @@ export default function App() {
 
     return () => {
       groupDragStateRef.current = null;
+      shouldFitAfterFocusClearRef.current = false;
       cyRef.current = null;
       cy.destroy();
     };
@@ -992,6 +1027,14 @@ export default function App() {
         });
       }
     } else if (wasFocused) {
+      if (shouldFitAfterFocusClearRef.current) {
+        shouldFitAfterFocusClearRef.current = false;
+        fitCurrentGraphViewport(cy, 220);
+        preFocusViewportRef.current = null;
+        previousFocusedNodeIdRef.current = focusedNodeId;
+        return;
+      }
+
       const savedViewport = preFocusViewportRef.current;
       if (
         savedViewport &&
@@ -2004,15 +2047,6 @@ export default function App() {
                           <div className="property-value breakable">{property.value}</div>
                         </div>
                       ))}
-                    </div>
-
-                    <div className="mini-actions">
-                      <button type="button" onClick={() => setFocusedNodeId(selectedNode.id)}>
-                        Focus here
-                      </button>
-                      <button type="button" onClick={() => setFocusedNodeId(null)} disabled={!focusedNodeId}>
-                        Clear focus
-                      </button>
                     </div>
 
                     <h4>Object connections ({neighborRows.length})</h4>

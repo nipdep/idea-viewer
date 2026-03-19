@@ -6,6 +6,9 @@ import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const OWL_ONTOLOGY_IRI = 'http://www.w3.org/2002/07/owl#Ontology';
+const LEFT_PANEL_MIN_WIDTH = 220;
+const RIGHT_PANEL_MIN_WIDTH = 240;
+const PANEL_MAX_WIDTH_RATIO = 0.55;
 const KNOWN_NAMESPACE_PREFIXES = {
   'http://www.w3.org/1999/02/22-rdf-syntax-ns#': 'rdf',
   'http://www.w3.org/2000/01/rdf-schema#': 'rdfs',
@@ -431,6 +434,7 @@ export default function App() {
   const queryEngineRef = useRef(new QueryEngine());
   const leftFlyoutTimerRef = useRef(null);
   const rightFlyoutTimerRef = useRef(null);
+  const resizeStateRef = useRef(null);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -449,6 +453,9 @@ export default function App() {
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(320);
+  const [rightPanelWidth, setRightPanelWidth] = useState(350);
+  const [isPanelResizing, setIsPanelResizing] = useState(false);
   const [leftSectionOpen, setLeftSectionOpen] = useState({
     source: true,
     filters: true,
@@ -1098,6 +1105,54 @@ export default function App() {
     }));
   }
 
+  function startPanelResize(side, event) {
+    if (event.button !== 0 || isGraphFullscreen) {
+      return;
+    }
+
+    event.preventDefault();
+    resizeStateRef.current = {
+      side,
+      startX: event.clientX,
+      startWidth: side === 'left' ? leftPanelWidth : rightPanelWidth,
+    };
+    setIsPanelResizing(true);
+  }
+
+  useEffect(() => {
+    if (!isPanelResizing) {
+      return undefined;
+    }
+
+    const onPointerMove = (event) => {
+      const state = resizeStateRef.current;
+      if (!state) {
+        return;
+      }
+
+      const maxWidth = Math.max(340, Math.round(window.innerWidth * PANEL_MAX_WIDTH_RATIO));
+      if (state.side === 'left') {
+        const next = Math.min(maxWidth, Math.max(LEFT_PANEL_MIN_WIDTH, state.startWidth + (event.clientX - state.startX)));
+        setLeftPanelWidth(next);
+      } else {
+        const next = Math.min(maxWidth, Math.max(RIGHT_PANEL_MIN_WIDTH, state.startWidth + (state.startX - event.clientX)));
+        setRightPanelWidth(next);
+      }
+    };
+
+    const onPointerUp = () => {
+      resizeStateRef.current = null;
+      setIsPanelResizing(false);
+    };
+
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+    return () => {
+      window.removeEventListener('mousemove', onPointerMove);
+      window.removeEventListener('mouseup', onPointerUp);
+    };
+  }, [isPanelResizing]);
+
   function clearLeftFlyoutTimer() {
     if (leftFlyoutTimerRef.current) {
       clearTimeout(leftFlyoutTimerRef.current);
@@ -1186,16 +1241,17 @@ export default function App() {
   const showRightPanelContent = isGraphFullscreen ? rightFlyoutOpen : !rightCollapsed;
 
   const appShellStyle = {
-    '--left-panel-width': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : 'var(--left-panel-open-width, 320px)',
-    '--right-panel-width':
-      isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : 'var(--right-panel-open-width, 350px)',
+    '--left-panel-open-width': `${leftPanelWidth}px`,
+    '--right-panel-open-width': `${rightPanelWidth}px`,
+    '--left-panel-width': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : `${leftPanelWidth}px`,
+    '--right-panel-width': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : `${rightPanelWidth}px`,
     '--left-gap': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : '18px',
     '--right-gap': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : '18px',
   };
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
 
   return (
-    <div className={`page-shell ${isGraphFullscreen ? 'fullscreen-mode' : ''}`}>
+    <div className={`page-shell ${isGraphFullscreen ? 'fullscreen-mode' : ''} ${isPanelResizing ? 'resizing' : ''}`}>
       <header className="app-header">
         <div>
           <h1 className="brand-title">
@@ -1229,6 +1285,9 @@ export default function App() {
             >
               {leftCollapsed ? '>' : '<'}
             </button>
+          )}
+          {!isGraphFullscreen && !leftCollapsed && (
+            <div className="panel-resize-handle right" onMouseDown={(event) => startPanelResize('left', event)} />
           )}
 
           {showLeftPanelContent && (
@@ -1565,6 +1624,9 @@ export default function App() {
             >
               {rightCollapsed ? '<' : '>'}
             </button>
+          )}
+          {!isGraphFullscreen && !rightCollapsed && (
+            <div className="panel-resize-handle left" onMouseDown={(event) => startPanelResize('right', event)} />
           )}
 
           {showRightPanelContent && (

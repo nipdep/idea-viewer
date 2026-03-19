@@ -132,6 +132,12 @@ textarea {
   overflow: hidden;
 }
 
+.page-shell.resizing,
+.page-shell.resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
 .panel.collapsed {
   width: 0;
   min-width: 0;
@@ -189,6 +195,41 @@ textarea {
 .panel-toggle:hover {
   transform: translateY(-50%);
   box-shadow: var(--shadow);
+}
+
+.panel-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  z-index: 5;
+  cursor: col-resize;
+}
+
+.panel-resize-handle.right {
+  right: 0;
+}
+
+.panel-resize-handle.left {
+  left: 0;
+}
+
+.panel-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 27, 22, 0.08);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.panel-resize-handle:hover::after {
+  opacity: 1;
 }
 
 .panel-section {

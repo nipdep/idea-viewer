@@ -1049,9 +1049,10 @@ export default function App() {
     '--left-gap': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : '18px',
     '--right-gap': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : '18px',
   };
+  const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
 
   return (
-    <div className="page-shell">
+    <div className={`page-shell ${isGraphFullscreen ? 'fullscreen-mode' : ''}`}>
       <header className="app-header">
         <div>
           <h1 className="brand-title">
@@ -1332,13 +1333,32 @@ export default function App() {
           <div className="graph-tools">
             <button
               type="button"
-              className="graph-tool-button"
+              className="graph-tool-button icon-only"
               onClick={() => {
                 setIsGraphFullscreen((value) => !value);
               }}
-              title={isGraphFullscreen ? 'Exit full screen (Esc)' : 'Full screen center panel'}
+              aria-label={fullscreenButtonLabel}
+              title={fullscreenButtonLabel}
             >
-              {isGraphFullscreen ? 'Exit full screen' : 'Full screen'}
+              <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                {isGraphFullscreen ? (
+                  <path
+                    d="M2 6V2H6 M10 2H14V6 M2 10V14H6 M10 14H14V10"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ) : (
+                  <path
+                    d="M6 2H2V6 M10 2H14V6 M2 10V14H6 M14 10V14H10"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
+              </svg>
             </button>
           </div>
 

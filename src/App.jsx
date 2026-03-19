@@ -1315,6 +1315,7 @@ export default function App() {
               type="button"
               onClick={() => setLeftCollapsed((value) => !value)}
               aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse left panel'}
+              title={leftCollapsed ? 'Expand panel' : 'Collapse panel (drag panel edge to resize)'}
             >
               {leftCollapsed ? '>' : '<'}
             </button>
@@ -1664,6 +1665,7 @@ export default function App() {
               type="button"
               onClick={() => setRightCollapsed((value) => !value)}
               aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse right panel'}
+              title={rightCollapsed ? 'Expand panel' : 'Collapse panel (drag panel edge to resize)'}
             >
               {rightCollapsed ? '<' : '>'}
             </button>

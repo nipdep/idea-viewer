@@ -162,7 +162,7 @@ textarea {
   top: 50%;
   right: -6px;
   transform: translateY(-50%);
-  z-index: 4;
+  z-index: 6;
   width: 20px;
   height: 48px;
   border-radius: 12px;
@@ -230,6 +230,12 @@ textarea {
 
 .panel-resize-handle:hover::after {
   opacity: 1;
+}
+
+.panel-toggle:hover + .panel-resize-handle::after,
+.panel-toggle:focus-visible + .panel-resize-handle::after {
+  opacity: 1;
+  background: rgba(42, 111, 110, 0.45);
 }
 
 .panel-section {

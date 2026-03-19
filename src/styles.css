@@ -437,6 +437,43 @@ textarea {
   margin-top: 2px;
 }
 
+.sparql-prefix-group + .sparql-prefix-group {
+  margin-top: 10px;
+}
+
+.sparql-prefix-group-header {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.sparql-prefix-group-header h4 {
+  margin: 0;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.74rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: #5a524a;
+}
+
+.prefix-add-button {
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  line-height: 1;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f4efe8;
+  color: #4f473f;
+  box-shadow: none;
+}
+
+.prefix-add-button:hover {
+  transform: none;
+  box-shadow: none;
+  background: #efe6db;
+}
+
 .sparql-prefix-list {
   margin-top: 6px;
   border: 1px solid var(--border);
@@ -462,6 +499,10 @@ textarea {
   border-bottom: none;
 }
 
+.sparql-prefix-row-editable {
+  grid-template-columns: minmax(88px, 120px) 1fr auto;
+}
+
 .sparql-prefix-row-readonly {
   background: #faf6f0;
 }
@@ -476,6 +517,25 @@ textarea {
 .sparql-prefix-row-readonly input {
   background: #faf6f0;
   color: #62584d;
+}
+
+.prefix-remove-button {
+  margin: 0;
+  padding: 5px 8px;
+  min-height: 30px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: #f8f3ec;
+  color: #5a524a;
+  font-size: 0.72rem;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.prefix-remove-button:hover {
+  transform: none;
+  box-shadow: none;
+  background: #f1e8de;
 }
 
 .sparql-prefix-name {

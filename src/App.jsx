@@ -17,14 +17,19 @@ const KNOWN_NAMESPACE_PREFIXES = {
   'http://www.w3.org/ns/prov#': 'prov',
   'http://www.w3.org/2004/02/skos/core#': 'skos',
   'http://schema.org/': 'schema',
+  'http://xmlns.com/foaf/0.1/': 'foaf',
+  'http://purl.org/dc/terms/': 'dct',
 };
 const FIXED_SPARQL_PREFIXES = Object.freeze([
   { id: 'fixed-rdf', prefix: 'rdf', iri: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#' },
   { id: 'fixed-rdfs', prefix: 'rdfs', iri: 'http://www.w3.org/2000/01/rdf-schema#' },
   { id: 'fixed-xsd', prefix: 'xsd', iri: 'http://www.w3.org/2001/XMLSchema#' },
   { id: 'fixed-owl', prefix: 'owl', iri: 'http://www.w3.org/2002/07/owl#' },
+  { id: 'fixed-prov', prefix: 'prov', iri: 'http://www.w3.org/ns/prov#' },
   { id: 'fixed-skos', prefix: 'skos', iri: 'http://www.w3.org/2004/02/skos/core#' },
   { id: 'fixed-schema', prefix: 'schema', iri: 'http://schema.org/' },
+  { id: 'fixed-foaf', prefix: 'foaf', iri: 'http://xmlns.com/foaf/0.1/' },
+  { id: 'fixed-dct', prefix: 'dct', iri: 'http://purl.org/dc/terms/' },
 ]);
 
 function isEntityTerm(term) {
@@ -493,6 +498,10 @@ export default function App() {
     source: true,
     filters: true,
     sparql: true,
+  });
+  const [sparqlPrefixSectionOpen, setSparqlPrefixSectionOpen] = useState({
+    fixed: true,
+    custom: true,
   });
   const [isGraphFullscreen, setIsGraphFullscreen] = useState(false);
   const [leftFlyoutOpen, setLeftFlyoutOpen] = useState(false);
@@ -1122,6 +1131,36 @@ export default function App() {
     );
   }
 
+  function addSparqlPrefixRow() {
+    setSparqlPrefixes((current) => {
+      const usedPrefixes = new Set(
+        [...FIXED_SPARQL_PREFIXES, ...current]
+          .map((row) => normalizePrefixName(row.prefix))
+          .filter(Boolean),
+      );
+
+      let counter = 1;
+      let prefix = `ns${counter}`;
+      while (usedPrefixes.has(prefix)) {
+        counter += 1;
+        prefix = `ns${counter}`;
+      }
+
+      return [
+        ...current,
+        {
+          id: `prefix-custom-${Date.now()}-${current.length + 1}`,
+          prefix,
+          iri: '',
+        },
+      ];
+    });
+  }
+
+  function removeSparqlPrefixRow(rowId) {
+    setSparqlPrefixes((current) => current.filter((row) => row.id !== rowId));
+  }
+
   function applySparqlFilter() {
     setSparqlQuery(buildExecutableSparqlQuery(sparqlDraft, sparqlPrefixes, FIXED_SPARQL_PREFIXES));
   }
@@ -1133,6 +1172,13 @@ export default function App() {
 
   function toggleLeftSection(sectionKey) {
     setLeftSectionOpen((current) => ({
+      ...current,
+      [sectionKey]: !current[sectionKey],
+    }));
+  }
+
+  function toggleSparqlPrefixSection(sectionKey) {
+    setSparqlPrefixSectionOpen((current) => ({
       ...current,
       [sectionKey]: !current[sectionKey],
     }));
@@ -1525,40 +1571,92 @@ export default function App() {
                 {leftSectionOpen.sparql && (
                   <div className="section-body">
                     <div className="sparql-prefixes">
-                      <p className="muted">Built-in `PREFIX` declarations (always applied):</p>
-                      <div className="sparql-prefix-list sparql-prefix-list-readonly">
-                        {FIXED_SPARQL_PREFIXES.map((row) => (
-                          <div key={row.id} className="sparql-prefix-row sparql-prefix-row-readonly">
-                            <input type="text" value={row.prefix} readOnly aria-label="Built-in SPARQL prefix name" />
-                            <input type="text" value={row.iri} readOnly aria-label="Built-in SPARQL prefix IRI" />
+                      <div className="sparql-prefix-group">
+                        <div className="sparql-prefix-group-header">
+                          <button
+                            type="button"
+                            className="section-toggle"
+                            onClick={() => toggleSparqlPrefixSection('fixed')}
+                            aria-label={sparqlPrefixSectionOpen.fixed ? 'Collapse general prefixes' : 'Expand general prefixes'}
+                            title={sparqlPrefixSectionOpen.fixed ? 'Minimize' : 'Expand'}
+                          >
+                            {sparqlPrefixSectionOpen.fixed ? '-' : '+'}
+                          </button>
+                          <h4>General prefixes (built-in)</h4>
+                        </div>
+                        {sparqlPrefixSectionOpen.fixed && (
+                          <div className="sparql-prefix-list sparql-prefix-list-readonly">
+                            {FIXED_SPARQL_PREFIXES.map((row) => (
+                              <div key={row.id} className="sparql-prefix-row sparql-prefix-row-readonly">
+                                <input type="text" value={row.prefix} readOnly aria-label="Built-in SPARQL prefix name" />
+                                <input type="text" value={row.iri} readOnly aria-label="Built-in SPARQL prefix IRI" />
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
 
-                      <p className="muted">Base IRI `PREFIX` declarations (editable):</p>
-                      {sparqlPrefixes.length === 0 && <p className="muted">Load data to generate base IRI prefixes.</p>}
-                      {sparqlPrefixes.length > 0 && (
-                        <div className="sparql-prefix-list">
-                          {sparqlPrefixes.map((row) => (
-                            <div key={row.id} className="sparql-prefix-row">
-                              <input
-                                type="text"
-                                value={row.prefix}
-                                onChange={(event) => updateSparqlPrefixName(row.id, event.target.value)}
-                                aria-label="SPARQL prefix name"
-                                className="sparql-prefix-name"
-                              />
-                              <input
-                                type="text"
-                                value={row.iri}
-                                onChange={(event) => updateSparqlPrefixIri(row.id, event.target.value)}
-                                aria-label="SPARQL prefix IRI"
-                                className="sparql-prefix-iri"
-                              />
-                            </div>
-                          ))}
+                      <div className="sparql-prefix-group">
+                        <div className="sparql-prefix-group-header">
+                          <button
+                            type="button"
+                            className="section-toggle"
+                            onClick={() => toggleSparqlPrefixSection('custom')}
+                            aria-label={sparqlPrefixSectionOpen.custom ? 'Collapse custom prefixes' : 'Expand custom prefixes'}
+                            title={sparqlPrefixSectionOpen.custom ? 'Minimize' : 'Expand'}
+                          >
+                            {sparqlPrefixSectionOpen.custom ? '-' : '+'}
+                          </button>
+                          <h4>Custom prefixes (editable)</h4>
+                          <button
+                            type="button"
+                            className="prefix-add-button"
+                            onClick={addSparqlPrefixRow}
+                            aria-label="Add custom prefix row"
+                            title="Add prefix"
+                          >
+                            + Add
+                          </button>
                         </div>
-                      )}
+                        {sparqlPrefixSectionOpen.custom && (
+                          <>
+                            {sparqlPrefixes.length === 0 && (
+                              <p className="muted">Load data to auto-generate base IRI prefixes, or add one manually.</p>
+                            )}
+                            {sparqlPrefixes.length > 0 && (
+                              <div className="sparql-prefix-list">
+                                {sparqlPrefixes.map((row) => (
+                                  <div key={row.id} className="sparql-prefix-row sparql-prefix-row-editable">
+                                    <input
+                                      type="text"
+                                      value={row.prefix}
+                                      onChange={(event) => updateSparqlPrefixName(row.id, event.target.value)}
+                                      aria-label="SPARQL prefix name"
+                                      className="sparql-prefix-name"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={row.iri}
+                                      onChange={(event) => updateSparqlPrefixIri(row.id, event.target.value)}
+                                      aria-label="SPARQL prefix IRI"
+                                      className="sparql-prefix-iri"
+                                    />
+                                    <button
+                                      type="button"
+                                      className="prefix-remove-button"
+                                      onClick={() => removeSparqlPrefixRow(row.id)}
+                                      aria-label={`Remove custom prefix ${row.prefix || row.id}`}
+                                      title="Remove prefix"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     <textarea

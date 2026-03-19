@@ -468,12 +468,14 @@ export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
   const previousFocusedNodeIdRef = useRef(null);
+  const focusedNodeIdRef = useRef(null);
   const preFocusViewportRef = useRef(null);
   const queryEngineRef = useRef(new QueryEngine());
   const leftFlyoutTimerRef = useRef(null);
   const rightFlyoutTimerRef = useRef(null);
   const resizeStateRef = useRef(null);
   const hasAppliedInitialLayoutRef = useRef(false);
+  const groupDragStateRef = useRef(null);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -775,13 +777,96 @@ export default function App() {
       }
     });
 
+    cy.on('grab', 'node', (event) => {
+      const activeFocusNodeId = focusedNodeIdRef.current;
+      if (!activeFocusNodeId) {
+        groupDragStateRef.current = null;
+        return;
+      }
+
+      const focusNode = cy.$id(activeFocusNodeId);
+      if (focusNode.empty()) {
+        groupDragStateRef.current = null;
+        return;
+      }
+
+      const groupNodes = focusNode.closedNeighborhood().nodes();
+      const grabbedNode = event.target;
+      if (!groupNodes.has(grabbedNode)) {
+        groupDragStateRef.current = null;
+        return;
+      }
+
+      const followerIds = [];
+      const followerStartPositions = new Map();
+      groupNodes.forEach((node) => {
+        if (node.id() === grabbedNode.id()) {
+          return;
+        }
+        followerIds.push(node.id());
+        followerStartPositions.set(node.id(), {
+          x: node.position('x'),
+          y: node.position('y'),
+        });
+      });
+
+      groupDragStateRef.current = {
+        grabbedNodeId: grabbedNode.id(),
+        grabbedStartPosition: {
+          x: grabbedNode.position('x'),
+          y: grabbedNode.position('y'),
+        },
+        followerIds,
+        followerStartPositions,
+      };
+    });
+
+    cy.on('drag', 'node', (event) => {
+      const dragState = groupDragStateRef.current;
+      if (!dragState || event.target.id() !== dragState.grabbedNodeId) {
+        return;
+      }
+
+      const draggedPosition = event.target.position();
+      const dx = draggedPosition.x - dragState.grabbedStartPosition.x;
+      const dy = draggedPosition.y - dragState.grabbedStartPosition.y;
+
+      cy.batch(() => {
+        for (const followerId of dragState.followerIds) {
+          const follower = cy.$id(followerId);
+          const startPosition = dragState.followerStartPositions.get(followerId);
+          if (follower.empty() || !startPosition) {
+            continue;
+          }
+          follower.position({
+            x: startPosition.x + dx,
+            y: startPosition.y + dy,
+          });
+        }
+      });
+    });
+
+    cy.on('free', 'node', (event) => {
+      if (groupDragStateRef.current?.grabbedNodeId === event.target.id()) {
+        groupDragStateRef.current = null;
+      }
+    });
+
     cyRef.current = cy;
 
     return () => {
+      groupDragStateRef.current = null;
       cyRef.current = null;
       cy.destroy();
     };
   }, []);
+
+  useEffect(() => {
+    focusedNodeIdRef.current = focusedNodeId;
+    if (!focusedNodeId) {
+      groupDragStateRef.current = null;
+    }
+  }, [focusedNodeId]);
 
   useEffect(() => {
     hasAppliedInitialLayoutRef.current = false;

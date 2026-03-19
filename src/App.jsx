@@ -1648,7 +1648,15 @@ export default function App() {
                                       aria-label={`Remove custom prefix ${row.prefix || row.id}`}
                                       title="Remove prefix"
                                     >
-                                      Remove
+                                      <svg className="prefix-remove-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                        <path
+                                          d="M5.5 2.5H10.5M3.5 4H12.5M6.5 4V12M9.5 4V12M4.5 4.5V12.5C4.5 13.1 4.9 13.5 5.5 13.5H10.5C11.1 13.5 11.5 13.1 11.5 12.5V4.5"
+                                          stroke="currentColor"
+                                          strokeWidth="1.3"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        />
+                                      </svg>
                                     </button>
                                   </div>
                                 ))}

@@ -521,14 +521,18 @@ textarea {
 
 .prefix-remove-button {
   margin: 0;
-  padding: 5px 8px;
+  padding: 0;
+  width: 30px;
+  min-width: 30px;
   min-height: 30px;
+  height: 30px;
   border-radius: 7px;
   border: 1px solid var(--border);
   background: #f8f3ec;
   color: #5a524a;
-  font-size: 0.72rem;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: none;
 }
 
@@ -536,6 +540,11 @@ textarea {
   transform: none;
   box-shadow: none;
   background: #f1e8de;
+}
+
+.prefix-remove-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .sparql-prefix-name {

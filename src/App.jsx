@@ -473,6 +473,7 @@ export default function App() {
   const leftFlyoutTimerRef = useRef(null);
   const rightFlyoutTimerRef = useRef(null);
   const resizeStateRef = useRef(null);
+  const hasAppliedInitialLayoutRef = useRef(false);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -783,10 +784,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    hasAppliedInitialLayoutRef.current = false;
+  }, [graphData]);
+
+  useEffect(() => {
     const cy = cyRef.current;
     if (!cy) {
       return;
     }
+
+    const previousPan = cy.pan();
+    const previousViewport = {
+      zoom: cy.zoom(),
+      pan: { x: previousPan.x, y: previousPan.y },
+    };
+    const previousPositions = new Map(
+      cy.nodes().map((node) => [node.id(), { x: node.position('x'), y: node.position('y') }]),
+    );
+    const isInitialLayout = !hasAppliedInitialLayoutRef.current;
 
     cy.batch(() => {
       cy.elements().remove();
@@ -795,7 +810,11 @@ export default function App() {
       }
     });
 
-    if (visibleElements.length > 0) {
+    if (visibleElements.length === 0) {
+      return;
+    }
+
+    if (isInitialLayout) {
       cy.layout({
         name: 'cose',
         animate: false,
@@ -805,7 +824,40 @@ export default function App() {
         edgeElasticity: 80,
         nodeRepulsion: 20000,
       }).run();
+      hasAppliedInitialLayoutRef.current = true;
+      return;
     }
+
+    const nodes = cy.nodes();
+    let hasNewNodes = false;
+    cy.batch(() => {
+      nodes.forEach((node) => {
+        const position = previousPositions.get(node.id());
+        if (position) {
+          node.position(position);
+        } else {
+          hasNewNodes = true;
+        }
+      });
+    });
+
+    if (hasNewNodes) {
+      const lockedNodes = nodes.filter((node) => previousPositions.has(node.id()));
+      lockedNodes.lock();
+      cy.layout({
+        name: 'cose',
+        animate: false,
+        fit: false,
+        randomize: false,
+        idealEdgeLength: 110,
+        edgeElasticity: 80,
+        nodeRepulsion: 20000,
+      }).run();
+      lockedNodes.unlock();
+    }
+
+    cy.zoom(previousViewport.zoom);
+    cy.pan(previousViewport.pan);
   }, [visibleElements]);
 
   useEffect(() => {

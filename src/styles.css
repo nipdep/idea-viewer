@@ -79,16 +79,31 @@ textarea {
 }
 
 .app-shell {
+  --left-panel-open-width: 320px;
+  --right-panel-open-width: 350px;
   display: grid;
   grid-template-columns:
-    minmax(56px, var(--left-panel-width, 320px))
+    minmax(0, var(--left-panel-width, var(--left-panel-open-width)))
+    var(--left-gap, 18px)
     minmax(0, 1fr)
-    minmax(56px, var(--right-panel-width, 350px));
-  gap: 18px;
+    var(--right-gap, 18px)
+    minmax(0, var(--right-panel-width, var(--right-panel-open-width)));
   height: 100%;
   min-height: 0;
   padding: 12px 32px 32px;
   transition: grid-template-columns 220ms ease;
+}
+
+.panel.left {
+  grid-column: 1;
+}
+
+.graph-area {
+  grid-column: 3;
+}
+
+.panel.right {
+  grid-column: 5;
 }
 
 .panel,
@@ -107,8 +122,12 @@ textarea {
 }
 
 .panel.collapsed {
-  width: 56px;
-  min-width: 56px;
+  width: 0;
+  min-width: 0;
+  overflow: visible;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .panel-content {
@@ -143,7 +162,8 @@ textarea {
 }
 
 .panel.left.collapsed .panel-toggle {
-  right: 2px;
+  right: auto;
+  left: 8px;
 }
 
 .panel.right .panel-toggle {
@@ -152,7 +172,7 @@ textarea {
 }
 
 .panel.right.collapsed .panel-toggle {
-  left: 2px;
+  left: -28px;
 }
 
 .panel-toggle:hover {
@@ -548,10 +568,8 @@ textarea {
 
 @media (max-width: 1280px) {
   .app-shell {
-    grid-template-columns:
-      minmax(56px, var(--left-panel-width, 280px))
-      minmax(0, 1fr)
-      minmax(56px, var(--right-panel-width, 320px));
+    --left-panel-open-width: 280px;
+    --right-panel-open-width: 320px;
     padding: 10px 20px 20px;
   }
 }
@@ -560,6 +578,16 @@ textarea {
   .app-shell {
     grid-template-columns: minmax(56px, 250px) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) minmax(56px, 40vh);
+  }
+
+  .panel.left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .graph-area {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .panel.right {

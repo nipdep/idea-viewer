@@ -846,8 +846,10 @@ export default function App() {
   }
 
   const appShellStyle = {
-    '--left-panel-width': leftCollapsed ? '56px' : '320px',
-    '--right-panel-width': rightCollapsed ? '56px' : '350px',
+    '--left-panel-width': leftCollapsed ? '0px' : 'var(--left-panel-open-width, 320px)',
+    '--right-panel-width': rightCollapsed ? '0px' : 'var(--right-panel-open-width, 350px)',
+    '--left-gap': leftCollapsed ? '0px' : '18px',
+    '--right-gap': rightCollapsed ? '0px' : '18px',
   };
 
   return (

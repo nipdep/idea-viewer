@@ -588,10 +588,10 @@ export default function App() {
     const container = graphContainerRef.current;
     const maxWidth = container?.clientWidth ?? 1200;
     const maxHeight = container?.clientHeight ?? 800;
-    const tooltipWidth = 240;
-    const tooltipHeight = Math.min(180, 48 + classes.length * 20);
-    const left = Math.min(Math.max(8, cursor.x + 12), Math.max(8, maxWidth - tooltipWidth - 8));
-    const top = Math.min(Math.max(8, cursor.y + 12), Math.max(8, maxHeight - tooltipHeight - 8));
+    const fanWidth = 260;
+    const fanHeight = Math.min(220, 34 + classes.length * 14);
+    const left = Math.min(Math.max(8, badgeRight + 10), Math.max(8, maxWidth - fanWidth - 8));
+    const top = Math.min(Math.max(8, badgeTop - 10), Math.max(8, maxHeight - fanHeight - 8));
 
     return {
       left,
@@ -2097,11 +2097,15 @@ export default function App() {
           <div ref={graphContainerRef} className={`graph-canvas ${isDetachedPanMode ? 'detached-pan-mode' : ''}`} />
 
           {multiClassBadgeTooltip && (
-            <div className="badge-tooltip" style={{ left: multiClassBadgeTooltip.left, top: multiClassBadgeTooltip.top }}>
-              <div className="badge-tooltip-title">Classes ({multiClassBadgeTooltip.count})</div>
-              <div className="badge-tooltip-list">
+            <div className="badge-fanout" style={{ left: multiClassBadgeTooltip.left, top: multiClassBadgeTooltip.top }}>
+              <div className="badge-fanout-count">{multiClassBadgeTooltip.count} classes</div>
+              <div className="badge-fanout-stack">
                 {multiClassBadgeTooltip.classes.map((entry, index) => (
-                  <div key={`${entry}-${index}`} className="badge-tooltip-item">
+                  <div
+                    key={`${entry}-${index}`}
+                    className="badge-fanout-chip"
+                    style={{ '--chip-index': index }}
+                  >
                     {entry}
                   </div>
                 ))}

@@ -75,6 +75,11 @@ function getBaseIri(iri) {
     return '';
   }
 
+  const hashIndex = iri.lastIndexOf('#');
+  if (hashIndex >= 0) {
+    return iri.slice(0, hashIndex + 1);
+  }
+
   // For HTTP(S) IRIs, derive a single ontology-root base in the form:
   // <some-url>/<ontology-acronym>
   // (no trailing slash), so deeper paths collapse under that base.
@@ -135,11 +140,6 @@ function getBaseIri(iri) {
     }
   } catch {
     // Ignore URL parse failures and continue with generic fallbacks.
-  }
-
-  const hashIndex = iri.lastIndexOf('#');
-  if (hashIndex >= 0) {
-    return iri.slice(0, hashIndex + 1);
   }
 
   const slashIndex = iri.lastIndexOf('/');

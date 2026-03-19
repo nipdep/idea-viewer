@@ -16,7 +16,16 @@ const KNOWN_NAMESPACE_PREFIXES = {
   'http://www.w3.org/2001/XMLSchema#': 'xsd',
   'http://www.w3.org/ns/prov#': 'prov',
   'http://www.w3.org/2004/02/skos/core#': 'skos',
+  'http://schema.org/': 'schema',
 };
+const FIXED_SPARQL_PREFIXES = Object.freeze([
+  { id: 'fixed-rdf', prefix: 'rdf', iri: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#' },
+  { id: 'fixed-rdfs', prefix: 'rdfs', iri: 'http://www.w3.org/2000/01/rdf-schema#' },
+  { id: 'fixed-xsd', prefix: 'xsd', iri: 'http://www.w3.org/2001/XMLSchema#' },
+  { id: 'fixed-owl', prefix: 'owl', iri: 'http://www.w3.org/2002/07/owl#' },
+  { id: 'fixed-skos', prefix: 'skos', iri: 'http://www.w3.org/2004/02/skos/core#' },
+  { id: 'fixed-schema', prefix: 'schema', iri: 'http://schema.org/' },
+]);
 
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
@@ -198,9 +207,16 @@ function normalizePrefixName(prefix, fallback = 'ns') {
   return cleaned || fallback;
 }
 
+function normalizePrefixIri(iri) {
+  return (iri || '').trim().replace(/^<|>$/g, '');
+}
+
 function makeDefaultSparqlPrefixes(baseIris) {
-  const uniqueIris = Array.from(new Set(baseIris.filter(Boolean)));
-  const used = new Set();
+  const fixedIris = new Set(FIXED_SPARQL_PREFIXES.map((entry) => normalizePrefixIri(entry.iri)));
+  const uniqueIris = Array.from(
+    new Set(baseIris.map((entry) => normalizePrefixIri(entry)).filter((iri) => iri && !fixedIris.has(iri))),
+  );
+  const used = new Set(FIXED_SPARQL_PREFIXES.map((entry) => normalizePrefixName(entry.prefix)));
 
   return uniqueIris.map((iri, index) => {
     const namespace = getNamespaceIri(iri) || iri;
@@ -221,7 +237,7 @@ function makeDefaultSparqlPrefixes(baseIris) {
   });
 }
 
-function buildExecutableSparqlQuery(coreQuery, prefixRows) {
+function buildExecutableSparqlQuery(coreQuery, prefixRows, fixedPrefixRows = FIXED_SPARQL_PREFIXES) {
   const queryCore = coreQuery
     .replace(/^\s*PREFIX\s+[A-Za-z_][A-Za-z0-9_-]*:\s*<[^>]+>\s*$/gim, '')
     .trim();
@@ -230,12 +246,28 @@ function buildExecutableSparqlQuery(coreQuery, prefixRows) {
   }
 
   const used = new Set();
+  const usedIris = new Set();
   const prefixLines = [];
+
+  for (let index = 0; index < fixedPrefixRows.length; index += 1) {
+    const row = fixedPrefixRows[index];
+    const iri = normalizePrefixIri(row.iri);
+    if (!iri || usedIris.has(iri)) {
+      continue;
+    }
+    const prefix = normalizePrefixName(row.prefix, `fixed${index + 1}`);
+    if (used.has(prefix)) {
+      continue;
+    }
+    used.add(prefix);
+    usedIris.add(iri);
+    prefixLines.push(`PREFIX ${prefix}: <${iri}>`);
+  }
 
   for (let index = 0; index < prefixRows.length; index += 1) {
     const row = prefixRows[index];
-    const iri = (row.iri || '').trim().replace(/^<|>$/g, '');
-    if (!iri) {
+    const iri = normalizePrefixIri(row.iri);
+    if (!iri || usedIris.has(iri)) {
       continue;
     }
 
@@ -247,6 +279,7 @@ function buildExecutableSparqlQuery(coreQuery, prefixRows) {
       dedupeCounter += 1;
     }
     used.add(prefix);
+    usedIris.add(iri);
     prefixLines.push(`PREFIX ${prefix}: <${iri}>`);
   }
 
@@ -1090,7 +1123,7 @@ export default function App() {
   }
 
   function applySparqlFilter() {
-    setSparqlQuery(buildExecutableSparqlQuery(sparqlDraft, sparqlPrefixes));
+    setSparqlQuery(buildExecutableSparqlQuery(sparqlDraft, sparqlPrefixes, FIXED_SPARQL_PREFIXES));
   }
 
   function clearSparqlFilter() {
@@ -1491,7 +1524,17 @@ export default function App() {
                 {leftSectionOpen.sparql && (
                   <div className="section-body">
                     <div className="sparql-prefixes">
-                      <p className="muted">Auto `PREFIX` declarations (editable):</p>
+                      <p className="muted">Built-in `PREFIX` declarations (always applied):</p>
+                      <div className="sparql-prefix-list sparql-prefix-list-readonly">
+                        {FIXED_SPARQL_PREFIXES.map((row) => (
+                          <div key={row.id} className="sparql-prefix-row sparql-prefix-row-readonly">
+                            <input type="text" value={row.prefix} readOnly aria-label="Built-in SPARQL prefix name" />
+                            <input type="text" value={row.iri} readOnly aria-label="Built-in SPARQL prefix IRI" />
+                          </div>
+                        ))}
+                      </div>
+
+                      <p className="muted">Base IRI `PREFIX` declarations (editable):</p>
                       {sparqlPrefixes.length === 0 && <p className="muted">Load data to generate base IRI prefixes.</p>}
                       {sparqlPrefixes.length > 0 && (
                         <div className="sparql-prefix-list">

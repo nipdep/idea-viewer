@@ -440,6 +440,10 @@ textarea {
   overflow-y: auto;
 }
 
+.sparql-prefix-list-readonly {
+  max-height: 112px;
+}
+
 .sparql-prefix-row {
   display: grid;
   grid-template-columns: minmax(88px, 120px) 1fr;
@@ -452,11 +456,20 @@ textarea {
   border-bottom: none;
 }
 
+.sparql-prefix-row-readonly {
+  background: #faf6f0;
+}
+
 .sparql-prefix-row input {
   margin: 0;
   padding: 6px 8px;
   min-height: 30px;
   font-size: 0.82rem;
+}
+
+.sparql-prefix-row-readonly input {
+  background: #faf6f0;
+  color: #62584d;
 }
 
 .sparql-prefix-name {

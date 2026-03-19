@@ -1228,6 +1228,19 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     return [];
   }
 
+  const effectiveFocusedNodeIds =
+    focusedNodeIds && graphData.hasOntology && graphData.hasKg
+      ? (() => {
+          const combined = new Set(focusedNodeIds);
+          for (const node of graphData.nodes) {
+            if (node.isOntologyNode) {
+              combined.add(node.id);
+            }
+          }
+          return combined;
+        })()
+      : focusedNodeIds;
+
   const options = normalizeViewOptions(viewOptions);
   const kgClassNodeIds = graphData.hasOntology ? null : new Set((graphData.classes ?? []).map((entry) => entry.id));
   const classStructureOnly =
@@ -1286,7 +1299,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       continue;
     }
 
-    if (focusedNodeIds && (!focusedNodeIds.has(edge.source) || !focusedNodeIds.has(edge.target))) {
+    if (effectiveFocusedNodeIds && (!effectiveFocusedNodeIds.has(edge.source) || !effectiveFocusedNodeIds.has(edge.target))) {
       continue;
     }
 
@@ -1309,7 +1322,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       continue;
     }
 
-    if (focusedNodeIds && !focusedNodeIds.has(edge.source)) {
+    if (effectiveFocusedNodeIds && !effectiveFocusedNodeIds.has(edge.source)) {
       continue;
     }
 
@@ -1318,19 +1331,19 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     visibleNodeIds.add(edge.target);
   }
 
-  if (graphData.hasOntology && (!focusedNodeIds || classStructureOnly)) {
+  if (graphData.hasOntology && (!effectiveFocusedNodeIds || classStructureOnly)) {
     for (const classNodeId of graphData.classNodeIds) {
       if (isOntologyStructuralNodeHidden(classNodeId)) {
         continue;
       }
-      if (!focusedNodeIds || focusedNodeIds.has(classNodeId)) {
+      if (!effectiveFocusedNodeIds || effectiveFocusedNodeIds.has(classNodeId)) {
         visibleNodeIds.add(classNodeId);
       }
     }
   }
 
-  const candidateNodes = focusedNodeIds
-    ? graphData.nodes.filter((node) => focusedNodeIds.has(node.id))
+  const candidateNodes = effectiveFocusedNodeIds
+    ? graphData.nodes.filter((node) => effectiveFocusedNodeIds.has(node.id))
     : graphData.nodes;
 
   for (const node of candidateNodes) {

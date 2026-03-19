@@ -1195,17 +1195,41 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     !options.showDataProperties && !options.showAnnotationProperties && !options.showObjectProperties;
   const visibleNodeIds = new Set();
   const visibleEdges = [];
+  const isOntologyStructuralNodeHidden = (nodeId) => {
+    if (!graphData.hasOntology) {
+      return false;
+    }
+
+    const node = graphData.nodeMap.get(nodeId);
+    if (!node) {
+      return false;
+    }
+
+    if (node.termType === 'BlankNode') {
+      return true;
+    }
+
+    return node.termType === 'NamedNode' && node.iri === RDF_NIL;
+  };
   const isNamedIndividualVisible = (nodeId) =>
     options.showNamedIndividuals || !graphData.namedIndividualNodeIds.has(nodeId);
   const isOntologyObjectPropertyNodeVisible = (nodeId) =>
     !(graphData.hasOntology && graphData.hasKg && graphData.ontologyObjectPropertyNodeIds.has(nodeId));
 
   for (const edge of graphData.objectEdges) {
+    if (graphData.hasOntology && (edge.predicate === RDF_FIRST || edge.predicate === RDF_REST)) {
+      continue;
+    }
+
     if (edge.category === 'type') {
       if (!options.showTypeLinks || !graphData.ontologyClassIds.has(edge.target)) {
         continue;
       }
     } else if (!shouldIncludeObjectEdge(edge, options)) {
+      continue;
+    }
+
+    if (isOntologyStructuralNodeHidden(edge.source) || isOntologyStructuralNodeHidden(edge.target)) {
       continue;
     }
 
@@ -1236,6 +1260,9 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     if (!shouldIncludeLiteralEdge(edge, options)) {
       continue;
     }
+    if (isOntologyStructuralNodeHidden(edge.source) || isOntologyStructuralNodeHidden(edge.target)) {
+      continue;
+    }
     if (!isNamedIndividualVisible(edge.source) || !isNamedIndividualVisible(edge.target)) {
       continue;
     }
@@ -1254,6 +1281,9 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
 
   if (graphData.hasOntology && (!focusedNodeIds || classStructureOnly)) {
     for (const classNodeId of graphData.classNodeIds) {
+      if (isOntologyStructuralNodeHidden(classNodeId)) {
+        continue;
+      }
       if (!focusedNodeIds || focusedNodeIds.has(classNodeId)) {
         visibleNodeIds.add(classNodeId);
       }
@@ -1261,7 +1291,10 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
   }
 
   const nodes = graphData.nodes.filter(
-    (node) => visibleNodeIds.has(node.id) && isOntologyObjectPropertyNodeVisible(node.id),
+    (node) =>
+      visibleNodeIds.has(node.id) &&
+      isOntologyObjectPropertyNodeVisible(node.id) &&
+      !isOntologyStructuralNodeHidden(node.id),
   );
   return toElements(nodes, visibleEdges);
 }

@@ -360,6 +360,7 @@ export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
   const previousFocusedNodeIdRef = useRef(null);
+  const preFocusViewportRef = useRef(null);
   const queryEngineRef = useRef(new QueryEngine());
   const leftFlyoutTimerRef = useRef(null);
   const rightFlyoutTimerRef = useRef(null);
@@ -675,6 +676,14 @@ export default function App() {
 
     const wasFocused = Boolean(previousFocusedNodeIdRef.current);
 
+    if (focusedNodeId && !wasFocused) {
+      const pan = cy.pan();
+      preFocusViewportRef.current = {
+        zoom: cy.zoom(),
+        pan: { x: pan.x, y: pan.y },
+      };
+    }
+
     cy.batch(() => {
       cy.elements().removeClass('faded focus-node focus-neighbor focus-edge');
 
@@ -706,16 +715,31 @@ export default function App() {
         });
       }
     } else if (wasFocused) {
-      const visibleNodes = cy.nodes();
-      if (visibleNodes.length > 0) {
+      const savedViewport = preFocusViewportRef.current;
+      if (
+        savedViewport &&
+        Number.isFinite(savedViewport.zoom) &&
+        Number.isFinite(savedViewport.pan?.x) &&
+        Number.isFinite(savedViewport.pan?.y)
+      ) {
         cy.animate({
-          fit: {
-            eles: cy.elements(),
-            padding: 42,
-          },
-          duration: 250,
+          zoom: savedViewport.zoom,
+          pan: savedViewport.pan,
+          duration: 220,
         });
+      } else {
+        const visibleNodes = cy.nodes();
+        if (visibleNodes.length > 0) {
+          cy.animate({
+            fit: {
+              eles: cy.elements(),
+              padding: 42,
+            },
+            duration: 250,
+          });
+        }
       }
+      preFocusViewportRef.current = null;
     }
 
     previousFocusedNodeIdRef.current = focusedNodeId;

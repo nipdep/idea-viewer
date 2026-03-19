@@ -484,7 +484,7 @@ export default function App() {
             'background-position-x': '100%',
             'background-position-y': '0%',
             'background-offset-x': 26,
-            'background-offset-y': -14,
+            'background-offset-y': -7,
             'background-repeat': 'no-repeat',
             'background-fit': 'none',
             'background-clip': 'none',

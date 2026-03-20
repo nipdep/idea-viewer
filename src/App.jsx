@@ -46,7 +46,6 @@ const ONTOLOGY_VIEW_MODES = {
   CLASS_OBJECT_DATA: 'class-object-data',
   FULL: 'full',
 };
-const GROUP_DRAG_ARM_TIMEOUT_MS = 1800;
 
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
@@ -1077,7 +1076,6 @@ export default function App() {
       groupDragArmRef.current = {
         nodeId: tappedNode.id(),
         focusedNodeId: activeFocusNodeId,
-        expiresAt: Date.now() + GROUP_DRAG_ARM_TIMEOUT_MS,
       };
     });
 
@@ -1129,8 +1127,7 @@ export default function App() {
       const shouldUseGroupDrag =
         Boolean(arm) &&
         arm.nodeId === grabbedNode.id() &&
-        arm.focusedNodeId === activeFocusNodeId &&
-        Date.now() <= arm.expiresAt;
+        arm.focusedNodeId === activeFocusNodeId;
       if (!shouldUseGroupDrag) {
         groupDragStateRef.current = null;
         return;

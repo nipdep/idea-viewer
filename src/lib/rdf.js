@@ -116,6 +116,22 @@ const RESTRICTION_DISPLAY_PREDICATE_ORDER = [
   OWL_ON_PROPERTY,
 ];
 
+const RESTRICTION_BRIDGE_VALUE_PREDICATES = new Set([
+  OWL_SOME_VALUES_FROM,
+  OWL_ALL_VALUES_FROM,
+  OWL_HAS_VALUE,
+  OWL_MIN_CARDINALITY,
+  OWL_MAX_CARDINALITY,
+  OWL_CARDINALITY,
+  OWL_MIN_QUALIFIED_CARDINALITY,
+  OWL_MAX_QUALIFIED_CARDINALITY,
+  OWL_QUALIFIED_CARDINALITY,
+  OWL_ON_CLASS,
+  OWL_ON_DATA_RANGE,
+]);
+
+const RESTRICTION_ANCHOR_AXIOM_PREDICATES = new Set([RDFS_SUBCLASS_OF, OWL_EQUIVALENT_CLASS, OWL_DISJOINT_WITH]);
+
 const AXIOM_KIND_BY_PREDICATE = new Map([
   [RDFS_SUBCLASS_OF, 'SubClassOf'],
   [OWL_EQUIVALENT_CLASS, 'EquivalentClasses'],
@@ -139,6 +155,7 @@ export const DEFAULT_VIEW_OPTIONS = Object.freeze({
   showObjectProperties: true,
   showNamedIndividuals: false,
   showTypeLinks: false,
+  lightOntologyMode: false,
 });
 
 const { namedNode, literal, quad, blankNode } = DataFactory;
@@ -1794,6 +1811,7 @@ export function toElements(nodes, edges) {
         badgeSvg: node.badgeSvg,
         badgeWidth: node.badgeWidth,
         classTooltip: node.classTooltip ?? '',
+        lightOntologyView: node.lightOntologyView ?? 0,
       },
     })),
     ...edges.map((edge) => ({
@@ -1806,6 +1824,8 @@ export function toElements(nodes, edges) {
         category: edge.category ?? 'object',
         axiomKind: edge.axiomKind ?? '',
         restrictionKind: edge.restrictionKind ?? '',
+        lightRestrictionEdge: edge.lightRestrictionEdge ?? 0,
+        lightOntologyView: edge.lightOntologyView ?? 0,
       },
     })),
   ];
@@ -1819,7 +1839,123 @@ function normalizeViewOptions(viewOptions) {
     showObjectProperties: Boolean(viewOptions?.showObjectProperties),
     showNamedIndividuals: Boolean(viewOptions?.showNamedIndividuals),
     showTypeLinks: Boolean(viewOptions?.showTypeLinks),
+    lightOntologyMode: Boolean(viewOptions?.lightOntologyMode),
   };
+}
+
+function toRestrictionEdgeLabel(restrictionNode) {
+  const raw = (restrictionNode?.restrictionTooltip || '').trim();
+  if (raw) {
+    const matched = raw.match(/^Restriction\((.*)\)$/);
+    if (matched?.[1]) {
+      return matched[1];
+    }
+    return raw;
+  }
+  return restrictionNode?.restrictionKind || 'Restriction';
+}
+
+function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibleEdges) {
+  const restrictionNodeIds = new Set();
+  for (const nodeId of visibleNodeIds) {
+    const node = graphData.nodeMap.get(nodeId);
+    if (node?.termType === 'BlankNode' && node.blankExpressionType === 'Restriction') {
+      restrictionNodeIds.add(nodeId);
+    }
+  }
+
+  if (restrictionNodeIds.size === 0) {
+    return;
+  }
+
+  const edgesByRestrictionNode = new Map();
+  const preservedEdges = [];
+
+  for (const edge of visibleEdges) {
+    const sourceIsRestriction = restrictionNodeIds.has(edge.source);
+    const targetIsRestriction = restrictionNodeIds.has(edge.target);
+    if (!sourceIsRestriction && !targetIsRestriction) {
+      preservedEdges.push(edge);
+      continue;
+    }
+
+    const restrictionNodeId = sourceIsRestriction ? edge.source : edge.target;
+    const rows = edgesByRestrictionNode.get(restrictionNodeId) ?? [];
+    rows.push(edge);
+    edgesByRestrictionNode.set(restrictionNodeId, rows);
+  }
+
+  for (const restrictionNodeId of restrictionNodeIds) {
+    visibleNodeIds.delete(restrictionNodeId);
+  }
+
+  const syntheticEdges = [];
+  const syntheticEdgeIds = new Set();
+
+  const isClassNode = (nodeId) => {
+    const node = graphData.nodeMap.get(nodeId);
+    if (!node || node.termType !== 'NamedNode') {
+      return false;
+    }
+    return node.ontologyKind === 'class' || graphData.classNodeIds.has(nodeId);
+  };
+
+  for (const [restrictionNodeId, connectedEdges] of edgesByRestrictionNode.entries()) {
+    const restrictionNode = graphData.nodeMap.get(restrictionNodeId);
+    const anchorClassIds = new Set();
+    const fillerClassIds = new Set();
+
+    for (const edge of connectedEdges) {
+      if (RESTRICTION_ANCHOR_AXIOM_PREDICATES.has(edge.predicate)) {
+        if (edge.source === restrictionNodeId && isClassNode(edge.target)) {
+          anchorClassIds.add(edge.target);
+        } else if (edge.target === restrictionNodeId && isClassNode(edge.source)) {
+          anchorClassIds.add(edge.source);
+        }
+      }
+
+      if (edge.source === restrictionNodeId && RESTRICTION_BRIDGE_VALUE_PREDICATES.has(edge.predicate) && isClassNode(edge.target)) {
+        fillerClassIds.add(edge.target);
+      }
+    }
+
+    if (anchorClassIds.size === 0 || fillerClassIds.size === 0) {
+      continue;
+    }
+
+    const restrictionLabel = toRestrictionEdgeLabel(restrictionNode);
+    for (const sourceId of anchorClassIds) {
+      for (const targetId of fillerClassIds) {
+        if (sourceId === targetId) {
+          continue;
+        }
+
+        const edgeId = `light-restriction:${restrictionNodeId}:${sourceId}:${targetId}`;
+        const dedupeKey = `${sourceId}|${targetId}|${restrictionLabel}`;
+        if (syntheticEdgeIds.has(dedupeKey)) {
+          continue;
+        }
+        syntheticEdgeIds.add(dedupeKey);
+
+        syntheticEdges.push({
+          id: edgeId,
+          source: sourceId,
+          target: targetId,
+          predicate: `${OWL_NS}restrictionBridge`,
+          predicateLabel: restrictionLabel,
+          category: 'restriction',
+          axiomKind: 'Restriction',
+          restrictionKind: restrictionNode?.restrictionKind ?? '',
+          lightRestrictionEdge: 1,
+        });
+        visibleNodeIds.add(sourceId);
+        visibleNodeIds.add(targetId);
+      }
+    }
+  }
+
+  visibleEdges.length = 0;
+  visibleEdges.push(...preservedEdges, ...syntheticEdges);
 }
 
 function shouldIncludeObjectEdge(edge, options) {
@@ -2193,6 +2329,10 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     visibleNodeIds.add(edge.target);
   }
 
+  if (options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg) {
+    collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibleEdges);
+  }
+
   if (graphData.hasOntology && (!effectiveFocusedNodeIds || classStructureOnly)) {
     for (const classNodeId of graphData.classNodeIds) {
       if (graphData.badgeClassNodeIds?.has(classNodeId)) {
@@ -2233,5 +2373,17 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       isOntologyObjectPropertyNodeVisible(node.id) &&
       !isOntologyStructuralNodeHidden(node.id),
   );
-  return toElements(nodes, visibleEdges);
+  const elements = toElements(nodes, visibleEdges);
+  if (!(options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg)) {
+    return elements;
+  }
+
+  return elements.map((element) => ({
+    ...element,
+    data: {
+      ...element.data,
+      lightOntologyView: 1,
+      lightRestrictionEdge: element.data.source ? Number(element.data.lightRestrictionEdge ?? 0) : 0,
+    },
+  }));
 }

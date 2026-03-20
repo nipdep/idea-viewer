@@ -1208,6 +1208,35 @@ function shouldIncludeLiteralEdge(edge, options) {
   return false;
 }
 
+function shouldIncludeOntologyObjectEdgeByNodeKinds(graphData, edge, options) {
+  if (!graphData.hasOntology) {
+    return true;
+  }
+
+  const sourceKind = graphData.nodeMap.get(edge.source)?.ontologyKind ?? '';
+  const targetKind = graphData.nodeMap.get(edge.target)?.ontologyKind ?? '';
+
+  const touchesDataProperty =
+    sourceKind === 'data-property' || targetKind === 'data-property';
+  if (touchesDataProperty && !options.showDataProperties) {
+    return false;
+  }
+
+  const touchesAnnotationProperty =
+    sourceKind === 'annotation-property' || targetKind === 'annotation-property';
+  if (touchesAnnotationProperty && !options.showAnnotationProperties) {
+    return false;
+  }
+
+  const touchesObjectProperty =
+    sourceKind === 'object-property' || targetKind === 'object-property';
+  if (touchesObjectProperty && !options.showObjectProperties) {
+    return false;
+  }
+
+  return true;
+}
+
 function shouldIncludeStandaloneNode(node, graphData, options, kgClassNodeIds = null) {
   if (!node || node.termType === 'Literal' || node.termType === 'BlankNode') {
     return false;
@@ -1305,6 +1334,10 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
         continue;
       }
     } else if (!shouldIncludeObjectEdge(edge, options)) {
+      continue;
+    }
+
+    if (!shouldIncludeOntologyObjectEdgeByNodeKinds(graphData, edge, options)) {
       continue;
     }
 

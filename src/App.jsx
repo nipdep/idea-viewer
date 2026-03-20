@@ -508,6 +508,7 @@ export default function App() {
   const rightFlyoutTimerRef = useRef(null);
   const resizeStateRef = useRef(null);
   const hasAppliedInitialLayoutRef = useRef(false);
+  const layoutPositionCacheRef = useRef(new Map());
   const groupDragStateRef = useRef(null);
   const shouldFitAfterFocusClearRef = useRef(false);
   const detachedPanModeRef = useRef(false);
@@ -991,6 +992,13 @@ export default function App() {
       if (groupDragStateRef.current?.grabbedNodeId === event.target.id()) {
         groupDragStateRef.current = null;
       }
+
+      const cache = layoutPositionCacheRef.current;
+      const releasedNode = event.target;
+      cache.set(releasedNode.id(), {
+        x: releasedNode.position('x'),
+        y: releasedNode.position('y'),
+      });
     });
 
     const updateClassBadgeTooltip = (event) => {
@@ -1089,6 +1097,7 @@ export default function App() {
       container.removeEventListener('contextmenu', onContextMenu);
       groupDragStateRef.current = null;
       shouldFitAfterFocusClearRef.current = false;
+      layoutPositionCacheRef.current.clear();
       detachedPanModeRef.current = false;
       detachedPanLastMouseRef.current = null;
       suppressNextTapRef.current = false;
@@ -1106,6 +1115,7 @@ export default function App() {
 
   useEffect(() => {
     hasAppliedInitialLayoutRef.current = false;
+    layoutPositionCacheRef.current.clear();
   }, [graphData]);
 
   useEffect(() => {
@@ -1118,14 +1128,18 @@ export default function App() {
       return;
     }
 
+    const positionCache = layoutPositionCacheRef.current;
     const previousPan = cy.pan();
     const previousViewport = {
       zoom: cy.zoom(),
       pan: { x: previousPan.x, y: previousPan.y },
     };
-    const previousPositions = new Map(
-      cy.nodes().map((node) => [node.id(), { x: node.position('x'), y: node.position('y') }]),
-    );
+    cy.nodes().forEach((node) => {
+      positionCache.set(node.id(), {
+        x: node.position('x'),
+        y: node.position('y'),
+      });
+    });
     const isInitialLayout = !hasAppliedInitialLayoutRef.current;
 
     cy.batch(() => {
@@ -1149,25 +1163,31 @@ export default function App() {
         edgeElasticity: 80,
         nodeRepulsion: 20000,
       }).run();
+      cy.nodes().forEach((node) => {
+        positionCache.set(node.id(), {
+          x: node.position('x'),
+          y: node.position('y'),
+        });
+      });
       hasAppliedInitialLayoutRef.current = true;
       return;
     }
 
     const nodes = cy.nodes();
-    let hasNewNodes = false;
+    let hasUnpositionedNodes = false;
     cy.batch(() => {
       nodes.forEach((node) => {
-        const position = previousPositions.get(node.id());
+        const position = positionCache.get(node.id());
         if (position) {
           node.position(position);
         } else {
-          hasNewNodes = true;
+          hasUnpositionedNodes = true;
         }
       });
     });
 
-    if (hasNewNodes) {
-      const lockedNodes = nodes.filter((node) => previousPositions.has(node.id()));
+    if (hasUnpositionedNodes) {
+      const lockedNodes = nodes.filter((node) => positionCache.has(node.id()));
       lockedNodes.lock();
       cy.layout({
         name: 'cose',
@@ -1180,6 +1200,13 @@ export default function App() {
       }).run();
       lockedNodes.unlock();
     }
+
+    cy.nodes().forEach((node) => {
+      positionCache.set(node.id(), {
+        x: node.position('x'),
+        y: node.position('y'),
+      });
+    });
 
     cy.zoom(previousViewport.zoom);
     cy.pan(previousViewport.pan);

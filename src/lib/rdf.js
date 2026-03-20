@@ -100,6 +100,22 @@ const RESTRICTION_PREDICATE_LABELS = new Map([
   [OWL_HAS_SELF, 'hasSelf'],
 ]);
 
+const RESTRICTION_DISPLAY_PREDICATE_ORDER = [
+  OWL_SOME_VALUES_FROM,
+  OWL_ALL_VALUES_FROM,
+  OWL_HAS_VALUE,
+  OWL_MIN_QUALIFIED_CARDINALITY,
+  OWL_MAX_QUALIFIED_CARDINALITY,
+  OWL_QUALIFIED_CARDINALITY,
+  OWL_MIN_CARDINALITY,
+  OWL_MAX_CARDINALITY,
+  OWL_CARDINALITY,
+  OWL_HAS_SELF,
+  OWL_ON_CLASS,
+  OWL_ON_DATA_RANGE,
+  OWL_ON_PROPERTY,
+];
+
 const AXIOM_KIND_BY_PREDICATE = new Map([
   [RDFS_SUBCLASS_OF, 'SubClassOf'],
   [OWL_EQUIVALENT_CLASS, 'EquivalentClasses'],
@@ -1023,11 +1039,31 @@ function buildBlankExpressionIndex(quads) {
     }
   }
 
+  const restrictionKindById = new Map();
+  for (const [blankId, predicateTerms] of restrictionTermsById.entries()) {
+    const preferredPredicate = RESTRICTION_DISPLAY_PREDICATE_ORDER.find((predicate) => {
+      const terms = predicateTerms.get(predicate);
+      return Array.isArray(terms) && terms.length > 0;
+    });
+    if (!preferredPredicate) {
+      continue;
+    }
+
+    const preferredKind = RESTRICTION_PREDICATE_LABELS.get(preferredPredicate) ?? compactIri(preferredPredicate);
+    if (preferredKind) {
+      restrictionKindById.set(blankId, preferredKind);
+    }
+  }
+
   const blankLabelById = new Map();
   const restrictionTooltipById = new Map();
   for (const [blankId, info] of blankRoles.entries()) {
-    if (info.role.startsWith('Restriction:')) {
-      blankLabelById.set(blankId, info.role.slice('Restriction:'.length) || 'Restriction');
+    if (info.role.startsWith('Restriction')) {
+      const preferredKind = restrictionKindById.get(blankId);
+      const fallbackKind = info.role.startsWith('Restriction:')
+        ? info.role.slice('Restriction:'.length) || 'Restriction'
+        : 'Restriction';
+      blankLabelById.set(blankId, preferredKind || fallbackKind);
     } else {
       blankLabelById.set(blankId, info.role);
     }
@@ -1071,6 +1107,7 @@ function buildBlankExpressionIndex(quads) {
   return {
     blankRoles,
     blankLabelById,
+    restrictionKindById,
     restrictionTooltipById,
   };
 }
@@ -1248,7 +1285,7 @@ export function buildGraphData(quads, options = {}) {
   const ontologyAnnotationPropertyNodeIds =
     ontologyModel.annotationPropertyIds instanceof Set ? ontologyModel.annotationPropertyIds : new Set();
   const ontologyDatatypeNodeIds = ontologyModel.datatypeIds instanceof Set ? ontologyModel.datatypeIds : new Set();
-  const { blankRoles, blankLabelById, restrictionTooltipById } = buildBlankExpressionIndex(quads);
+  const { blankRoles, blankLabelById, restrictionKindById, restrictionTooltipById } = buildBlankExpressionIndex(quads);
 
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -1604,9 +1641,10 @@ export function buildGraphData(quads, options = {}) {
     if (node.termType === 'BlankNode') {
       const role = blankRoles.get(node.id)?.role ?? '';
       if (role) {
-        if (role.startsWith('Restriction:')) {
+        if (role.startsWith('Restriction')) {
           node.blankExpressionType = 'Restriction';
-          node.restrictionKind = role.slice('Restriction:'.length) || 'Restriction';
+          const fallbackKind = role.startsWith('Restriction:') ? role.slice('Restriction:'.length) || 'Restriction' : 'Restriction';
+          node.restrictionKind = restrictionKindById.get(node.id) ?? fallbackKind;
         } else {
           node.blankExpressionType = role;
         }

@@ -1753,7 +1753,7 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
   }
 
   if (node.termType === 'BlankNode') {
-    return options.projectionMode === 'ontology' && node.entityCategory === 'class-expression';
+    return false;
   }
 
   if (options.projectionMode === 'kg') {
@@ -1799,7 +1799,7 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
   return true;
 }
 
-function buildKgProjectionSubset(graphData, focusedNodeIds) {
+function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
   const visibleNodeIds = new Set();
   const visibleEdges = [];
 
@@ -1829,7 +1829,7 @@ function buildKgProjectionSubset(graphData, focusedNodeIds) {
   };
 
   for (const edge of graphData.objectEdges) {
-    if (edge.category !== 'object' && edge.category !== 'annotation') {
+    if (!shouldIncludeObjectEdge(edge, options)) {
       continue;
     }
 
@@ -1851,7 +1851,7 @@ function buildKgProjectionSubset(graphData, focusedNodeIds) {
   }
 
   for (const edge of graphData.literalEdges) {
-    if (edge.category !== 'data' && edge.category !== 'annotation') {
+    if (!shouldIncludeLiteralEdge(edge, options)) {
       continue;
     }
 
@@ -1892,8 +1892,9 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     return [];
   }
 
+  const options = normalizeViewOptions(viewOptions);
   const effectiveFocusedNodeIds =
-    focusedNodeIds && graphData.hasOntology && graphData.hasKg
+    focusedNodeIds && graphData.hasOntology && graphData.hasKg && options.projectionMode === 'kg'
       ? (() => {
           const combined = new Set(focusedNodeIds);
           for (const node of graphData.nodes) {
@@ -1905,9 +1906,8 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
         })()
       : focusedNodeIds;
 
-  const options = normalizeViewOptions(viewOptions);
   if (options.projectionMode === 'kg') {
-    return buildKgProjectionSubset(graphData, effectiveFocusedNodeIds);
+    return buildKgProjectionSubset(graphData, effectiveFocusedNodeIds, options);
   }
 
   const classStructureOnly =

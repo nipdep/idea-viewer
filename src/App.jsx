@@ -36,6 +36,12 @@ const GRAPH_PROJECTION_MODES = {
   ONTOLOGY: 'ontology',
   KG: 'kg',
 };
+const ONTOLOGY_VIEW_MODES = {
+  CLASS_ONLY: 'class-only',
+  CLASS_AND_OBJECT: 'class-and-object',
+  CLASS_OBJECT_DATA: 'class-object-data',
+  FULL: 'full',
+};
 
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
@@ -461,24 +467,53 @@ function orderClassesSubToSuper(classIris, graphData) {
   });
 }
 
-function toViewOptions(projectionMode, graphData) {
+function toViewFlags(filterMode) {
+  switch (filterMode) {
+    case ONTOLOGY_VIEW_MODES.CLASS_ONLY:
+      return {
+        showDataProperties: false,
+        showAnnotationProperties: false,
+        showObjectProperties: false,
+        showNamedIndividuals: false,
+      };
+    case ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA:
+      return {
+        showDataProperties: true,
+        showAnnotationProperties: false,
+        showObjectProperties: true,
+        showNamedIndividuals: false,
+      };
+    case ONTOLOGY_VIEW_MODES.FULL:
+      return {
+        showDataProperties: true,
+        showAnnotationProperties: true,
+        showObjectProperties: true,
+        showNamedIndividuals: true,
+      };
+    case ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT:
+    default:
+      return {
+        showDataProperties: false,
+        showAnnotationProperties: false,
+        showObjectProperties: true,
+        showNamedIndividuals: false,
+      };
+  }
+}
+
+function toViewOptions(projectionMode, filterMode, graphData) {
+  const flags = toViewFlags(filterMode);
   if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
     return {
       projectionMode: GRAPH_PROJECTION_MODES.KG,
-      showDataProperties: true,
-      showAnnotationProperties: true,
-      showObjectProperties: true,
-      showNamedIndividuals: true,
+      ...flags,
       showTypeLinks: false,
     };
   }
 
   return {
     projectionMode: GRAPH_PROJECTION_MODES.ONTOLOGY,
-    showDataProperties: true,
-    showAnnotationProperties: true,
-    showObjectProperties: true,
-    showNamedIndividuals: true,
+    ...flags,
     showTypeLinks: Boolean(graphData?.hasOntology && graphData?.hasKg),
   };
 }
@@ -527,6 +562,7 @@ export default function App() {
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
   const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.ONTOLOGY);
+  const [ontologyViewMode, setOntologyViewMode] = useState(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
@@ -1400,7 +1436,7 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = toViewOptions(graphProjectionMode, graphData);
+        const viewOptions = toViewOptions(graphProjectionMode, ontologyViewMode, graphData);
         const classFilterActive =
           graphData.classes.length > 0 && selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
@@ -1443,7 +1479,7 @@ export default function App() {
       } catch (error) {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
-          setVisibleElements(buildFocusedSubset(graphData, null, toViewOptions(graphProjectionMode, graphData)));
+          setVisibleElements(buildFocusedSubset(graphData, null, toViewOptions(graphProjectionMode, ontologyViewMode, graphData)));
         }
       } finally {
         if (!cancelled) {
@@ -1464,6 +1500,7 @@ export default function App() {
     nodeNameQuery,
     sparqlQuery,
     graphProjectionMode,
+    ontologyViewMode,
   ]);
 
   useEffect(() => {
@@ -1498,6 +1535,7 @@ export default function App() {
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
     setFocusedNodeId(null);
+    setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
     setOntologyMetadataRows([]);
     setLoadError('');
     setFilterError('');
@@ -2030,6 +2068,49 @@ export default function App() {
                     <p className="muted">
                       Active view: {graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY ? 'Ontology full detailed view' : 'KG view'}
                     </p>
+
+                    <h3 className="filter-group-title">View filtering</h3>
+                    <div className="option-list">
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="ontology-view-mode"
+                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
+                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
+                        />
+                        <span>Class hierarchy</span>
+                      </label>
+
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="ontology-view-mode"
+                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
+                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
+                        />
+                        <span>Classes with object properties</span>
+                      </label>
+
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="ontology-view-mode"
+                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
+                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
+                        />
+                        <span>Classes + object properties + data properties</span>
+                      </label>
+
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="ontology-view-mode"
+                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
+                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
+                        />
+                        <span>All</span>
+                      </label>
+                    </div>
 
                     <h3 className="filter-group-title">Class type</h3>
                     <h3 className="filter-group-title">Node name</h3>

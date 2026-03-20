@@ -920,10 +920,6 @@ function compactTermForRestriction(term) {
     if (term.language) {
       return `"${term.value}"@${term.language}`;
     }
-    const datatype = term.datatype?.value;
-    if (datatype && datatype !== 'http://www.w3.org/2001/XMLSchema#string') {
-      return `"${term.value}"^^${compactIri(datatype)}`;
-    }
     return `"${term.value}"`;
   }
 

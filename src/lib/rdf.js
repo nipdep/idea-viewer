@@ -2,6 +2,7 @@ import { DataFactory, Parser, Store } from 'n3';
 
 export const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 export const RDFS_SUBCLASS_OF = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
+export const RDFS_SUBPROPERTY_OF = 'http://www.w3.org/2000/01/rdf-schema#subPropertyOf';
 const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const RDFS_NS = 'http://www.w3.org/2000/01/rdf-schema#';
 const OWL_NS = 'http://www.w3.org/2002/07/owl#';
@@ -699,6 +700,10 @@ function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIri
     return 'subclass';
   }
 
+  if (predicateIri === RDFS_SUBPROPERTY_OF) {
+    return 'subproperty';
+  }
+
   if (predicateIri === RDF_TYPE) {
     return 'type';
   }
@@ -797,6 +802,11 @@ export function extractOntologyModel(quads) {
       if (!(quad.object.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.object.value))) {
         classIds.add(getTermId(quad.object));
       }
+    }
+
+    if (quad.predicate.value === RDFS_SUBPROPERTY_OF && isEntityTerm(quad.object)) {
+      objectPropertyIds.add(getTermId(quad.subject));
+      objectPropertyIds.add(getTermId(quad.object));
     }
 
     if (
@@ -1171,6 +1181,10 @@ function shouldIncludeObjectEdge(edge, options) {
     return true;
   }
 
+  if (edge.category === 'subproperty') {
+    return options.showObjectProperties;
+  }
+
   if (edge.category === 'annotation') {
     return options.showAnnotationProperties;
   }
@@ -1308,6 +1322,15 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     if (
       edge.category === 'subclass' &&
       (!graphData.classNodeIds.has(edge.source) || !graphData.classNodeIds.has(edge.target))
+    ) {
+      continue;
+    }
+
+    if (
+      edge.category === 'subproperty' &&
+      graphData.hasOntology &&
+      (!graphData.ontologyObjectPropertyNodeIds.has(edge.source) ||
+        !graphData.ontologyObjectPropertyNodeIds.has(edge.target))
     ) {
       continue;
     }

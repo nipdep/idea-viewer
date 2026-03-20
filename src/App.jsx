@@ -506,13 +506,14 @@ function toViewFlags(filterMode) {
   }
 }
 
-function toViewOptions(projectionMode, filterMode, graphData) {
-  const flags = toViewFlags(filterMode);
+function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false) {
+  const flags = toViewFlags(lightOntologyMode ? ONTOLOGY_VIEW_MODES.FULL : filterMode);
   if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
     return {
       projectionMode: GRAPH_PROJECTION_MODES.KG,
       ...flags,
-      showTypeLinks: false,
+      showTypeLinks: Boolean(graphData?.hasOntology && graphData?.hasKg),
+      lightOntologyMode: false,
     };
   }
 
@@ -520,6 +521,7 @@ function toViewOptions(projectionMode, filterMode, graphData) {
     projectionMode: GRAPH_PROJECTION_MODES.ONTOLOGY,
     ...flags,
     showTypeLinks: Boolean(graphData?.hasOntology && graphData?.hasKg),
+    lightOntologyMode: Boolean(lightOntologyMode),
   };
 }
 
@@ -594,6 +596,7 @@ export default function App() {
   const [rightFlyoutOpen, setRightFlyoutOpen] = useState(false);
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
+  const [isLightOntologyView, setIsLightOntologyView] = useState(false);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
@@ -610,8 +613,34 @@ export default function App() {
     [selectedNodeId, graphData],
   );
   const selectedEdge = useMemo(
-    () => (selectedEdgeId && graphData ? graphData.edgeMap.get(selectedEdgeId) : null),
-    [selectedEdgeId, graphData],
+    () => {
+      if (!selectedEdgeId || !graphData) {
+        return null;
+      }
+
+      const mappedEdge = graphData.edgeMap.get(selectedEdgeId);
+      if (mappedEdge) {
+        return mappedEdge;
+      }
+
+      const edgeElement = visibleElements.find((entry) => entry.data.source && entry.data.id === selectedEdgeId);
+      if (!edgeElement) {
+        return null;
+      }
+
+      const data = edgeElement.data;
+      return {
+        id: data.id,
+        source: data.source,
+        target: data.target,
+        predicate: data.predicate,
+        predicateLabel: data.predicateLabel,
+        category: data.category ?? 'object',
+        axiomKind: data.axiomKind ?? '',
+        restrictionKind: data.restrictionKind ?? '',
+      };
+    },
+    [selectedEdgeId, graphData, visibleElements],
   );
 
   function fitCurrentGraphViewport(cy, duration = 250) {
@@ -625,6 +654,50 @@ export default function App() {
         padding: 42,
       },
       duration,
+    });
+  }
+
+  function nudgeNodesTowardLandscape(cy, targetRatio = 1.5) {
+    const nodes = cy.nodes(':visible');
+    if (nodes.length < 2) {
+      return;
+    }
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    nodes.forEach((node) => {
+      const x = node.position('x');
+      const y = node.position('y');
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    });
+
+    const spanX = maxX - minX;
+    const spanY = maxY - minY;
+    if (!Number.isFinite(spanX) || !Number.isFinite(spanY) || spanX <= 1 || spanY <= 1) {
+      return;
+    }
+
+    const currentRatio = spanX / spanY;
+    if (currentRatio >= targetRatio) {
+      return;
+    }
+
+    const scaleY = Math.max(0.35, currentRatio / targetRatio);
+    const centerY = (minY + maxY) / 2;
+
+    cy.batch(() => {
+      nodes.forEach((node) => {
+        const position = node.position();
+        node.position({
+          x: position.x,
+          y: centerY + (position.y - centerY) * scaleY,
+        });
+      });
     });
   }
 
@@ -748,7 +821,7 @@ export default function App() {
     }
 
     const baseRows = graphData.edgeMetadata.get(selectedEdgeId) ?? [];
-    const edge = graphData.edgeMap.get(selectedEdgeId);
+    const edge = selectedEdge ?? graphData.edgeMap.get(selectedEdgeId);
     if (!edge) {
       return baseRows;
     }
@@ -760,7 +833,7 @@ export default function App() {
     }));
 
     return [...baseRows, ...predicateRows];
-  }, [selectedEdgeId, graphData]);
+  }, [selectedEdgeId, graphData, selectedEdge]);
 
   const neighborRows = useMemo(
     () => buildNeighborRows(selectedNodeId, visibleElements, graphData),
@@ -770,6 +843,8 @@ export default function App() {
   const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
   const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
+  const isLightOntologyViewActive =
+    isLightOntologyView && isOntologyOnlyDataset && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
 
   const isAllClassesSelected =
     allClassIris.length === 0 ||
@@ -918,6 +993,69 @@ export default function App() {
           },
         },
         {
+          selector: 'node[lightOntologyView = 1]',
+          style: {
+            shape: 'rectangle',
+            'background-image': 'none',
+            'background-width': 0,
+            'background-height': 0,
+            'background-repeat': 'no-repeat',
+            'bounds-expansion': 6,
+            'border-width': 1.25,
+            color: '#2a231d',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "class"]',
+          style: {
+            'background-color': '#d9c4ab',
+            'border-color': '#8d6b4c',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "object-property"]',
+          style: {
+            'background-color': '#d4e2f2',
+            'border-color': '#5d7fa8',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "data-property"]',
+          style: {
+            'background-color': '#d6ebd9',
+            'border-color': '#5f9067',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "annotation-property"]',
+          style: {
+            'background-color': '#f0d9e4',
+            'border-color': '#ab6f8a',
+            'border-style': 'solid',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "individual"]',
+          style: {
+            'background-color': '#dfdfdf',
+            'border-color': '#7f7f7f',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][kind = "literal"]',
+          style: {
+            'background-color': '#f5ebbe',
+            'border-color': '#b9a14f',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "datatype"]',
+          style: {
+            'background-color': '#d6ebd9',
+            'border-color': '#5f9067',
+          },
+        },
+        {
           selector: 'node[mixedMode = 1][isOntologyNode = 1]',
           style: {
             'background-color': '#e5d5c4',
@@ -956,6 +1094,28 @@ export default function App() {
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             opacity: 0.76,
+          },
+        },
+        {
+          selector: 'edge[lightOntologyView = 1]',
+          style: {
+            width: 1.6,
+            'line-color': '#b8afa5',
+            'target-arrow-color': '#b8afa5',
+            color: '#5a524a',
+            'text-max-width': 180,
+          },
+        },
+        {
+          selector: 'edge[lightOntologyView = 1][lightRestrictionEdge = 1]',
+          style: {
+            width: 2,
+            'line-color': '#3f8f86',
+            'target-arrow-color': '#3f8f86',
+            color: '#3d665f',
+            'text-background-color': '#f8f5ef',
+            'text-border-color': '#d2cbc2',
+            'text-max-width': 220,
           },
         },
         {
@@ -1415,6 +1575,9 @@ export default function App() {
         edgeElasticity: 80,
         nodeRepulsion: 20000,
       }).run();
+      if (isLightOntologyViewActive) {
+        nudgeNodesTowardLandscape(cy, 1.5);
+      }
       cy.nodes().forEach((node) => {
         positionCache.set(node.id(), {
           x: node.position('x'),
@@ -1453,6 +1616,10 @@ export default function App() {
       lockedNodes.unlock();
     }
 
+    if (isLightOntologyViewActive) {
+      nudgeNodesTowardLandscape(cy, 1.5);
+    }
+
     cy.nodes().forEach((node) => {
       positionCache.set(node.id(), {
         x: node.position('x'),
@@ -1462,7 +1629,7 @@ export default function App() {
 
     cy.zoom(previousViewport.zoom);
     cy.pan(previousViewport.pan);
-  }, [visibleElements]);
+  }, [visibleElements, isLightOntologyViewActive]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -1579,7 +1746,7 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = toViewOptions(graphProjectionMode, ontologyViewMode, graphData);
+        const viewOptions = toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive);
         const classFilterActive =
           !isOntologyOnlyDataset &&
           graphData.classes.length > 0 &&
@@ -1624,7 +1791,9 @@ export default function App() {
       } catch (error) {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
-          setVisibleElements(buildFocusedSubset(graphData, null, toViewOptions(graphProjectionMode, ontologyViewMode, graphData)));
+          setVisibleElements(
+            buildFocusedSubset(graphData, null, toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive)),
+          );
         }
       } finally {
         if (!cancelled) {
@@ -1647,6 +1816,7 @@ export default function App() {
     graphProjectionMode,
     ontologyViewMode,
     isOntologyOnlyDataset,
+    isLightOntologyViewActive,
   ]);
 
   useEffect(() => {
@@ -1682,6 +1852,7 @@ export default function App() {
     setSelectedEdgeId(null);
     setFocusedNodeId(null);
     setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
+    setIsLightOntologyView(false);
     setOntologyMetadataRows([]);
     setLoadError('');
     setFilterError('');
@@ -1698,6 +1869,7 @@ export default function App() {
       setSelectedEdgeId(null);
       setFocusedNodeId(null);
       setOntologyMetadataRows([]);
+      setIsLightOntologyView(false);
       setLoadError('');
       setFilterError('');
       setIsLoading(false);
@@ -2074,6 +2246,15 @@ export default function App() {
     };
   }, [isGraphFullscreen]);
 
+  useEffect(() => {
+    if (!isLightOntologyView) {
+      return;
+    }
+    if (!isOntologyOnlyDataset || graphProjectionMode !== GRAPH_PROJECTION_MODES.ONTOLOGY) {
+      setIsLightOntologyView(false);
+    }
+  }, [isLightOntologyView, isOntologyOnlyDataset, graphProjectionMode]);
+
   const showLeftPanelContent = isGraphFullscreen ? leftFlyoutOpen : !leftCollapsed;
   const showRightPanelContent = isGraphFullscreen ? rightFlyoutOpen : !rightCollapsed;
 
@@ -2087,6 +2268,7 @@ export default function App() {
   };
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
+  const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
 
   return (
     <div
@@ -2213,7 +2395,12 @@ export default function App() {
                   <div className="section-body">
                     <h3 className="filter-group-title">Projection</h3>
                     <p className="muted">
-                      Active view: {graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY ? 'Ontology full detailed view' : 'KG view'}
+                      Active view:{' '}
+                      {graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY
+                        ? isLightOntologyViewActive
+                          ? 'Ontology light view'
+                          : 'Ontology full detailed view'
+                        : 'KG view'}
                     </p>
 
                     <h3 className="filter-group-title">View filtering</h3>
@@ -2224,6 +2411,7 @@ export default function App() {
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
+                          disabled={isLightOntologyViewActive}
                         />
                         <span>Class hierarchy</span>
                       </label>
@@ -2234,6 +2422,7 @@ export default function App() {
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
+                          disabled={isLightOntologyViewActive}
                         />
                         <span>Classes with object properties</span>
                       </label>
@@ -2244,6 +2433,7 @@ export default function App() {
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
+                          disabled={isLightOntologyViewActive}
                         />
                         <span>Classes + object properties + data properties</span>
                       </label>
@@ -2254,10 +2444,14 @@ export default function App() {
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
+                          disabled={isLightOntologyViewActive}
                         />
                         <span>All</span>
                       </label>
                     </div>
+                    {isLightOntologyViewActive && (
+                      <p className="muted">Light ontology view uses the full ontology filter profile.</p>
+                    )}
 
                     {!isOntologyOnlyDataset && (
                       <>
@@ -2562,6 +2756,30 @@ export default function App() {
           </div>
 
           <div className="graph-tools graph-tools-right">
+            {isOntologyOnlyDataset && (
+              <button
+                type="button"
+                className={`graph-tool-button icon-only ${isLightOntologyViewActive ? 'active' : ''}`}
+                onClick={() => {
+                  const next = !isLightOntologyViewActive;
+                  setIsLightOntologyView(next);
+                  if (next) {
+                    setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+                    setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL);
+                  }
+                }}
+                aria-label={lightOntologyButtonLabel}
+                title={lightOntologyButtonLabel}
+                aria-pressed={isLightOntologyViewActive}
+              >
+                <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="2.4" y="3.4" width="11.2" height="8.2" rx="1.1" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M4.2 12.8H11.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <path d="M5.2 6.2H10.8M5.2 8.6H8.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+
             <button
               type="button"
               className={`graph-tool-button icon-only ${isLegendOpen ? 'active' : ''}`}

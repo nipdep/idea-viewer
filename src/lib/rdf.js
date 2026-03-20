@@ -726,6 +726,26 @@ function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIri
   return 'other';
 }
 
+function annotationObjectToLiteralValue(term) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'Literal') {
+    return term.value;
+  }
+
+  if (term.termType === 'NamedNode') {
+    return term.value;
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `_:${term.value}`;
+  }
+
+  return term.value ?? '';
+}
+
 function isHiddenBackgroundClassIri(iri) {
   return HIDDEN_BACKGROUND_CLASS_IRIS.has(iri);
 }
@@ -917,6 +937,40 @@ export function buildGraphData(quads, options = {}) {
       objectPropertyIris,
       annotationPropertyIris,
     );
+
+    if (category === 'annotation') {
+      const annotationValue = annotationObjectToLiteralValue(quad.object);
+      const annotationLiteral = literal(annotationValue);
+      const literalId = getTermId(annotationLiteral);
+      if (!nodeMap.has(literalId)) {
+        nodeMap.set(literalId, makeNodeData(annotationLiteral, labelIndex));
+      }
+
+      const edgeId = `l${literalEdgeCounter}`;
+      const literalEdge = {
+        id: edgeId,
+        source: sourceId,
+        target: literalId,
+        predicate: quad.predicate.value,
+        predicateLabel: compactIri(quad.predicate.value),
+        category: 'annotation',
+      };
+      literalEdges.push(literalEdge);
+      edgeMap.set(edgeId, literalEdge);
+      literalEdgeCounter += 1;
+
+      const rows = dataProperties.get(sourceId) ?? [];
+      rows.push({
+        predicate: quad.predicate.value,
+        predicateLabel: compactIri(quad.predicate.value),
+        value: annotationValue,
+        language: '',
+        datatype: '',
+        category: 'annotation',
+      });
+      dataProperties.set(sourceId, rows);
+      continue;
+    }
 
     if (isEntityTerm(quad.object)) {
       if (quad.object.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.object.value)) {

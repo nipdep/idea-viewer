@@ -769,6 +769,7 @@ export default function App() {
 
   const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
+  const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
 
   const isAllClassesSelected =
     allClassIris.length === 0 ||
@@ -1580,7 +1581,9 @@ export default function App() {
       try {
         const viewOptions = toViewOptions(graphProjectionMode, ontologyViewMode, graphData);
         const classFilterActive =
-          graphData.classes.length > 0 && selectedClassIris.length !== graphData.classes.length;
+          !isOntologyOnlyDataset &&
+          graphData.classes.length > 0 &&
+          selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
           graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
         const nodeNameFilterActive = nodeNameQuery.trim().length > 0;
@@ -1643,6 +1646,7 @@ export default function App() {
     sparqlQuery,
     graphProjectionMode,
     ontologyViewMode,
+    isOntologyOnlyDataset,
   ]);
 
   useEffect(() => {
@@ -2255,7 +2259,44 @@ export default function App() {
                       </label>
                     </div>
 
-                    <h3 className="filter-group-title">Class type</h3>
+                    {!isOntologyOnlyDataset && (
+                      <>
+                        <h3 className="filter-group-title">Class type</h3>
+                        <div className="mini-actions">
+                          <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearClassSelection}
+                            disabled={!graphData || selectedClassIris.length === 0}
+                          >
+                            Clear
+                          </button>
+                        </div>
+
+                        <div className="class-list">
+                          {!graphData && <p className="muted">Load data to list class types.</p>}
+                          {graphData && graphData.classes.length === 0 && (
+                            <p className="muted">No explicit `rdf:type` triples detected.</p>
+                          )}
+                          {graphData &&
+                            graphData.classes.map((entry) => (
+                              <label key={entry.id} className="class-item">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedClassIris.includes(entry.id)}
+                                  onChange={() => toggleClass(entry.id)}
+                                />
+                                <span className="class-label" title={entry.id}>
+                                  {entry.label}
+                                </span>
+                                <small>{entry.count}</small>
+                              </label>
+                            ))}
+                        </div>
+                      </>
+                    )}
                     <h3 className="filter-group-title">Node name</h3>
                     <div className="node-search-row">
                       <input
@@ -2268,40 +2309,6 @@ export default function App() {
                       <button type="button" onClick={() => setNodeNameQuery('')} disabled={!nodeNameQuery.trim()}>
                         Clear
                       </button>
-                    </div>
-
-                    <div className="mini-actions">
-                      <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
-                        Select all
-                      </button>
-                      <button
-                        type="button"
-                        onClick={clearClassSelection}
-                        disabled={!graphData || selectedClassIris.length === 0}
-                      >
-                        Clear
-                      </button>
-                    </div>
-
-                    <div className="class-list">
-                      {!graphData && <p className="muted">Load data to list class types.</p>}
-                      {graphData && graphData.classes.length === 0 && (
-                        <p className="muted">No explicit `rdf:type` triples detected.</p>
-                      )}
-                      {graphData &&
-                        graphData.classes.map((entry) => (
-                          <label key={entry.id} className="class-item">
-                            <input
-                              type="checkbox"
-                              checked={selectedClassIris.includes(entry.id)}
-                              onChange={() => toggleClass(entry.id)}
-                            />
-                            <span className="class-label" title={entry.id}>
-                              {entry.label}
-                            </span>
-                            <small>{entry.count}</small>
-                          </label>
-                        ))}
                     </div>
 
                     <h3 className="filter-group-title">Base IRI (ontology)</h3>

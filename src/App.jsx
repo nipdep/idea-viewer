@@ -31,6 +31,11 @@ const FIXED_SPARQL_PREFIXES = Object.freeze([
   { id: 'fixed-foaf', prefix: 'foaf', iri: 'http://xmlns.com/foaf/0.1/' },
   { id: 'fixed-dct', prefix: 'dct', iri: 'http://purl.org/dc/terms/' },
 ]);
+const DEFAULT_STATUS = 'Upload KG and/or ontology files to initialize the graph.';
+const GRAPH_PROJECTION_MODES = {
+  ONTOLOGY: 'ontology',
+  KG: 'kg',
+};
 
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
@@ -189,6 +194,19 @@ function formatSelectedFiles(files, emptyLabel) {
 
   const shown = files.slice(0, 2).map((file) => file.name).join(', ');
   return `${files.length} files selected (${shown} +${files.length - 2} more)`;
+}
+
+function mergeSelectedFiles(currentFiles, incomingFiles) {
+  if (incomingFiles.length === 0) {
+    return currentFiles;
+  }
+
+  const deduped = new Map(currentFiles.map((file) => [`${file.name}-${file.size}-${file.lastModified}`, file]));
+  for (const file of incomingFiles) {
+    deduped.set(`${file.name}-${file.size}-${file.lastModified}`, file);
+  }
+
+  return Array.from(deduped.values());
 }
 
 function getNamespaceIri(iri) {
@@ -443,45 +461,26 @@ function orderClassesSubToSuper(classIris, graphData) {
   });
 }
 
-const ONTOLOGY_VIEW_MODES = {
-  CLASS_ONLY: 'class-only',
-  CLASS_AND_OBJECT: 'class-and-object',
-  CLASS_OBJECT_DATA: 'class-object-data',
-  FULL: 'full',
-};
-
-function toViewOptions(mode) {
-  switch (mode) {
-    case ONTOLOGY_VIEW_MODES.CLASS_ONLY:
-      return {
-        showDataProperties: false,
-        showAnnotationProperties: false,
-        showObjectProperties: false,
-        showNamedIndividuals: false,
-      };
-    case ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA:
-      return {
-        showDataProperties: true,
-        showAnnotationProperties: false,
-        showObjectProperties: true,
-        showNamedIndividuals: false,
-      };
-    case ONTOLOGY_VIEW_MODES.FULL:
-      return {
-        showDataProperties: true,
-        showAnnotationProperties: true,
-        showObjectProperties: true,
-        showNamedIndividuals: true,
-      };
-    case ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT:
-    default:
-      return {
-        showDataProperties: false,
-        showAnnotationProperties: false,
-        showObjectProperties: true,
-        showNamedIndividuals: false,
-      };
+function toViewOptions(projectionMode, graphData) {
+  if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
+    return {
+      projectionMode: GRAPH_PROJECTION_MODES.KG,
+      showDataProperties: true,
+      showAnnotationProperties: true,
+      showObjectProperties: true,
+      showNamedIndividuals: true,
+      showTypeLinks: false,
+    };
   }
+
+  return {
+    projectionMode: GRAPH_PROJECTION_MODES.ONTOLOGY,
+    showDataProperties: true,
+    showAnnotationProperties: true,
+    showObjectProperties: true,
+    showNamedIndividuals: true,
+    showTypeLinks: Boolean(graphData?.hasOntology && graphData?.hasKg),
+  };
 }
 
 function modelHasOntologySchema(model) {
@@ -493,7 +492,8 @@ function modelHasOntologySchema(model) {
     (model.classIds?.size ?? 0) > 0 ||
     (model.objectPropertyIds?.size ?? 0) > 0 ||
     (model.dataPropertyIds?.size ?? 0) > 0 ||
-    (model.annotationPropertyIds?.size ?? 0) > 0
+    (model.annotationPropertyIds?.size ?? 0) > 0 ||
+    (model.datatypeIds?.size ?? 0) > 0
   );
 }
 
@@ -526,9 +526,10 @@ export default function App() {
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
-  const [ontologyViewMode, setOntologyViewMode] = useState(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
+  const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.ONTOLOGY);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [focusedNodeId, setFocusedNodeId] = useState(null);
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -550,7 +551,7 @@ export default function App() {
   const [rightFlyoutOpen, setRightFlyoutOpen] = useState(false);
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
 
-  const [status, setStatus] = useState('Upload KG and/or ontology files to initialize the graph.');
+  const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
   const [filterError, setFilterError] = useState('');
   const [ontologyMetadataRows, setOntologyMetadataRows] = useState([]);
@@ -562,6 +563,10 @@ export default function App() {
   const selectedNode = useMemo(
     () => (selectedNodeId && graphData ? graphData.nodeMap.get(selectedNodeId) : null),
     [selectedNodeId, graphData],
+  );
+  const selectedEdge = useMemo(
+    () => (selectedEdgeId && graphData ? graphData.edgeMap.get(selectedEdgeId) : null),
+    [selectedEdgeId, graphData],
   );
 
   function fitCurrentGraphViewport(cy, duration = 250) {
@@ -660,6 +665,29 @@ export default function App() {
       iri: selectedNode.baseIri,
     };
   }, [selectedNode]);
+  const selectedNodeMetadataRows = useMemo(
+    () => (selectedNodeId && graphData ? graphData.nodeMetadata.get(selectedNodeId) ?? [] : []),
+    [selectedNodeId, graphData],
+  );
+  const selectedEdgeMetadataRows = useMemo(() => {
+    if (!selectedEdgeId || !graphData) {
+      return [];
+    }
+
+    const baseRows = graphData.edgeMetadata.get(selectedEdgeId) ?? [];
+    const edge = graphData.edgeMap.get(selectedEdgeId);
+    if (!edge) {
+      return baseRows;
+    }
+
+    const predicateMetadata = graphData.nodeMetadata.get(edge.predicate) ?? [];
+    const predicateRows = predicateMetadata.map((row) => ({
+      key: `Predicate ${row.predicateLabel}`,
+      value: row.value,
+    }));
+
+    return [...baseRows, ...predicateRows];
+  }, [selectedEdgeId, graphData]);
 
   const neighborRows = useMemo(
     () => buildNeighborRows(selectedNodeId, visibleElements, graphData),
@@ -748,13 +776,13 @@ export default function App() {
           },
         },
         {
-          selector: 'node[ontologyKind = "class"]',
+          selector: 'node[entityCategory = "class"]',
           style: {
             shape: 'ellipse',
           },
         },
         {
-          selector: 'node[ontologyKind = "individual"]',
+          selector: 'node[entityCategory = "individual"]',
           style: {
             shape: 'round-rectangle',
           },
@@ -769,7 +797,16 @@ export default function App() {
           },
         },
         {
-          selector: 'node[ontologyKind = "data-property"]',
+          selector: 'node[entityCategory = "datatype"]',
+          style: {
+            shape: 'triangle',
+            'background-color': '#eee5da',
+            'border-color': '#8e7560',
+            color: '#1e1b16',
+          },
+        },
+        {
+          selector: 'node[entityCategory = "data-property"]',
           style: {
             shape: 'diamond',
             'background-color': '#f0e7db',
@@ -778,7 +815,7 @@ export default function App() {
           },
         },
         {
-          selector: 'node[ontologyKind = "object-property"]',
+          selector: 'node[entityCategory = "object-property"]',
           style: {
             shape: 'hexagon',
             'background-color': '#efe4d7',
@@ -787,13 +824,23 @@ export default function App() {
           },
         },
         {
-          selector: 'node[ontologyKind = "annotation-property"]',
+          selector: 'node[entityCategory = "annotation-property"]',
           style: {
-            shape: 'round-rectangle',
+            shape: 'round-diamond',
             'background-color': '#efe6dd',
             'border-color': '#9e846b',
             'border-style': 'dashed',
             color: '#1e1b16',
+          },
+        },
+        {
+          selector: 'node[entityCategory = "class-expression"]',
+          style: {
+            shape: 'hexagon',
+            'background-color': '#e8f2ef',
+            'border-color': '#2f8a81',
+            'border-width': 2.2,
+            color: '#1f4f4c',
           },
         },
         {
@@ -868,6 +915,17 @@ export default function App() {
             opacity: 1,
           },
         },
+        {
+          selector: '.selected-relation',
+          style: {
+            width: 3.2,
+            'line-color': '#1e6b6a',
+            'target-arrow-color': '#1e6b6a',
+            'text-background-color': '#f0fff8',
+            'text-border-color': '#9fd5cb',
+            opacity: 1,
+          },
+        },
       ],
       layout: {
         name: 'cose',
@@ -884,8 +942,21 @@ export default function App() {
       }
       setMultiClassBadgeTooltip(null);
       const nodeId = event.target.id();
+      setSelectedEdgeId(null);
       setSelectedNodeId(nodeId);
       setFocusedNodeId(nodeId);
+    });
+
+    cy.on('tap', 'edge', (event) => {
+      if (suppressNextTapRef.current) {
+        suppressNextTapRef.current = false;
+        return;
+      }
+      setMultiClassBadgeTooltip(null);
+      const edgeId = event.target.id();
+      setSelectedNodeId(null);
+      setFocusedNodeId(null);
+      setSelectedEdgeId(edgeId);
     });
 
     cy.on('tap', (event) => {
@@ -897,6 +968,7 @@ export default function App() {
       if (event.target === cy) {
         setSelectedNodeId(null);
         setFocusedNodeId(null);
+        setSelectedEdgeId(null);
       }
     });
 
@@ -913,6 +985,7 @@ export default function App() {
         shouldFitAfterFocusClearRef.current = true;
         setFocusedNodeId(null);
         setSelectedNodeId(null);
+        setSelectedEdgeId(null);
         return;
       }
 
@@ -1298,6 +1371,23 @@ export default function App() {
   }, [focusedNodeId, visibleElements]);
 
   useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+
+    cy.edges().removeClass('selected-relation');
+    if (!selectedEdgeId) {
+      return;
+    }
+
+    const edge = cy.$id(selectedEdgeId);
+    if (!edge.empty()) {
+      edge.addClass('selected-relation');
+    }
+  }, [selectedEdgeId, visibleElements]);
+
+  useEffect(() => {
     if (!graphData) {
       setVisibleElements([]);
       return;
@@ -1310,10 +1400,7 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = {
-          ...toViewOptions(ontologyViewMode),
-          showTypeLinks: graphData.hasOntology && graphData.hasKg,
-        };
+        const viewOptions = toViewOptions(graphProjectionMode, graphData);
         const classFilterActive =
           graphData.classes.length > 0 && selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
@@ -1356,12 +1443,7 @@ export default function App() {
       } catch (error) {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
-          setVisibleElements(
-            buildFocusedSubset(graphData, null, {
-              ...toViewOptions(ontologyViewMode),
-              showTypeLinks: graphData.hasOntology && graphData.hasKg,
-            }),
-          );
+          setVisibleElements(buildFocusedSubset(graphData, null, toViewOptions(graphProjectionMode, graphData)));
         }
       } finally {
         if (!cancelled) {
@@ -1381,11 +1463,18 @@ export default function App() {
     selectedBaseIris,
     nodeNameQuery,
     sparqlQuery,
-    ontologyViewMode,
+    graphProjectionMode,
   ]);
 
   useEffect(() => {
     if (!selectedNodeId) {
+      if (!selectedEdgeId) {
+        return;
+      }
+      const hasSelectedEdge = visibleElements.some((entry) => entry.data.source && entry.data.id === selectedEdgeId);
+      if (!hasSelectedEdge) {
+        setSelectedEdgeId(null);
+      }
       return;
     }
 
@@ -1394,100 +1483,165 @@ export default function App() {
       setSelectedNodeId(null);
       setFocusedNodeId(null);
     }
-  }, [visibleElements, selectedNodeId]);
+  }, [visibleElements, selectedNodeId, selectedEdgeId]);
 
-  async function handleLoadGraph() {
+  function clearLoadedGraph() {
+    setKgFiles([]);
+    setOntologyFiles([]);
+    setGraphData(null);
+    setVisibleElements([]);
+    setSelectedClassIris([]);
+    setSelectedBaseIris([]);
+    setNodeNameQuery('');
+    setSparqlDraft('');
+    setSparqlQuery('');
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setFocusedNodeId(null);
+    setOntologyMetadataRows([]);
+    setLoadError('');
+    setFilterError('');
+    setStatus(DEFAULT_STATUS);
+  }
+
+  useEffect(() => {
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
+      setGraphData(null);
+      setVisibleElements([]);
+      setSelectedClassIris([]);
+      setSelectedBaseIris([]);
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+      setFocusedNodeId(null);
+      setOntologyMetadataRows([]);
+      setLoadError('');
+      setFilterError('');
+      setIsLoading(false);
+      setStatus(DEFAULT_STATUS);
       return;
     }
 
-    setIsLoading(true);
-    setLoadError('');
-    setFilterError('');
-    setOntologyMetadataRows([]);
+    let cancelled = false;
 
-    try {
-      const kgQuadGroups = await Promise.all(
-        kgFiles.map(async (file) => {
-          const text = await file.text();
-          return parseRdfText(text, file.name);
-        }),
-      );
-      const ontologyParsedFiles = await Promise.all(
-        ontologyFiles.map(async (file) => {
-          const text = await file.text();
-          const quads = await parseRdfText(text, file.name);
-          const { headerQuads, contentQuads } = partitionOntologyHeaderQuads(quads);
-          const model = extractOntologyModel(contentQuads);
-          const hasSchema = modelHasOntologySchema(model);
-          return { fileName: file.name, headerQuads, contentQuads, hasSchema };
-        }),
-      );
+    const loadGraph = async () => {
+      setIsLoading(true);
+      setLoadError('');
+      setFilterError('');
+      setOntologyMetadataRows([]);
 
-      const kgQuads = kgQuadGroups.flat();
-      const schemaOntologyQuads = [];
-      const instanceOntologyQuads = [];
-      let schemaOntologyFileCount = 0;
-      let instanceOntologyFileCount = 0;
-      const metadataRows = [];
+      try {
+        const kgQuadGroups = await Promise.all(
+          kgFiles.map(async (file) => {
+            const text = await file.text();
+            return parseRdfText(text, file.name);
+          }),
+        );
+        const ontologyParsedFiles = await Promise.all(
+          ontologyFiles.map(async (file) => {
+            const text = await file.text();
+            const quads = await parseRdfText(text, file.name);
+            const { headerQuads, contentQuads } = partitionOntologyHeaderQuads(quads);
+            const model = extractOntologyModel(contentQuads);
+            const hasSchema = modelHasOntologySchema(model);
+            return { fileName: file.name, headerQuads, contentQuads, hasSchema };
+          }),
+        );
 
-      for (const parsed of ontologyParsedFiles) {
-        parsed.headerQuads.forEach((quad, index) => {
-          metadataRows.push({
-            id: `${parsed.fileName}-${index}-${getTermId(quad.subject)}-${getTermId(quad.object)}`,
-            fileName: parsed.fileName,
-            subject: formatTermForInspector(quad.subject),
-            predicate: formatTermForInspector(quad.predicate),
-            value: formatTermForInspector(quad.object),
+        if (cancelled) {
+          return;
+        }
+
+        const kgQuads = kgQuadGroups.flat();
+        const schemaOntologyQuads = [];
+        const instanceOntologyQuads = [];
+        let schemaOntologyFileCount = 0;
+        let instanceOntologyFileCount = 0;
+        const metadataRows = [];
+
+        for (const parsed of ontologyParsedFiles) {
+          parsed.headerQuads.forEach((quad, index) => {
+            metadataRows.push({
+              id: `${parsed.fileName}-${index}-${getTermId(quad.subject)}-${getTermId(quad.object)}`,
+              fileName: parsed.fileName,
+              subject: formatTermForInspector(quad.subject),
+              predicate: formatTermForInspector(quad.predicate),
+              value: formatTermForInspector(quad.object),
+            });
           });
+
+          if (parsed.hasSchema) {
+            schemaOntologyQuads.push(...parsed.contentQuads);
+            schemaOntologyFileCount += 1;
+          } else {
+            instanceOntologyQuads.push(...parsed.contentQuads);
+            instanceOntologyFileCount += 1;
+          }
+        }
+
+        const effectiveKgQuads = [...kgQuads, ...instanceOntologyQuads];
+        const mergedQuads = [...effectiveKgQuads, ...schemaOntologyQuads];
+        const ontologyModel = extractOntologyModel(schemaOntologyQuads);
+        const hasOntology = modelHasOntologySchema(ontologyModel) && schemaOntologyQuads.length > 0;
+        const hasKg = effectiveKgQuads.length > 0;
+        const nextGraphData = buildGraphData(mergedQuads, {
+          hasKg,
+          hasOntology,
+          ontologyModel,
+        });
+        const derivedPrefixRows = nextGraphData.baseIris.map((entry, index) => {
+          const prefix = getPrefixFromBaseIri(entry.id);
+          return {
+            id: `derived-prefix-${index}-${entry.id}`,
+            fileName: 'Derived prefixes',
+            subject: 'dataset',
+            predicate: 'prefix',
+            value: `${prefix}: <${entry.id}>`,
+          };
         });
 
-        if (parsed.hasSchema) {
-          schemaOntologyQuads.push(...parsed.contentQuads);
-          schemaOntologyFileCount += 1;
-        } else {
-          instanceOntologyQuads.push(...parsed.contentQuads);
-          instanceOntologyFileCount += 1;
+        if (cancelled) {
+          return;
+        }
+
+        setGraphData(nextGraphData);
+        setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
+        setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
+        setNodeNameQuery('');
+        setSparqlDraft('');
+        setSparqlQuery('');
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        setFocusedNodeId(null);
+        setOntologyMetadataRows([...metadataRows, ...derivedPrefixRows]);
+
+        setStatus(
+          `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${
+            kgFiles.length + instanceOntologyFileCount
+          } KG file${kgFiles.length + instanceOntologyFileCount === 1 ? '' : 's'}${
+            schemaOntologyFileCount > 0
+              ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
+              : ''
+          }`,
+        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setLoadError(error.message || 'Unable to parse one of the uploaded files.');
+        setOntologyMetadataRows([]);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
         }
       }
+    };
 
-      const effectiveKgQuads = [...kgQuads, ...instanceOntologyQuads];
-      const mergedQuads = [...effectiveKgQuads, ...schemaOntologyQuads];
-      const ontologyModel = extractOntologyModel(schemaOntologyQuads);
-      const hasOntology = modelHasOntologySchema(ontologyModel) && schemaOntologyQuads.length > 0;
-      const hasKg = effectiveKgQuads.length > 0;
-      const nextGraphData = buildGraphData(mergedQuads, {
-        hasKg,
-        hasOntology,
-        ontologyModel,
-      });
+    loadGraph();
 
-      setGraphData(nextGraphData);
-      setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
-      setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
-      setNodeNameQuery('');
-      setSparqlDraft('');
-      setSparqlQuery('');
-      setSelectedNodeId(null);
-      setFocusedNodeId(null);
-      setOntologyMetadataRows(metadataRows);
-
-      setStatus(
-        `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${
-          kgFiles.length + instanceOntologyFileCount
-        } KG file${kgFiles.length + instanceOntologyFileCount === 1 ? '' : 's'}${
-          schemaOntologyFileCount > 0
-            ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
-            : ''
-        }`,
-      );
-    } catch (error) {
-      setLoadError(error.message || 'Unable to parse one of the uploaded files.');
-      setOntologyMetadataRows([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [kgFiles, ontologyFiles]);
 
   function toggleClass(classIri) {
     setSelectedClassIris((current) => {
@@ -1808,6 +1962,16 @@ export default function App() {
                     {leftSectionOpen.source ? '-' : '+'}
                   </button>
                   <h2>Source File</h2>
+                  <button
+                    type="button"
+                    className="section-clear"
+                    onClick={clearLoadedGraph}
+                    disabled={kgFiles.length === 0 && ontologyFiles.length === 0}
+                    aria-label="Clear all uploaded files and graph"
+                    title="Clear graph"
+                  >
+                    Clear
+                  </button>
                 </div>
 
                 {leftSectionOpen.source && (
@@ -1818,7 +1982,11 @@ export default function App() {
                         type="file"
                         accept=".ttl,.rdf,.n3,.nt,.nq,.trig"
                         multiple
-                        onChange={(event) => setKgFiles(Array.from(event.target.files ?? []))}
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? []);
+                          setKgFiles((current) => mergeSelectedFiles(current, files));
+                          event.target.value = '';
+                        }}
                       />
                       <small>{formatSelectedFiles(kgFiles, 'No KG files selected')}</small>
                     </label>
@@ -1829,19 +1997,15 @@ export default function App() {
                         type="file"
                         accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
                         multiple
-                        onChange={(event) => setOntologyFiles(Array.from(event.target.files ?? []))}
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? []);
+                          setOntologyFiles((current) => mergeSelectedFiles(current, files));
+                          event.target.value = '';
+                        }}
                       />
                       <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
                     </label>
-
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={(kgFiles.length === 0 && ontologyFiles.length === 0) || isLoading}
-                      onClick={handleLoadGraph}
-                    >
-                      {isLoading ? 'Parsing...' : 'Build graph'}
-                    </button>
+                    <small className="muted">{isLoading ? 'Parsing and merging graph...' : 'Graph updates automatically when files are added.'}</small>
                   </div>
                 )}
               </section>
@@ -1862,48 +2026,10 @@ export default function App() {
 
                 {leftSectionOpen.filters && (
                   <div className="section-body">
-                    <h3 className="filter-group-title">Ontology view</h3>
-                    <div className="option-list">
-                      <label className="option-item">
-                        <input
-                          type="radio"
-                          name="ontology-view-mode"
-                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
-                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
-                        />
-                        <span>Class structure only (`rdfs:subClassOf`)</span>
-                      </label>
-
-                      <label className="option-item">
-                        <input
-                          type="radio"
-                          name="ontology-view-mode"
-                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
-                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
-                        />
-                        <span>Classes with object properties (default)</span>
-                      </label>
-
-                      <label className="option-item">
-                        <input
-                          type="radio"
-                          name="ontology-view-mode"
-                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
-                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
-                        />
-                        <span>Class structure + object + data properties</span>
-                      </label>
-
-                      <label className="option-item">
-                        <input
-                          type="radio"
-                          name="ontology-view-mode"
-                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
-                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
-                        />
-                        <span>Class structure + object + data + annotation properties</span>
-                      </label>
-                    </div>
+                    <h3 className="filter-group-title">Projection</h3>
+                    <p className="muted">
+                      Active view: {graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY ? 'Ontology full detailed view' : 'KG view'}
+                    </p>
 
                     <h3 className="filter-group-title">Class type</h3>
                     <h3 className="filter-group-title">Node name</h3>
@@ -2145,6 +2271,31 @@ export default function App() {
             </div>
           )}
 
+          <div className="graph-tools graph-tools-left">
+            <div className="projection-toggle" role="tablist" aria-label="Graph projection mode">
+              <button
+                type="button"
+                className={`projection-toggle-button ${
+                  graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY ? 'active' : ''
+                }`}
+                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY)}
+                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY}
+              >
+                Ontology Full Detailed View
+              </button>
+              <button
+                type="button"
+                className={`projection-toggle-button ${
+                  graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'active' : ''
+                }`}
+                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG)}
+                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.KG}
+              >
+                KG View
+              </button>
+            </div>
+          </div>
+
           <div className="graph-tools">
             <button
               type="button"
@@ -2240,18 +2391,83 @@ export default function App() {
               <section className="panel-section details-card">
                 <h2>Entity Inspector</h2>
 
-                {!selectedNode && ontologyMetadataRows.length === 0 && (
-                  <p className="muted">Click a node to inspect properties and neighbors.</p>
+                {!selectedNode && !selectedEdge && ontologyMetadataRows.length === 0 && (
+                  <p className="muted">Click a node or relation to inspect metadata and provenance.</p>
                 )}
 
-                {!selectedNode && ontologyMetadataRows.length > 0 && (
+                {!selectedNode && !selectedEdge && ontologyMetadataRows.length > 0 && (
                   <>
-                    <h4>Ontology header metadata ({ontologyMetadataRows.length})</h4>
+                    <h4>Ontology metadata ({ontologyMetadataRows.length})</h4>
                     <div className="property-list">
                       {ontologyMetadataRows.map((row) => (
                         <div key={row.id} className="property-row" title={row.fileName}>
                           <div className="property-name">{row.predicate}</div>
                           <div className="property-meta breakable">{row.subject}</div>
+                          <div className="property-value breakable">{row.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {selectedEdge && (
+                  <>
+                    <h3 className="entity-title">{selectedEdge.predicateLabel}</h3>
+
+                    <dl className="entity-meta">
+                      <dt>Axiom</dt>
+                      <dd>{selectedEdge.axiomKind || 'Axiom'}</dd>
+
+                      {selectedEdge.restrictionKind && (
+                        <>
+                          <dt>Restriction</dt>
+                          <dd>{selectedEdge.restrictionKind}</dd>
+                        </>
+                      )}
+
+                      <dt>Category</dt>
+                      <dd>{selectedEdge.category}</dd>
+
+                      <dt>Predicate IRI</dt>
+                      <dd className="breakable mono">{selectedEdge.predicate}</dd>
+
+                      <dt>Source</dt>
+                      <dd>
+                        <button
+                          type="button"
+                          className="neighbor-row inspector-link"
+                          onClick={() => {
+                            setSelectedEdgeId(null);
+                            setSelectedNodeId(selectedEdge.source);
+                            setFocusedNodeId(selectedEdge.source);
+                          }}
+                        >
+                          {graphData?.nodeMap.get(selectedEdge.source)?.fullLabel ?? selectedEdge.source}
+                        </button>
+                      </dd>
+
+                      <dt>Target</dt>
+                      <dd>
+                        <button
+                          type="button"
+                          className="neighbor-row inspector-link"
+                          onClick={() => {
+                            setSelectedEdgeId(null);
+                            setSelectedNodeId(selectedEdge.target);
+                            setFocusedNodeId(selectedEdge.target);
+                          }}
+                        >
+                          {graphData?.nodeMap.get(selectedEdge.target)?.fullLabel ?? selectedEdge.target}
+                        </button>
+                      </dd>
+                    </dl>
+
+                    <h4>Relation metadata ({selectedEdgeMetadataRows.length})</h4>
+                    <div className="property-list">
+                      {selectedEdgeMetadataRows.length === 0 && <p className="muted">No additional metadata available.</p>}
+                      {selectedEdgeMetadataRows.map((row, index) => (
+                        <div key={`${row.key}-${index}`} className="property-row">
+                          <div className="property-name">{row.key}</div>
                           <div className="property-value breakable">{row.value}</div>
                         </div>
                       ))}
@@ -2266,6 +2482,9 @@ export default function App() {
                     <dl className="entity-meta">
                       <dt>Type</dt>
                       <dd>{selectedNode.termType}</dd>
+
+                      <dt>Category</dt>
+                      <dd>{selectedNode.entityCategory || selectedNode.ontologyKind || selectedNode.kind}</dd>
 
                       <dt>ID</dt>
                       <dd>
@@ -2291,21 +2510,36 @@ export default function App() {
                         </>
                       )}
 
-                    {selectedNodeClasses.length > 0 && (
-                      <>
-                        <dt>Classes</dt>
-                        <dd>
-                          <ol className="class-chain">
-                            {selectedNodeClasses.map((entry) => (
-                              <li key={entry.iri} title={entry.iri}>
-                                {entry.prefixed}
-                              </li>
-                            ))}
-                          </ol>
-                        </dd>
-                      </>
-                    )}
-                  </dl>
+                      {selectedNodeClasses.length > 0 && (
+                        <>
+                          <dt>Classes</dt>
+                          <dd>
+                            <ol className="class-chain">
+                              {selectedNodeClasses.map((entry) => (
+                                <li key={entry.iri} title={entry.iri}>
+                                  {entry.prefixed}
+                                </li>
+                              ))}
+                            </ol>
+                          </dd>
+                        </>
+                      )}
+                    </dl>
+
+                    <h4>Metadata / provenance ({selectedNodeMetadataRows.length})</h4>
+                    <div className="property-list">
+                      {selectedNodeMetadataRows.length === 0 && <p className="muted">No metadata rows available for this node.</p>}
+                      {selectedNodeMetadataRows.map((row, index) => (
+                        <div
+                          key={`${row.predicate}-${row.value}-${index}`}
+                          className="property-row"
+                          title={row.predicate}
+                        >
+                          <div className="property-name">{row.predicateLabel}</div>
+                          <div className="property-value breakable">{row.value}</div>
+                        </div>
+                      ))}
+                    </div>
 
                     <h4>Data properties ({selectedNodeDataProperties.length})</h4>
                     <div className="property-list">
@@ -2333,6 +2567,7 @@ export default function App() {
                           className="neighbor-row"
                           type="button"
                           onClick={() => {
+                            setSelectedEdgeId(null);
                             setSelectedNodeId(row.neighborId);
                             setFocusedNodeId(row.neighborId);
                           }}

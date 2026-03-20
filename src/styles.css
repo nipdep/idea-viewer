@@ -265,6 +265,10 @@ textarea {
   gap: 8px;
 }
 
+.section-header h2 {
+  flex: 1;
+}
+
 .section-toggle {
   width: 18px;
   height: 18px;
@@ -297,6 +301,23 @@ textarea {
 
 .section-body {
   margin-top: 8px;
+}
+
+.section-clear {
+  padding: 4px 9px;
+  font-size: 0.72rem;
+  line-height: 1;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f7f1e9;
+  color: #544c43;
+  box-shadow: none;
+}
+
+.section-clear:hover {
+  transform: none;
+  box-shadow: none;
+  background: #efe6db;
 }
 
 .collapsed-section {
@@ -623,6 +644,47 @@ textarea {
   z-index: 5;
 }
 
+.graph-tools-left {
+  left: 18px;
+  right: auto;
+}
+
+.projection-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 250, 242, 0.94);
+  padding: 4px;
+}
+
+.projection-toggle-button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #5a524a;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 7px 10px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.projection-toggle-button:hover {
+  transform: none;
+  box-shadow: none;
+  background: #f2e8dc;
+}
+
+.projection-toggle-button.active {
+  border-color: rgba(42, 111, 110, 0.35);
+  background: rgba(42, 111, 110, 0.14);
+  color: #1f5f5e;
+}
+
 .graph-tool-button {
   border: 1px solid var(--border);
   background: rgba(255, 250, 242, 0.94);
@@ -894,6 +956,10 @@ textarea {
   text-align: left;
 }
 
+.inspector-link {
+  width: 100%;
+}
+
 .badge {
   border-radius: 999px;
   padding: 2px 8px;
@@ -915,6 +981,11 @@ textarea {
     --left-panel-open-width: 280px;
     --right-panel-open-width: 320px;
     padding: 10px 20px 20px;
+  }
+
+  .projection-toggle-button {
+    font-size: 0.7rem;
+    padding: 6px 8px;
   }
 }
 
@@ -994,6 +1065,17 @@ textarea {
     bottom: 18px;
   }
 
+  .graph-tools-left {
+    left: 12px;
+    right: auto;
+    top: 12px;
+  }
+
+  .projection-toggle {
+    max-width: calc(100vw - 160px);
+    overflow-x: auto;
+  }
+
   .graph-canvas {
     min-height: 320px;
   }
@@ -1026,6 +1108,11 @@ textarea {
 .page-shell.fullscreen-mode .graph-tools {
   top: 12px;
   right: 12px;
+}
+
+.page-shell.fullscreen-mode .graph-tools-left {
+  left: 12px;
+  right: auto;
 }
 
 .page-shell.fullscreen-mode .status-bar.overlay {

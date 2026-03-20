@@ -417,6 +417,32 @@ button:disabled {
   border-color: var(--accent-2);
 }
 
+.node-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.node-search-row input {
+  margin-top: 0;
+}
+
+.node-search-row button {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  padding: 7px 10px;
+  box-shadow: none;
+}
+
+.node-search-row button:hover {
+  transform: none;
+  box-shadow: none;
+  background: #f1e8de;
+}
+
 textarea,
 select,
 input[type='text'] {

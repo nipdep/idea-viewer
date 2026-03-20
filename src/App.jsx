@@ -115,6 +115,39 @@ function runBaseIriFilter(graphData, baseIris) {
   return matchedNodeIds;
 }
 
+function normalizeSearchText(value) {
+  return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function runNodeNameFilter(graphData, queryText) {
+  if (!graphData) {
+    return new Set();
+  }
+
+  const needle = normalizeSearchText(queryText);
+  if (!needle) {
+    return new Set();
+  }
+
+  const matchedNodeIds = new Set();
+  for (const node of graphData.nodes) {
+    const displayLabel = (node.displayLabel || '').replace(/\n/g, ' ');
+    const fields = [
+      node.fullLabel || '',
+      displayLabel,
+      node.classBadge || '',
+      node.primaryClassLabel || '',
+      node.iri || '',
+    ];
+
+    if (fields.some((field) => normalizeSearchText(field).includes(needle))) {
+      matchedNodeIds.add(node.id);
+    }
+  }
+
+  return matchedNodeIds;
+}
+
 function buildNeighborRows(selectedNodeId, visibleElements, graphData) {
   if (!selectedNodeId || !graphData) {
     return [];
@@ -488,6 +521,7 @@ export default function App() {
 
   const [selectedClassIris, setSelectedClassIris] = useState([]);
   const [selectedBaseIris, setSelectedBaseIris] = useState([]);
+  const [nodeNameQuery, setNodeNameQuery] = useState('');
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
@@ -1257,9 +1291,10 @@ export default function App() {
           graphData.classes.length > 0 && selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
           graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
+        const nodeNameFilterActive = nodeNameQuery.trim().length > 0;
         const sparqlActive = sparqlQuery.trim().length > 0;
 
-        if (!classFilterActive && !baseIriFilterActive && !sparqlActive) {
+        if (!classFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
             setVisibleElements(buildFocusedSubset(graphData, null, viewOptions));
           }
@@ -1276,6 +1311,11 @@ export default function App() {
         if (classFilterActive) {
           const classMatches = await runClassFilter(engine, graphData.store, selectedClassIris);
           selectedEntities = selectedEntities ? intersectSets(selectedEntities, classMatches) : classMatches;
+        }
+
+        if (nodeNameFilterActive) {
+          const nameMatches = runNodeNameFilter(graphData, nodeNameQuery);
+          selectedEntities = selectedEntities ? intersectSets(selectedEntities, nameMatches) : nameMatches;
         }
 
         if (sparqlActive) {
@@ -1312,6 +1352,7 @@ export default function App() {
     graphData,
     selectedClassIris,
     selectedBaseIris,
+    nodeNameQuery,
     sparqlQuery,
     ontologyViewMode,
   ]);
@@ -1397,6 +1438,7 @@ export default function App() {
       setGraphData(nextGraphData);
       setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
       setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
+      setNodeNameQuery('');
       setSparqlDraft('');
       setSparqlQuery('');
       setSelectedNodeId(null);
@@ -1837,6 +1879,20 @@ export default function App() {
                     </div>
 
                     <h3 className="filter-group-title">Class type</h3>
+                    <h3 className="filter-group-title">Node name</h3>
+                    <div className="node-search-row">
+                      <input
+                        type="text"
+                        value={nodeNameQuery}
+                        onChange={(event) => setNodeNameQuery(event.target.value)}
+                        placeholder="Search visible node labels..."
+                        aria-label="Search by node name"
+                      />
+                      <button type="button" onClick={() => setNodeNameQuery('')} disabled={!nodeNameQuery.trim()}>
+                        Clear
+                      </button>
+                    </div>
+
                     <div className="mini-actions">
                       <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
                         Select all

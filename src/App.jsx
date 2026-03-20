@@ -1744,10 +1744,10 @@ export default function App() {
                 {leftSectionOpen.source && (
                   <div className="section-body">
                     <label className="file-control">
-                      <span>KG files (optional: .ttl/.n3/.nt/.nq/.trig)</span>
+                      <span>KG files (optional: .ttl/.rdf/.n3/.nt/.nq/.trig)</span>
                       <input
                         type="file"
-                        accept=".ttl,.n3,.nt,.nq,.trig"
+                        accept=".ttl,.rdf,.n3,.nt,.nq,.trig"
                         multiple
                         onChange={(event) => setKgFiles(Array.from(event.target.files ?? []))}
                       />

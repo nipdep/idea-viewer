@@ -8,7 +8,7 @@
 
 ## Features
 
-- Upload KG file (`.ttl`, `.n3`, `.nt`, `.nq`, `.trig`)
+- Upload KG file (`.ttl`, `.rdf`, `.n3`, `.nt`, `.nq`, `.trig`)
 - Upload optional ontology file (`.owl`, `.rdf`, `.ttl`, `.n3`, `.nt`, `.nq`, `.trig`)
 - Merge KG + ontology into one base graph
 - Collapsible left panel:
@@ -224,8 +224,7 @@ npm run preview
 
 ## Notes
 
-- `.owl`/`.rdf` files that are RDF/XML are currently rejected in this build.
-- Turtle-family syntaxes are supported through N3 parser flow.
+- RDF/XML (`.rdf`, `.owl`) and Turtle-family syntaxes are supported.
 - SPARQL filter should return `?entity` (or any node variable bound to graph entities).
 
 ## error

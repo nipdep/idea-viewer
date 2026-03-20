@@ -46,6 +46,7 @@ const ONTOLOGY_VIEW_MODES = {
   CLASS_OBJECT_DATA: 'class-object-data',
   FULL: 'full',
 };
+const GROUP_DRAG_DOUBLE_CLICK_MS = 320;
 
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
@@ -550,6 +551,7 @@ export default function App() {
   const layoutPositionCacheRef = useRef(new Map());
   const groupDragStateRef = useRef(null);
   const groupDragArmRef = useRef(null);
+  const groupDragClickRef = useRef({ nodeId: '', at: 0 });
   const shouldFitAfterFocusClearRef = useRef(false);
   const detachedPanModeRef = useRef(false);
   const detachedPanLastMouseRef = useRef(null);
@@ -1049,6 +1051,45 @@ export default function App() {
       }
     });
 
+    cy.on('mousedown', 'node', (event) => {
+      const originalEvent = event.originalEvent;
+      if (!(originalEvent instanceof MouseEvent) || originalEvent.button !== 0) {
+        return;
+      }
+
+      const activeFocusNodeId = focusedNodeIdRef.current;
+      const downNode = event.target;
+      const now = Date.now();
+      const previousClick = groupDragClickRef.current;
+      const isNodeDoubleClick =
+        previousClick.nodeId === downNode.id() && now - previousClick.at <= GROUP_DRAG_DOUBLE_CLICK_MS;
+      groupDragClickRef.current = { nodeId: downNode.id(), at: now };
+
+      if (!activeFocusNodeId) {
+        groupDragArmRef.current = null;
+        return;
+      }
+
+      const focusNode = cy.$id(activeFocusNodeId);
+      if (focusNode.empty()) {
+        groupDragArmRef.current = null;
+        return;
+      }
+
+      const groupNodes = focusNode.closedNeighborhood().nodes();
+      if (!groupNodes.has(downNode)) {
+        groupDragArmRef.current = null;
+        return;
+      }
+
+      if (isNodeDoubleClick) {
+        groupDragArmRef.current = {
+          nodeId: downNode.id(),
+          focusedNodeId: activeFocusNodeId,
+        };
+      }
+    });
+
     cy.on('dbltap', 'node', (event) => {
       if (event.originalEvent instanceof MouseEvent && event.originalEvent.button !== 0) {
         return;
@@ -1295,6 +1336,7 @@ export default function App() {
       container.removeEventListener('contextmenu', onContextMenu);
       groupDragStateRef.current = null;
       groupDragArmRef.current = null;
+      groupDragClickRef.current = { nodeId: '', at: 0 };
       shouldFitAfterFocusClearRef.current = false;
       layoutPositionCacheRef.current.clear();
       detachedPanModeRef.current = false;
@@ -1310,6 +1352,7 @@ export default function App() {
     if (!focusedNodeId) {
       groupDragStateRef.current = null;
       groupDragArmRef.current = null;
+      groupDragClickRef.current = { nodeId: '', at: 0 };
       return;
     }
     if (groupDragArmRef.current?.focusedNodeId !== focusedNodeId) {
@@ -1325,6 +1368,7 @@ export default function App() {
   useEffect(() => {
     groupDragStateRef.current = null;
     groupDragArmRef.current = null;
+    groupDragClickRef.current = { nodeId: '', at: 0 };
     setMultiClassBadgeTooltip(null);
     setRestrictionNodeTooltip(null);
   }, [visibleElements]);

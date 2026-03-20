@@ -799,7 +799,7 @@ textarea {
 
 .graph-legend-item {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   color: #4f463d;
@@ -809,11 +809,12 @@ textarea {
 }
 
 .graph-legend-marker {
-  width: 24px;
-  height: 14px;
+  width: 26px;
+  height: 16px;
   border: 1.5px solid #7e6f60;
   background: #e7ded3;
   justify-self: center;
+  display: inline-block;
 }
 
 .graph-legend-marker.marker-class {
@@ -825,52 +826,63 @@ textarea {
 }
 
 .graph-legend-marker.marker-literal {
-  border-radius: 1px;
+  border-radius: 0;
   background: #f0e4d7;
   border-color: #9b7458;
 }
 
 .graph-legend-marker.marker-datatype {
+  width: 18px;
+  height: 16px;
   border-radius: 0;
   background: #eee5da;
   border-color: #8e7560;
-  clip-path: polygon(50% 6%, 95% 94%, 5% 94%);
-  height: 16px;
+  clip-path: polygon(50% 5%, 97% 95%, 3% 95%);
 }
 
 .graph-legend-marker.marker-object-property {
+  width: 24px;
+  height: 16px;
   border-radius: 0;
   background: #efe4d7;
   border-color: #9f7a57;
-  clip-path: polygon(25% 5%, 75% 5%, 95% 50%, 75% 95%, 25% 95%, 5% 50%);
+  clip-path: polygon(22% 4%, 78% 4%, 97% 50%, 78% 96%, 22% 96%, 3% 50%);
 }
 
 .graph-legend-marker.marker-data-property {
-  border-radius: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 1px;
   background: #f0e7db;
   border-color: #9b7f66;
-  clip-path: polygon(50% 4%, 96% 50%, 50% 96%, 4% 50%);
+  transform: rotate(45deg);
+  transform-origin: center;
 }
 
 .graph-legend-marker.marker-annotation-property {
-  border-radius: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
   background: #efe6dd;
   border-color: #9e846b;
   border-style: dashed;
-  clip-path: polygon(50% 4%, 96% 50%, 50% 96%, 4% 50%);
+  transform: rotate(45deg);
+  transform-origin: center;
 }
 
 .graph-legend-marker.marker-class-expression {
+  width: 24px;
+  height: 16px;
   border-radius: 0;
   background: #e8f2ef;
   border-color: #2f8a81;
   border-width: 2px;
-  clip-path: polygon(25% 5%, 75% 5%, 95% 50%, 75% 95%, 25% 95%, 5% 50%);
+  clip-path: polygon(22% 4%, 78% 4%, 97% 50%, 78% 96%, 22% 96%, 3% 50%);
 }
 
 .graph-legend-edge-marker {
   position: relative;
-  width: 24px;
+  width: 26px;
   height: 12px;
   justify-self: center;
 }

@@ -592,6 +592,7 @@ export default function App() {
   const [leftFlyoutOpen, setLeftFlyoutOpen] = useState(false);
   const [rightFlyoutOpen, setRightFlyoutOpen] = useState(false);
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
+  const [isLegendOpen, setIsLegendOpen] = useState(false);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
@@ -829,7 +830,7 @@ export default function App() {
           },
         },
         {
-          selector: 'node[hasClass > 0]',
+          selector: 'node[hasClass > 0][entityCategory != "class-expression"]',
           style: {
             'background-image': 'data(badgeSvg)',
             'background-image-opacity': 1,
@@ -2040,6 +2041,7 @@ export default function App() {
     '--right-gap': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : '18px',
   };
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
+  const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
 
   return (
     <div
@@ -2511,7 +2513,22 @@ export default function App() {
             </div>
           </div>
 
-          <div className="graph-tools">
+          <div className="graph-tools graph-tools-right">
+            <button
+              type="button"
+              className={`graph-tool-button icon-only ${isLegendOpen ? 'active' : ''}`}
+              onClick={() => setIsLegendOpen((value) => !value)}
+              aria-label={legendButtonLabel}
+              title={legendButtonLabel}
+              aria-pressed={isLegendOpen}
+            >
+              <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="2.5" y="3.2" width="11" height="1.4" rx="0.7" fill="currentColor" />
+                <rect x="2.5" y="7.3" width="7.6" height="1.4" rx="0.7" fill="currentColor" />
+                <rect x="2.5" y="11.4" width="9.6" height="1.4" rx="0.7" fill="currentColor" />
+                <circle cx="12.3" cy="8" r="1.2" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+            </button>
             <button
               type="button"
               className="graph-tool-button icon-only"
@@ -2541,6 +2558,50 @@ export default function App() {
                 )}
               </svg>
             </button>
+
+            {isLegendOpen && (
+              <div className="graph-legend-popover" role="dialog" aria-label="Graph legend">
+                <div className="graph-legend-title">Legend</div>
+                <div className="graph-legend-list">
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-class" />
+                    <span>Class</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-individual" />
+                    <span>Named individual or KG instance</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-literal" />
+                    <span>Literal value</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-datatype" />
+                    <span>Datatype</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-object-property" />
+                    <span>Object property</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-data-property" />
+                    <span>Data property</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-annotation-property" />
+                    <span>Annotation property</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-class-expression" />
+                    <span>Restriction or class expression (hover for details)</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-edge-marker" />
+                    <span>Labeled relation edge</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div ref={graphContainerRef} className={`graph-canvas ${isDetachedPanMode ? 'detached-pan-mode' : ''}`} />

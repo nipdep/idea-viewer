@@ -649,6 +649,12 @@ textarea {
   right: auto;
 }
 
+.graph-tools-right {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .projection-toggle {
   display: flex;
   align-items: center;
@@ -751,9 +757,145 @@ textarea {
   justify-content: center;
 }
 
+.graph-tool-button.icon-only.active {
+  border-color: rgba(42, 111, 110, 0.36);
+  background: rgba(42, 111, 110, 0.16);
+  color: #1f5f5e;
+}
+
 .graph-tool-icon {
   width: 16px;
   height: 16px;
+}
+
+.graph-legend-popover {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: min(320px, calc(100vw - 24px));
+  border: 1px solid rgba(30, 27, 22, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 250, 242, 0.84);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 22px rgba(30, 27, 22, 0.14);
+  padding: 10px 11px;
+  pointer-events: auto;
+}
+
+.graph-legend-title {
+  color: #3e352e;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.graph-legend-list {
+  display: grid;
+  gap: 6px;
+}
+
+.graph-legend-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #4f463d;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.graph-legend-marker {
+  width: 24px;
+  height: 14px;
+  border: 1.5px solid #7e6f60;
+  background: #e7ded3;
+  justify-self: center;
+}
+
+.graph-legend-marker.marker-class {
+  border-radius: 999px;
+}
+
+.graph-legend-marker.marker-individual {
+  border-radius: 6px;
+}
+
+.graph-legend-marker.marker-literal {
+  border-radius: 1px;
+  background: #f0e4d7;
+  border-color: #9b7458;
+}
+
+.graph-legend-marker.marker-datatype {
+  border-radius: 0;
+  background: #eee5da;
+  border-color: #8e7560;
+  clip-path: polygon(50% 6%, 95% 94%, 5% 94%);
+  height: 16px;
+}
+
+.graph-legend-marker.marker-object-property {
+  border-radius: 0;
+  background: #efe4d7;
+  border-color: #9f7a57;
+  clip-path: polygon(25% 5%, 75% 5%, 95% 50%, 75% 95%, 25% 95%, 5% 50%);
+}
+
+.graph-legend-marker.marker-data-property {
+  border-radius: 0;
+  background: #f0e7db;
+  border-color: #9b7f66;
+  clip-path: polygon(50% 4%, 96% 50%, 50% 96%, 4% 50%);
+}
+
+.graph-legend-marker.marker-annotation-property {
+  border-radius: 0;
+  background: #efe6dd;
+  border-color: #9e846b;
+  border-style: dashed;
+  clip-path: polygon(50% 4%, 96% 50%, 50% 96%, 4% 50%);
+}
+
+.graph-legend-marker.marker-class-expression {
+  border-radius: 0;
+  background: #e8f2ef;
+  border-color: #2f8a81;
+  border-width: 2px;
+  clip-path: polygon(25% 5%, 75% 5%, 95% 50%, 75% 95%, 25% 95%, 5% 50%);
+}
+
+.graph-legend-edge-marker {
+  position: relative;
+  width: 24px;
+  height: 12px;
+  justify-self: center;
+}
+
+.graph-legend-edge-marker::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  right: 8px;
+  border-top: 1.5px solid #c8bfb4;
+  transform: translateY(-50%);
+}
+
+.graph-legend-edge-marker::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 1px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid #c8bfb4;
+  transform: translateY(-50%);
 }
 
 .graph-canvas {

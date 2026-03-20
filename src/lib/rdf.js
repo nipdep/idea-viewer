@@ -1564,7 +1564,7 @@ export function buildGraphData(quads, options = {}) {
     node.classCount = node.classes.length;
     node.classTooltip = !hasOntology && hasMultipleClasses ? classLabelList.join('\n') : '';
 
-    if (node.hasClass > 0) {
+    if (node.hasClass > 0 && node.termType === 'NamedNode') {
       for (const classIri of classes) {
         badgeClassNodeIds.add(classIri);
       }
@@ -1617,6 +1617,12 @@ export function buildGraphData(quads, options = {}) {
         node.restrictionTooltip = restrictionTooltipById.get(node.id) ?? '';
         node.entityCategory = 'class-expression';
         applyNodeDisplayLabel(node, blankLabelById.get(node.id) ?? role);
+        node.hasClass = 0;
+        node.classBadge = '';
+        node.badgeSvg = '';
+        node.badgeWidth = 0;
+        node.classCount = 0;
+        node.classTooltip = '';
       }
       continue;
     }

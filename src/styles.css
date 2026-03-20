@@ -814,6 +814,22 @@ textarea {
   text-overflow: ellipsis;
 }
 
+.restriction-tooltip {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+  border: 1px solid rgba(30, 27, 22, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 250, 242, 0.97);
+  color: #3f362e;
+  box-shadow: 0 10px 20px rgba(30, 27, 22, 0.14);
+  padding: 7px 9px;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .status-bar {
   display: flex;
   justify-content: space-between;

@@ -786,6 +786,8 @@ function makeNodeData(term, labelIndex, options = {}) {
     ontologyKind: '',
     entityCategory: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
     blankExpressionType: '',
+    restrictionKind: '',
+    restrictionTooltip: '',
     graphRole: '',
     fullLabel,
     displayLabel,
@@ -901,8 +903,36 @@ function termToMetadataValue(term) {
   return term.value ?? '';
 }
 
+function compactTermForRestriction(term) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'NamedNode') {
+    return compactIri(term.value);
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `[Blank ${term.value}]`;
+  }
+
+  if (term.termType === 'Literal') {
+    if (term.language) {
+      return `"${term.value}"@${term.language}`;
+    }
+    const datatype = term.datatype?.value;
+    if (datatype && datatype !== 'http://www.w3.org/2001/XMLSchema#string') {
+      return `"${term.value}"^^${compactIri(datatype)}`;
+    }
+    return `"${term.value}"`;
+  }
+
+  return term.value ?? '';
+}
+
 function buildBlankExpressionIndex(quads) {
   const blankRoles = new Map();
+  const restrictionTermsById = new Map();
 
   const registerRole = (blankId, role, priority) => {
     if (!blankId || !role) {
@@ -913,6 +943,22 @@ function buildBlankExpressionIndex(quads) {
     if (!previous || priority > previous.priority) {
       blankRoles.set(blankId, { role, priority });
     }
+  };
+
+  const registerRestrictionTerm = (blankId, predicateIri, term) => {
+    if (!blankId || !predicateIri || !term) {
+      return;
+    }
+
+    let predicateTerms = restrictionTermsById.get(blankId);
+    if (!predicateTerms) {
+      predicateTerms = new Map();
+      restrictionTermsById.set(blankId, predicateTerms);
+    }
+
+    const values = predicateTerms.get(predicateIri) ?? [];
+    values.push(term);
+    predicateTerms.set(predicateIri, values);
   };
 
   for (const quad of quads) {
@@ -929,6 +975,7 @@ function buildBlankExpressionIndex(quads) {
       const restrictionKind = getRestrictionKind(quad.predicate.value);
       if (restrictionKind) {
         registerRole(subjectId, `Restriction:${restrictionKind}`, 100);
+        registerRestrictionTerm(subjectId, quad.predicate.value, quad.object);
       }
 
       if (EXPRESSION_NODE_PREDICATE_LABELS.has(quad.predicate.value)) {
@@ -957,6 +1004,8 @@ function buildBlankExpressionIndex(quads) {
 
       if (
         quad.predicate.value === OWL_ON_PROPERTY ||
+        quad.predicate.value === OWL_ON_CLASS ||
+        quad.predicate.value === OWL_ON_DATA_RANGE ||
         quad.predicate.value === OWL_SOME_VALUES_FROM ||
         quad.predicate.value === OWL_ALL_VALUES_FROM ||
         quad.predicate.value === OWL_HAS_VALUE ||
@@ -967,8 +1016,6 @@ function buildBlankExpressionIndex(quads) {
         quad.predicate.value === OWL_MAX_QUALIFIED_CARDINALITY ||
         quad.predicate.value === OWL_QUALIFIED_CARDINALITY ||
         quad.predicate.value === OWL_HAS_SELF ||
-        quad.predicate.value === OWL_ON_CLASS ||
-        quad.predicate.value === OWL_ON_DATA_RANGE ||
         quad.predicate.value === OWL_INTERSECTION_OF ||
         quad.predicate.value === OWL_UNION_OF ||
         quad.predicate.value === OWL_COMPLEMENT_OF ||
@@ -981,17 +1028,54 @@ function buildBlankExpressionIndex(quads) {
   }
 
   const blankLabelById = new Map();
+  const restrictionTooltipById = new Map();
   for (const [blankId, info] of blankRoles.entries()) {
     if (info.role.startsWith('Restriction:')) {
-      blankLabelById.set(blankId, info.role);
+      blankLabelById.set(blankId, info.role.slice('Restriction:'.length) || 'Restriction');
     } else {
       blankLabelById.set(blankId, info.role);
+    }
+  }
+
+  const restrictionOrder = [
+    OWL_ON_PROPERTY,
+    OWL_ON_CLASS,
+    OWL_ON_DATA_RANGE,
+    OWL_SOME_VALUES_FROM,
+    OWL_ALL_VALUES_FROM,
+    OWL_HAS_VALUE,
+    OWL_MIN_CARDINALITY,
+    OWL_MAX_CARDINALITY,
+    OWL_CARDINALITY,
+    OWL_MIN_QUALIFIED_CARDINALITY,
+    OWL_MAX_QUALIFIED_CARDINALITY,
+    OWL_QUALIFIED_CARDINALITY,
+    OWL_HAS_SELF,
+  ];
+  for (const [blankId, predicateTerms] of restrictionTermsById.entries()) {
+    const parts = [];
+    for (const predicate of restrictionOrder) {
+      const terms = predicateTerms.get(predicate);
+      if (!terms || terms.length === 0) {
+        continue;
+      }
+      const label = RESTRICTION_PREDICATE_LABELS.get(predicate) ?? compactIri(predicate);
+      for (const term of terms) {
+        parts.push(`${label} ${compactTermForRestriction(term)}`);
+      }
+    }
+
+    if (parts.length > 0) {
+      restrictionTooltipById.set(blankId, `Restriction(${parts.join('; ')})`);
+    } else if (blankRoles.get(blankId)?.role?.startsWith('Restriction')) {
+      restrictionTooltipById.set(blankId, 'Restriction');
     }
   }
 
   return {
     blankRoles,
     blankLabelById,
+    restrictionTooltipById,
   };
 }
 
@@ -1168,7 +1252,7 @@ export function buildGraphData(quads, options = {}) {
   const ontologyAnnotationPropertyNodeIds =
     ontologyModel.annotationPropertyIds instanceof Set ? ontologyModel.annotationPropertyIds : new Set();
   const ontologyDatatypeNodeIds = ontologyModel.datatypeIds instanceof Set ? ontologyModel.datatypeIds : new Set();
-  const { blankRoles, blankLabelById } = buildBlankExpressionIndex(quads);
+  const { blankRoles, blankLabelById, restrictionTooltipById } = buildBlankExpressionIndex(quads);
 
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -1524,9 +1608,15 @@ export function buildGraphData(quads, options = {}) {
     if (node.termType === 'BlankNode') {
       const role = blankRoles.get(node.id)?.role ?? '';
       if (role) {
-        node.blankExpressionType = role;
+        if (role.startsWith('Restriction:')) {
+          node.blankExpressionType = 'Restriction';
+          node.restrictionKind = role.slice('Restriction:'.length) || 'Restriction';
+        } else {
+          node.blankExpressionType = role;
+        }
+        node.restrictionTooltip = restrictionTooltipById.get(node.id) ?? '';
         node.entityCategory = 'class-expression';
-        applyNodeDisplayLabel(node, role);
+        applyNodeDisplayLabel(node, blankLabelById.get(node.id) ?? role);
       }
       continue;
     }
@@ -1648,6 +1738,8 @@ export function toElements(nodes, edges) {
         ontologyKind: node.ontologyKind ?? '',
         entityCategory: node.entityCategory ?? '',
         blankExpressionType: node.blankExpressionType ?? '',
+        restrictionKind: node.restrictionKind ?? '',
+        restrictionTooltip: node.restrictionTooltip ?? '',
         graphRole: node.graphRole ?? '',
         isOntologyNode: node.isOntologyNode ?? 0,
         mixedMode: node.mixedMode ?? 0,

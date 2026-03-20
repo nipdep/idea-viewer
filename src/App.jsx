@@ -596,6 +596,7 @@ export default function App() {
   const [filterError, setFilterError] = useState('');
   const [ontologyMetadataRows, setOntologyMetadataRows] = useState([]);
   const [multiClassBadgeTooltip, setMultiClassBadgeTooltip] = useState(null);
+  const [restrictionNodeTooltip, setRestrictionNodeTooltip] = useState(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
@@ -678,6 +679,34 @@ export default function App() {
       top,
       classes,
       count: classCount,
+    };
+  }
+
+  function buildRestrictionTooltipPayload(event) {
+    const node = event.target;
+    if (!node || !event.renderedPosition) {
+      return null;
+    }
+
+    const blankExpressionType = String(node.data('blankExpressionType') ?? '');
+    const tooltipText = String(node.data('restrictionTooltip') ?? '').trim();
+    if (blankExpressionType !== 'Restriction' || !tooltipText) {
+      return null;
+    }
+
+    const cursor = event.renderedPosition;
+    const container = graphContainerRef.current;
+    const maxWidth = container?.clientWidth ?? 1200;
+    const maxHeight = container?.clientHeight ?? 800;
+    const tooltipWidth = Math.min(440, Math.max(260, Math.round(Math.min(tooltipText.length, 180) * 4.4)));
+    const left = Math.min(Math.max(8, cursor.x + 14), Math.max(8, maxWidth - tooltipWidth - 8));
+    const top = Math.min(Math.max(8, cursor.y + 12), Math.max(8, maxHeight - 120));
+
+    return {
+      left,
+      top,
+      text: tooltipText,
+      width: tooltipWidth,
     };
   }
 
@@ -981,6 +1010,7 @@ export default function App() {
         return;
       }
       setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
       const nodeId = event.target.id();
       setSelectedEdgeId(null);
       setSelectedNodeId(nodeId);
@@ -993,6 +1023,7 @@ export default function App() {
         return;
       }
       setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
       const edgeId = event.target.id();
       setSelectedNodeId(null);
       setFocusedNodeId(null);
@@ -1005,6 +1036,7 @@ export default function App() {
         return;
       }
       setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
       if (event.target === cy) {
         setSelectedNodeId(null);
         setFocusedNodeId(null);
@@ -1114,17 +1146,20 @@ export default function App() {
       });
     });
 
-    const updateClassBadgeTooltip = (event) => {
+    const updateNodeHoverTooltips = (event) => {
       setMultiClassBadgeTooltip(buildClassBadgeTooltipPayload(event));
+      setRestrictionNodeTooltip(buildRestrictionTooltipPayload(event));
     };
 
-    cy.on('mouseover', 'node', updateClassBadgeTooltip);
-    cy.on('mousemove', 'node', updateClassBadgeTooltip);
+    cy.on('mouseover', 'node', updateNodeHoverTooltips);
+    cy.on('mousemove', 'node', updateNodeHoverTooltips);
     cy.on('mouseout', 'node', () => {
       setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
     });
     cy.on('pan zoom', () => {
       setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
     });
 
     const container = cy.container();
@@ -1233,6 +1268,7 @@ export default function App() {
 
   useEffect(() => {
     setMultiClassBadgeTooltip(null);
+    setRestrictionNodeTooltip(null);
   }, [visibleElements]);
 
   useEffect(() => {
@@ -2463,6 +2499,15 @@ export default function App() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {restrictionNodeTooltip && (
+            <div
+              className="restriction-tooltip"
+              style={{ left: restrictionNodeTooltip.left, top: restrictionNodeTooltip.top, maxWidth: restrictionNodeTooltip.width }}
+            >
+              {restrictionNodeTooltip.text}
             </div>
           )}
 

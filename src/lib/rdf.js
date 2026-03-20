@@ -1748,8 +1748,9 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
     return false;
   }
 
+  // Literal nodes should only appear through visible literal edges, never as standalone nodes.
   if (node.termType === 'Literal') {
-    return options.projectionMode === 'kg' || options.showDataProperties || options.showAnnotationProperties;
+    return false;
   }
 
   if (node.termType === 'BlankNode') {
@@ -1803,7 +1804,7 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
   const visibleNodeIds = new Set();
   const visibleEdges = [];
 
-  const isVisibleKgNode = (nodeId) => {
+  const isVisibleKgEntityNode = (nodeId) => {
     const node = graphData.nodeMap.get(nodeId);
     if (!node) {
       return false;
@@ -1811,10 +1812,6 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
 
     if (node.termType === 'BlankNode') {
       return false;
-    }
-
-    if (node.termType === 'Literal') {
-      return true;
     }
 
     if (
@@ -1825,7 +1822,20 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       return false;
     }
 
+    if (node.termType === 'Literal') {
+      return false;
+    }
+
     return true;
+  };
+
+  const isVisibleKgLiteralNode = (nodeId) => {
+    const node = graphData.nodeMap.get(nodeId);
+    if (!node || node.termType !== 'Literal') {
+      return false;
+    }
+
+    return options.showDataProperties || options.showAnnotationProperties;
   };
 
   for (const edge of graphData.objectEdges) {
@@ -1841,7 +1851,7 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       continue;
     }
 
-    if (!isVisibleKgNode(edge.source) || !isVisibleKgNode(edge.target)) {
+    if (!isVisibleKgEntityNode(edge.source) || !isVisibleKgEntityNode(edge.target)) {
       continue;
     }
 
@@ -1859,7 +1869,7 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       continue;
     }
 
-    if (!isVisibleKgNode(edge.source) || !isVisibleKgNode(edge.target)) {
+    if (!isVisibleKgEntityNode(edge.source) || !isVisibleKgLiteralNode(edge.target)) {
       continue;
     }
 
@@ -1873,7 +1883,7 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
     : graphData.nodes;
 
   for (const node of candidateNodes) {
-    if (!isVisibleKgNode(node.id)) {
+    if (!isVisibleKgEntityNode(node.id)) {
       continue;
     }
     visibleNodeIds.add(node.id);

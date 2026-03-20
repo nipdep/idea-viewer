@@ -36,6 +36,10 @@ const GRAPH_PROJECTION_MODES = {
   ONTOLOGY: 'ontology',
   KG: 'kg',
 };
+const PROJECTION_MODE_LABELS = {
+  [GRAPH_PROJECTION_MODES.ONTOLOGY]: 'Ontology Full Detailed View',
+  [GRAPH_PROJECTION_MODES.KG]: 'KG View',
+};
 const ONTOLOGY_VIEW_MODES = {
   CLASS_ONLY: 'class-only',
   CLASS_AND_OBJECT: 'class-and-object',
@@ -2353,7 +2357,14 @@ export default function App() {
           )}
 
           <div className="graph-tools graph-tools-left">
-            <div className="projection-toggle" role="tablist" aria-label="Graph projection mode">
+            <div
+              className={`projection-toggle theme-switch ${
+                graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'mode-kg' : 'mode-ontology'
+              }`}
+              role="tablist"
+              aria-label="Graph projection mode"
+            >
+              <span className="projection-switch-thumb" aria-hidden="true" />
               <button
                 type="button"
                 className={`projection-toggle-button ${
@@ -2361,8 +2372,23 @@ export default function App() {
                 }`}
                 onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY)}
                 aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY}
+                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
+                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
               >
-                Ontology Full Detailed View
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
+                  <circle cx="8" cy="3.2" r="1.2" fill="currentColor" />
+                  <circle cx="12.2" cy="5" r="1.1" fill="currentColor" />
+                  <circle cx="12" cy="10.8" r="1.1" fill="currentColor" />
+                  <circle cx="4" cy="10.8" r="1.1" fill="currentColor" />
+                  <circle cx="3.8" cy="5" r="1.1" fill="currentColor" />
+                  <path
+                    d="M8 5.2V6.1M10.2 6.2L9.3 6.9M10 9.9L9.2 9.2M6.8 9.2L6 9.9M6.7 6.9L5.8 6.2"
+                    stroke="currentColor"
+                    strokeWidth="1"
+                    strokeLinecap="round"
+                  />
+                </svg>
               </button>
               <button
                 type="button"
@@ -2371,8 +2397,20 @@ export default function App() {
                 }`}
                 onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG)}
                 aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.KG}
+                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
+                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
               >
-                KG View
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
+                  <circle cx="12.5" cy="4" r="1.5" fill="currentColor" />
+                  <circle cx="8" cy="12" r="1.8" fill="currentColor" />
+                  <path
+                    d="M4.9 4.9L7.1 10.1M11.1 4.9L8.9 10.1M5.1 4H10.9"
+                    stroke="currentColor"
+                    strokeWidth="1.1"
+                    strokeLinecap="round"
+                  />
+                </svg>
               </button>
             </div>
           </div>

@@ -1765,6 +1765,12 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
     return false;
   }
 
+  // Do not duplicate class representation: if a class is already rendered as a badge on
+  // instance nodes, hide the standalone class node in all projections.
+  if (graphData.badgeClassNodeIds?.has(node.id)) {
+    return false;
+  }
+
   if (options.projectionMode === 'kg') {
     if (
       node.entityCategory === 'object-property' ||
@@ -1974,6 +1980,10 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
   };
 
   for (const edge of graphData.objectEdges) {
+    if (graphData.badgeClassNodeIds?.has(edge.source) || graphData.badgeClassNodeIds?.has(edge.target)) {
+      continue;
+    }
+
     if (edge.category === 'type') {
       if (!options.showTypeLinks) {
         continue;
@@ -2025,6 +2035,10 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
   }
 
   for (const edge of graphData.literalEdges) {
+    if (graphData.badgeClassNodeIds?.has(edge.source) || graphData.badgeClassNodeIds?.has(edge.target)) {
+      continue;
+    }
+
     if (!shouldIncludeLiteralEdge(edge, options)) {
       continue;
     }
@@ -2049,6 +2063,9 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
 
   if (graphData.hasOntology && (!effectiveFocusedNodeIds || classStructureOnly)) {
     for (const classNodeId of graphData.classNodeIds) {
+      if (graphData.badgeClassNodeIds?.has(classNodeId)) {
+        continue;
+      }
       if (isOntologyStructuralNodeHidden(classNodeId)) {
         continue;
       }

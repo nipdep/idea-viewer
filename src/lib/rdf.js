@@ -1181,6 +1181,7 @@ export function buildGraphData(quads, options = {}) {
   const edgeMetadata = new Map();
   const baseIriCounts = new Map();
   const classNodeIds = new Set();
+  const badgeClassNodeIds = new Set();
   const namedIndividualNodeIds = new Set();
   const datatypeNodeIds = new Set();
   const objectPropertyIris = new Set(ontologyObjectPropertyNodeIds);
@@ -1479,6 +1480,12 @@ export function buildGraphData(quads, options = {}) {
     node.classCount = node.classes.length;
     node.classTooltip = !hasOntology && hasMultipleClasses ? classLabelList.join('\n') : '';
 
+    if (node.hasClass > 0) {
+      for (const classIri of classes) {
+        badgeClassNodeIds.add(classIri);
+      }
+    }
+
     for (const classIri of classes) {
       const classEntry = classMap.get(classIri);
       if (classEntry) {
@@ -1602,6 +1609,7 @@ export function buildGraphData(quads, options = {}) {
     classes,
     baseIris,
     classNodeIds,
+    badgeClassNodeIds,
     namedIndividualNodeIds,
     datatypeNodeIds,
     hasOntology,
@@ -1823,6 +1831,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
     }
 
     if (node.termType === 'Literal') {
+      return false;
+    }
+
+    if (graphData.badgeClassNodeIds?.has(node.id)) {
       return false;
     }
 

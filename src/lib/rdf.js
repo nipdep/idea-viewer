@@ -2224,6 +2224,12 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       return false;
     }
 
+    if (options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg) {
+      if (node.termType === 'NamedNode' && node.iri === OWL_RESTRICTION) {
+        return true;
+      }
+    }
+
     if (node.termType === 'BlankNode') {
       return node.entityCategory !== 'class-expression';
     }

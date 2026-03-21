@@ -2125,7 +2125,11 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
   };
 
   for (const edge of graphData.objectEdges) {
-    if (!shouldIncludeObjectEdge(edge, options)) {
+    if (edge.category === 'type') {
+      if (!options.showTypeLinks) {
+        continue;
+      }
+    } else if (!shouldIncludeObjectEdge(edge, options)) {
       continue;
     }
 

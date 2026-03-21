@@ -2388,7 +2388,33 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     return elements;
   }
 
-  return elements.map((element) => ({
+  const restrictionNodeIds = new Set();
+  for (const element of elements) {
+    const data = element?.data;
+    if (!data || data.source) {
+      continue;
+    }
+    const isRestrictionNode =
+      data.iri === OWL_RESTRICTION ||
+      data.blankExpressionType === 'Restriction' ||
+      (data.kind === 'blank' && Boolean(data.restrictionKind));
+    if (isRestrictionNode) {
+      restrictionNodeIds.add(data.id);
+    }
+  }
+
+  const filteredElements = elements.filter((element) => {
+    const data = element?.data;
+    if (!data) {
+      return false;
+    }
+    if (data.source) {
+      return !restrictionNodeIds.has(data.source) && !restrictionNodeIds.has(data.target);
+    }
+    return !restrictionNodeIds.has(data.id);
+  });
+
+  return filteredElements.map((element) => ({
     ...element,
     data: {
       ...element.data,

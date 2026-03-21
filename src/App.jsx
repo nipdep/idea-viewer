@@ -507,7 +507,7 @@ function toViewFlags(filterMode) {
 }
 
 function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false) {
-  const flags = toViewFlags(lightOntologyMode ? ONTOLOGY_VIEW_MODES.FULL : filterMode);
+  const flags = toViewFlags(filterMode);
   if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
     return {
       projectionMode: GRAPH_PROJECTION_MODES.KG,
@@ -2411,7 +2411,6 @@ export default function App() {
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
-                          disabled={isLightOntologyViewActive}
                         />
                         <span>Class hierarchy</span>
                       </label>
@@ -2422,7 +2421,6 @@ export default function App() {
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
-                          disabled={isLightOntologyViewActive}
                         />
                         <span>Classes with object properties</span>
                       </label>
@@ -2433,7 +2431,6 @@ export default function App() {
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
-                          disabled={isLightOntologyViewActive}
                         />
                         <span>Classes + object properties + data properties</span>
                       </label>
@@ -2444,15 +2441,10 @@ export default function App() {
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
-                          disabled={isLightOntologyViewActive}
                         />
                         <span>All</span>
                       </label>
                     </div>
-                    {isLightOntologyViewActive && (
-                      <p className="muted">Light ontology view uses the full ontology filter profile.</p>
-                    )}
-
                     {!isOntologyOnlyDataset && (
                       <>
                         <h3 className="filter-group-title">Class type</h3>
@@ -2765,7 +2757,6 @@ export default function App() {
                   setIsLightOntologyView(next);
                   if (next) {
                     setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
-                    setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL);
                   }
                 }}
                 aria-label={lightOntologyButtonLabel}

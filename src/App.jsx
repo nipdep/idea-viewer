@@ -2269,6 +2269,7 @@ export default function App() {
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
   const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
+  const showLightOntologyLegend = isLightOntologyViewActive;
 
   return (
     <div
@@ -2818,45 +2819,91 @@ export default function App() {
 
             {isLegendOpen && (
               <div className="graph-legend-popover" role="dialog" aria-label="Graph legend">
-                <div className="graph-legend-title">Legend</div>
+                <div className="graph-legend-title">{showLightOntologyLegend ? 'Light Ontology Legend' : 'Legend'}</div>
                 <div className="graph-legend-list">
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-class" />
-                    <span>Class</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-individual" />
-                    <span>Named individual or KG instance</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-literal" />
-                    <span>Literal value</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-datatype" />
-                    <span>Datatype</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-object-property" />
-                    <span>Object property</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-data-property" />
-                    <span>Data property</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-annotation-property" />
-                    <span>Annotation property</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-class-expression" />
-                    <span>Restriction or class expression (hover for details)</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-edge-marker" />
-                    <span>Labeled relation edge</span>
-                  </div>
+                  {showLightOntologyLegend ? (
+                    <>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-class" />
+                        <span>Class</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-object-property" />
+                        <span>Object property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-data-property" />
+                        <span>Data property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-annotation-property" />
+                        <span>Annotation property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-individual" />
+                        <span>Named individual</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-literal" />
+                        <span>Literal value</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-datatype" />
+                        <span>Datatype</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker marker-light-edge" />
+                        <span>Labeled relation edge</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker marker-light-restriction-edge" />
+                        <span>Restriction bridge edge</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-class" />
+                        <span>Class</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-individual" />
+                        <span>Named individual or KG instance</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-literal" />
+                        <span>Literal value</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-datatype" />
+                        <span>Datatype</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-object-property" />
+                        <span>Object property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-data-property" />
+                        <span>Data property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-annotation-property" />
+                        <span>Annotation property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-class-expression" />
+                        <span>Restriction or class expression (hover for details)</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker" />
+                        <span>Labeled relation edge</span>
+                      </div>
+                    </>
+                  )}
                 </div>
+                {showLightOntologyLegend && (
+                  <p className="graph-legend-note">Restriction nodes are collapsed and shown as labeled bridge edges.</p>
+                )}
               </div>
             )}
           </div>

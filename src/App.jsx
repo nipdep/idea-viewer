@@ -52,6 +52,7 @@ const XSD_BOOLEAN_IRI = 'http://www.w3.org/2001/XMLSchema#boolean';
 const XSD_DECIMAL_IRI = 'http://www.w3.org/2001/XMLSchema#decimal';
 const VIEW_EXPORT_NS = 'https://idea-viewer.local/view#';
 const CYTOSCAPE_CDN_URL = 'https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js';
+const GITHUB_ISSUES_URL = 'https://github.com/nipdep/idea-viewer/issues';
 
 const { blankNode, literal, namedNode, quad } = DataFactory;
 
@@ -2824,6 +2825,20 @@ export default function App() {
             </span>
             <span className="brand-word brand-word-viewer">VIEWER</span>
           </h1>
+        </div>
+        <div className="header-actions">
+          <a
+            className="header-icon-link"
+            href={GITHUB_ISSUES_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Report a bug or suggest a feature on GitHub"
+            title="Report a bug or suggest a feature"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 .5C5.65.5.5 5.66.5 12.02c0 5.08 3.29 9.39 7.86 10.91.57.11.78-.25.78-.55 0-.27-.01-1.16-.02-2.1-3.2.7-3.87-1.35-3.87-1.35-.52-1.33-1.28-1.68-1.28-1.68-1.04-.72.08-.71.08-.71 1.15.08 1.75 1.18 1.75 1.18 1.02 1.76 2.68 1.25 3.33.96.1-.74.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.47.11-3.06 0 0 .96-.31 3.14 1.18a10.9 10.9 0 0 1 5.72 0c2.17-1.49 3.13-1.18 3.13-1.18.63 1.59.24 2.77.12 3.06.74.8 1.18 1.83 1.18 3.09 0 4.43-2.68 5.41-5.24 5.69.41.35.77 1.03.77 2.08 0 1.5-.01 2.71-.01 3.08 0 .3.21.67.79.55A11.52 11.52 0 0 0 23.5 12C23.5 5.66 18.35.5 12 .5Z" />
+            </svg>
+          </a>
         </div>
       </header>
 

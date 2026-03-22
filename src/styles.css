@@ -67,7 +67,7 @@ textarea {
 
 .app-header {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
   padding: 10px 24px 0;
@@ -106,6 +106,40 @@ textarea {
   left: calc(100% - 0.62em);
   top: -0.22em;
   line-height: 1;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.header-icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  transition: transform 140ms ease, box-shadow 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.header-icon-link:hover,
+.header-icon-link:focus-visible {
+  color: var(--accent-2);
+  border-color: rgba(42, 111, 110, 0.28);
+  transform: translateY(-1px);
+}
+
+.header-icon-link svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 
 .app-shell {
@@ -1393,6 +1427,13 @@ textarea {
     padding: 12px 14px 8px;
     flex-direction: column;
     align-items: flex-start;
+    gap: 12px;
+  }
+
+  .header-icon-link {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
   }
 
   .app-footer {

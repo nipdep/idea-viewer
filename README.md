@@ -128,13 +128,13 @@ Notes:
 Build the image locally for the root path:
 
 ```bash
-docker build --build-arg VITE_BASE_PATH=/ -t idea-viewer-ui .
+docker build --build-arg VITE_BASE_PATH=/ -t idea-viewer .
 ```
 
 Build the image locally for `/idea-viewer/`:
 
 ```bash
-docker build --build-arg VITE_BASE_PATH=/idea-viewer/ -t idea-viewer-ui .
+docker build --build-arg VITE_BASE_PATH=/idea-viewer/ -t idea-viewer .
 ```
 
 Build and push multi-arch images from an ARM machine:
@@ -143,7 +143,7 @@ Build and push multi-arch images from an ARM machine:
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   --build-arg VITE_BASE_PATH=/ \
-  -t <your-dockerhub-user>/idea-viewer-ui:latest \
+  -t <your-dockerhub-user>/idea-viewer:latest \
   --push .
 ```
 
@@ -153,7 +153,7 @@ Subpath tag example:
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   --build-arg VITE_BASE_PATH=/idea-viewer/ \
-  -t <your-dockerhub-user>/idea-viewer-ui:idea-viewer-base \
+  -t <your-dockerhub-user>/idea-viewer:idea-viewer-base \
   --push .
 ```
 
@@ -176,7 +176,7 @@ VITE_BASE_PATH=/idea-viewer/ APP_BASE_PATH=/idea-viewer/ docker compose up --bui
 Run the locally built root-path image:
 
 ```bash
-docker run --rm -p 8080:8080 idea-viewer-ui
+docker run --rm -p 8080:8080 idea-viewer
 ```
 
 Open [http://localhost:8080](http://localhost:8080).
@@ -184,13 +184,13 @@ Open [http://localhost:8080](http://localhost:8080).
 Change the host port if needed:
 
 ```bash
-docker run --rm -p 3000:8080 idea-viewer-ui
+docker run --rm -p 3000:8080 idea-viewer
 ```
 
 Run the locally built subpath image that was built with `VITE_BASE_PATH=/idea-viewer/`:
 
 ```bash
-docker run --rm -p 8080:8080 idea-viewer-ui
+docker run --rm -p 8080:8080 idea-viewer
 ```
 
 Open [http://localhost:8080/idea-viewer/](http://localhost:8080/idea-viewer/).
@@ -198,23 +198,23 @@ Open [http://localhost:8080/idea-viewer/](http://localhost:8080/idea-viewer/).
 If you need to override the runtime base path, make sure the image was built with the same base path:
 
 ```bash
-docker run --rm -p 8080:8080 -e APP_BASE_PATH=/idea-viewer/ idea-viewer-ui
+docker run --rm -p 8080:8080 -e APP_BASE_PATH=/idea-viewer/ idea-viewer
 ```
 
 #### Run from Docker Hub
 
-Replace `<your-dockerhub-user>/idea-viewer-ui:<tag>` with your published image name.
+Replace `<your-dockerhub-user>/idea-viewer:<tag>` with your published image name.
 
 Pull a root-path image:
 
 ```bash
-docker pull <your-dockerhub-user>/idea-viewer-ui:latest
+docker pull <your-dockerhub-user>/idea-viewer:latest
 ```
 
 Run it:
 
 ```bash
-docker run --rm -p 8080:8080 <your-dockerhub-user>/idea-viewer-ui:latest
+docker run --rm -p 8080:8080 <your-dockerhub-user>/idea-viewer:latest
 ```
 
 Open [http://localhost:8080](http://localhost:8080).
@@ -224,8 +224,8 @@ For `/idea-viewer/`, publish and pull a tag that was built with `VITE_BASE_PATH=
 Example:
 
 ```bash
-docker pull <your-dockerhub-user>/idea-viewer-ui:idea-viewer-base
-docker run --rm -p 8080:8080 <your-dockerhub-user>/idea-viewer-ui:idea-viewer-base
+docker pull <your-dockerhub-user>/idea-viewer:idea-viewer-base
+docker run --rm -p 8080:8080 <your-dockerhub-user>/idea-viewer:idea-viewer-base
 ```
 
 Open [http://localhost:8080/idea-viewer/](http://localhost:8080/idea-viewer/).

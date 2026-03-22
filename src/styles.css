@@ -88,7 +88,7 @@ textarea {
 .brand-lockup {
   position: relative;
   display: inline-block;
-  padding-right: 0.2em;
+  padding-right: 0.4em;
 }
 
 .brand-word {
@@ -103,8 +103,8 @@ textarea {
   color: var(--accent);
   font-weight: 700;
   position: absolute;
-  left: calc(100% - 0.16em);
-  top: -0.18em;
+  left: calc(100% - 0.62em);
+  top: -0.22em;
   line-height: 1;
 }
 

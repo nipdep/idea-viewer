@@ -66,27 +66,33 @@ textarea {
   justify-content: flex-start;
   align-items: flex-start;
   gap: 24px;
-  padding: 16px 32px 8px;
+  padding: 10px 24px 0;
 }
 
 .brand-title {
   margin: 0;
-  font-size: 28px;
-  line-height: 0.95;
+  display: inline-flex;
+  align-items: flex-start;
+  font-size: 24px;
+  line-height: 0.88;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   font-weight: 500;
   font-family: "Eternal Bloom", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+}
+
+.brand-word {
+  display: inline-block;
 }
 
 .brand-star {
   color: var(--accent);
   font-weight: 700;
-}
-
-.brand-subtitle {
-  margin: 6px 0 0;
-  color: var(--muted);
+  display: inline-block;
+  margin-left: -0.12em;
+  margin-right: 0.08em;
+  transform: translateY(-0.16em);
+  line-height: 1;
 }
 
 .app-shell {
@@ -101,7 +107,7 @@ textarea {
     minmax(0, var(--right-panel-width, var(--right-panel-open-width)));
   height: 100%;
   min-height: 0;
-  padding: 12px 32px 32px;
+  padding: 8px 24px 24px;
   transition: grid-template-columns 220ms ease;
 }
 

@@ -2816,9 +2816,12 @@ export default function App() {
       <header className="app-header">
         <div>
           <h1 className="brand-title">
-            IDEA<span className="brand-star">*</span> VIEWER
+            <span className="brand-word">IDEA</span>
+            <span className="brand-star" aria-hidden="true">
+              *
+            </span>
+            <span className="brand-word">VIEWER</span>
           </h1>
-          <p className="brand-subtitle">Argument discourse visualization in scientific knowledge graphs.</p>
         </div>
       </header>
 

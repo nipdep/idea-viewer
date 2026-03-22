@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
+import { DataFactory, Writer } from 'n3';
 import { buildFocusedSubset, buildGraphData, compactIri, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
 import './styles.css';
 
@@ -31,6 +32,413 @@ const FIXED_SPARQL_PREFIXES = Object.freeze([
   { id: 'fixed-foaf', prefix: 'foaf', iri: 'http://xmlns.com/foaf/0.1/' },
   { id: 'fixed-dct', prefix: 'dct', iri: 'http://purl.org/dc/terms/' },
 ]);
+const DEFAULT_STATUS = 'Upload KG and/or ontology files to initialize the graph.';
+const GRAPH_PROJECTION_MODES = {
+  ONTOLOGY: 'ontology',
+  KG: 'kg',
+};
+const PROJECTION_MODE_LABELS = {
+  [GRAPH_PROJECTION_MODES.ONTOLOGY]: 'Ontology Full Detailed View',
+  [GRAPH_PROJECTION_MODES.KG]: 'KG View',
+};
+const ONTOLOGY_VIEW_MODES = {
+  CLASS_ONLY: 'class-only',
+  CLASS_AND_OBJECT: 'class-and-object',
+  CLASS_OBJECT_DATA: 'class-object-data',
+  FULL: 'full',
+};
+const RDFS_LABEL_IRI = 'http://www.w3.org/2000/01/rdf-schema#label';
+const XSD_BOOLEAN_IRI = 'http://www.w3.org/2001/XMLSchema#boolean';
+const XSD_DECIMAL_IRI = 'http://www.w3.org/2001/XMLSchema#decimal';
+const VIEW_EXPORT_NS = 'https://idea-viewer.local/view#';
+const CYTOSCAPE_CDN_URL = 'https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js';
+
+const { blankNode, literal, namedNode, quad } = DataFactory;
+
+function sanitizeFilenameSegment(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || 'view';
+}
+
+function formatExportTimestamp(date = new Date()) {
+  const parts = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+    String(date.getHours()).padStart(2, '0'),
+    String(date.getMinutes()).padStart(2, '0'),
+    String(date.getSeconds()).padStart(2, '0'),
+  ];
+  return `${parts[0]}${parts[1]}${parts[2]}-${parts[3]}${parts[4]}${parts[5]}`;
+}
+
+function escapeCsvCell(value) {
+  const text = Array.isArray(value) ? value.join(' | ') : value == null ? '' : String(value);
+  const normalized = text.replace(/\r?\n/g, ' ');
+  if (/[",\n]/.test(normalized)) {
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+  return normalized;
+}
+
+function toInlineJson(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadDataUrl(filename, dataUrl) {
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function getCurrentViewKey(projectionMode, isLightOntologyViewActive) {
+  if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
+    return 'kg-view';
+  }
+  return isLightOntologyViewActive ? 'ontology-light-view' : 'ontology-full-view';
+}
+
+function getCurrentViewLabel(projectionMode, isLightOntologyViewActive) {
+  if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
+    return 'KG view';
+  }
+  return isLightOntologyViewActive ? 'Ontology light view' : 'Ontology full detailed view';
+}
+
+function normalizeFocusedNodeIds(nodeIds) {
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+    return [];
+  }
+  return Array.from(new Set(nodeIds.filter(Boolean)));
+}
+
+function getFocusSignature(nodeIds) {
+  return normalizeFocusedNodeIds(nodeIds).sort().join('|');
+}
+
+function collectFocusRoots(cy, nodeIds) {
+  const focusIds = normalizeFocusedNodeIds(nodeIds);
+  let roots = cy.collection();
+  for (const nodeId of focusIds) {
+    const node = cy.$id(nodeId);
+    if (!node.empty()) {
+      roots = roots.union(node);
+    }
+  }
+  return roots;
+}
+
+function snapshotNodeToTerm(nodeData) {
+  if (!nodeData) {
+    return null;
+  }
+
+  if (nodeData.termType === 'NamedNode') {
+    return namedNode(nodeData.iri || nodeData.id);
+  }
+
+  if (nodeData.termType === 'BlankNode') {
+    return blankNode(String(nodeData.id || '').replace(/^_:/, ''));
+  }
+
+  if (nodeData.termType === 'Literal') {
+    const literalValue = nodeData.literalValue ?? nodeData.iri ?? nodeData.fullLabel ?? '';
+    if (nodeData.literalLanguage) {
+      return literal(literalValue, nodeData.literalLanguage);
+    }
+    if (nodeData.literalDatatype) {
+      return literal(literalValue, namedNode(nodeData.literalDatatype));
+    }
+    return literal(literalValue);
+  }
+
+  return null;
+}
+
+function buildCsvExport(snapshot) {
+  const rows = [];
+  const nodeById = new Map(snapshot.nodes.map((node) => [node.data.id, node]));
+  const header = [
+    'row_type',
+    'id',
+    'label',
+    'full_label',
+    'term_type',
+    'entity_category',
+    'ontology_kind',
+    'graph_role',
+    'iri',
+    'base_iri',
+    'class_iris',
+    'position_x',
+    'position_y',
+    'cy_classes',
+    'source',
+    'target',
+    'source_label',
+    'target_label',
+    'predicate',
+    'predicate_label',
+    'edge_category',
+    'axiom_kind',
+    'restriction_kind',
+    'literal_language',
+    'literal_datatype',
+  ];
+  rows.push(header.join(','));
+
+  for (const node of snapshot.nodes) {
+    rows.push(
+      [
+        'node',
+        node.data.id,
+        node.data.label,
+        node.data.fullLabel,
+        node.data.termType,
+        node.data.entityCategory,
+        node.data.ontologyKind,
+        node.data.graphRole,
+        node.data.iri,
+        node.data.baseIri,
+        node.data.classes ?? [],
+        Number(node.position.x).toFixed(3),
+        Number(node.position.y).toFixed(3),
+        node.classes,
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        node.data.literalLanguage,
+        node.data.literalDatatype,
+      ].map(escapeCsvCell).join(','),
+    );
+  }
+
+  for (const edge of snapshot.edges) {
+    const sourceNode = nodeById.get(edge.data.source);
+    const targetNode = nodeById.get(edge.data.target);
+    rows.push(
+      [
+        'edge',
+        edge.data.id,
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        edge.classes,
+        edge.data.source,
+        edge.data.target,
+        sourceNode?.data.fullLabel ?? sourceNode?.data.label ?? '',
+        targetNode?.data.fullLabel ?? targetNode?.data.label ?? '',
+        edge.data.predicate,
+        edge.data.predicateLabel,
+        edge.data.category,
+        edge.data.axiomKind,
+        edge.data.restrictionKind,
+        '',
+        '',
+      ].map(escapeCsvCell).join(','),
+    );
+  }
+
+  return rows.join('\n');
+}
+
+function buildHtmlExport(snapshot) {
+  const elements = [
+    ...snapshot.nodes.map((node) => ({
+      data: node.data,
+      position: node.position,
+      classes: node.classes,
+    })),
+    ...snapshot.edges.map((edge) => ({
+      data: edge.data,
+      classes: edge.classes,
+    })),
+  ];
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${snapshot.metadata.title}</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(circle at top left, #f8e6d6 0%, #fef6ee 40%, #f3f5f4 100%);
+        color: #1e1b16;
+        font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+      }
+      .export-shell {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        width: 100%;
+        height: 100%;
+      }
+      .export-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 20px;
+        padding: 18px 22px 10px;
+      }
+      .export-title {
+        margin: 0;
+        font-size: 1.3rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .export-subtitle,
+      .export-meta {
+        margin: 4px 0 0;
+        color: #6b6157;
+        font-size: 0.92rem;
+      }
+      #cy {
+        min-height: 0;
+        margin: 0 18px 18px;
+        border: 1px solid #e0d6cb;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #fcfaf6 0%, #f8f3ec 100%);
+        overflow: hidden;
+      }
+    </style>
+    <script src="${CYTOSCAPE_CDN_URL}"></script>
+  </head>
+  <body>
+    <div class="export-shell">
+      <div class="export-header">
+        <div>
+          <h1 class="export-title">${snapshot.metadata.title}</h1>
+          <p class="export-subtitle">${snapshot.metadata.viewLabel}</p>
+        </div>
+        <p class="export-meta">${snapshot.metadata.exportedAtLabel}</p>
+      </div>
+      <div id="cy"></div>
+    </div>
+    <script>
+      const snapshot = ${toInlineJson({
+        elements,
+        style: snapshot.style,
+        viewport: snapshot.viewport,
+      })};
+      const cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements: snapshot.elements,
+        style: snapshot.style,
+        layout: { name: 'preset', fit: false },
+        wheelSensitivity: 0.2,
+        boxSelectionEnabled: false,
+      });
+      cy.ready(() => {
+        cy.zoom(snapshot.viewport.zoom);
+        cy.pan(snapshot.viewport.pan);
+      });
+    </script>
+  </body>
+</html>`;
+}
+
+async function buildTurtleExport(snapshot) {
+  const writer = new Writer({
+    prefixes: {
+      rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+      rdfs: 'http://www.w3.org/2000/01/rdf-schema#',
+      owl: 'http://www.w3.org/2002/07/owl#',
+      xsd: 'http://www.w3.org/2001/XMLSchema#',
+      view: VIEW_EXPORT_NS,
+    },
+  });
+
+  const nodeById = new Map(snapshot.nodes.map((node) => [node.data.id, node]));
+  const decimalDatatype = namedNode(XSD_DECIMAL_IRI);
+  const booleanDatatype = namedNode(XSD_BOOLEAN_IRI);
+
+  for (const edge of snapshot.edges) {
+    const sourceNode = nodeById.get(edge.data.source);
+    const targetNode = nodeById.get(edge.data.target);
+    const sourceTerm = snapshotNodeToTerm(sourceNode?.data);
+    const targetTerm = snapshotNodeToTerm(targetNode?.data);
+    if (!sourceTerm || !targetTerm || !edge.data.predicate) {
+      continue;
+    }
+    writer.addQuad(quad(sourceTerm, namedNode(edge.data.predicate), targetTerm));
+  }
+
+  for (const node of snapshot.nodes) {
+    const subject = snapshotNodeToTerm(node.data);
+    if (!subject || subject.termType === 'Literal') {
+      continue;
+    }
+
+    writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}visibleNode`), literal('true', booleanDatatype)));
+    writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}x`), literal(String(Number(node.position.x).toFixed(3)), decimalDatatype)));
+    writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}y`), literal(String(Number(node.position.y).toFixed(3)), decimalDatatype)));
+
+    if (node.data.fullLabel) {
+      writer.addQuad(quad(subject, namedNode(RDFS_LABEL_IRI), literal(node.data.fullLabel)));
+    }
+    if (node.data.entityCategory) {
+      writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}entityCategory`), literal(node.data.entityCategory)));
+    }
+    if (node.data.ontologyKind) {
+      writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}ontologyKind`), literal(node.data.ontologyKind)));
+    }
+    if (node.data.baseIri) {
+      writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}baseIri`), literal(node.data.baseIri)));
+    }
+    if (Array.isArray(node.data.classes)) {
+      for (const classIri of node.data.classes) {
+        if (typeof classIri === 'string' && /^https?:/.test(classIri)) {
+          writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}class`), namedNode(classIri)));
+        }
+      }
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    writer.end((error, result) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(result);
+    });
+  });
+}
 
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
@@ -189,6 +597,19 @@ function formatSelectedFiles(files, emptyLabel) {
 
   const shown = files.slice(0, 2).map((file) => file.name).join(', ');
   return `${files.length} files selected (${shown} +${files.length - 2} more)`;
+}
+
+function mergeSelectedFiles(currentFiles, incomingFiles) {
+  if (incomingFiles.length === 0) {
+    return currentFiles;
+  }
+
+  const deduped = new Map(currentFiles.map((file) => [`${file.name}-${file.size}-${file.lastModified}`, file]));
+  for (const file of incomingFiles) {
+    deduped.set(`${file.name}-${file.size}-${file.lastModified}`, file);
+  }
+
+  return Array.from(deduped.values());
 }
 
 function getNamespaceIri(iri) {
@@ -443,15 +864,8 @@ function orderClassesSubToSuper(classIris, graphData) {
   });
 }
 
-const ONTOLOGY_VIEW_MODES = {
-  CLASS_ONLY: 'class-only',
-  CLASS_AND_OBJECT: 'class-and-object',
-  CLASS_OBJECT_DATA: 'class-object-data',
-  FULL: 'full',
-};
-
-function toViewOptions(mode) {
-  switch (mode) {
+function toViewFlags(filterMode) {
+  switch (filterMode) {
     case ONTOLOGY_VIEW_MODES.CLASS_ONLY:
       return {
         showDataProperties: false,
@@ -484,6 +898,25 @@ function toViewOptions(mode) {
   }
 }
 
+function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false) {
+  const flags = toViewFlags(filterMode);
+  if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
+    return {
+      projectionMode: GRAPH_PROJECTION_MODES.KG,
+      ...flags,
+      showTypeLinks: Boolean(graphData?.hasOntology && graphData?.hasKg),
+      lightOntologyMode: false,
+    };
+  }
+
+  return {
+    projectionMode: GRAPH_PROJECTION_MODES.ONTOLOGY,
+    ...flags,
+    showTypeLinks: Boolean(graphData?.hasOntology && graphData?.hasKg),
+    lightOntologyMode: Boolean(lightOntologyMode),
+  };
+}
+
 function modelHasOntologySchema(model) {
   if (!model) {
     return false;
@@ -493,7 +926,8 @@ function modelHasOntologySchema(model) {
     (model.classIds?.size ?? 0) > 0 ||
     (model.objectPropertyIds?.size ?? 0) > 0 ||
     (model.dataPropertyIds?.size ?? 0) > 0 ||
-    (model.annotationPropertyIds?.size ?? 0) > 0
+    (model.annotationPropertyIds?.size ?? 0) > 0 ||
+    (model.datatypeIds?.size ?? 0) > 0
   );
 }
 
@@ -501,7 +935,9 @@ export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
   const previousFocusedNodeIdRef = useRef(null);
+  const previousFocusedNodeIdsRef = useRef([]);
   const focusedNodeIdRef = useRef(null);
+  const focusedNodeIdsRef = useRef([]);
   const preFocusViewportRef = useRef(null);
   const queryEngineRef = useRef(new QueryEngine());
   const leftFlyoutTimerRef = useRef(null);
@@ -510,6 +946,7 @@ export default function App() {
   const hasAppliedInitialLayoutRef = useRef(false);
   const layoutPositionCacheRef = useRef(new Map());
   const groupDragStateRef = useRef(null);
+  const groupDragArmRef = useRef(null);
   const shouldFitAfterFocusClearRef = useRef(false);
   const detachedPanModeRef = useRef(false);
   const detachedPanLastMouseRef = useRef(null);
@@ -526,10 +963,13 @@ export default function App() {
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
+  const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.ONTOLOGY);
   const [ontologyViewMode, setOntologyViewMode] = useState(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [focusedNodeId, setFocusedNodeId] = useState(null);
+  const [focusedNodeIds, setFocusedNodeIds] = useState([]);
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -549,12 +989,16 @@ export default function App() {
   const [leftFlyoutOpen, setLeftFlyoutOpen] = useState(false);
   const [rightFlyoutOpen, setRightFlyoutOpen] = useState(false);
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
+  const [isLegendOpen, setIsLegendOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isLightOntologyView, setIsLightOntologyView] = useState(false);
 
-  const [status, setStatus] = useState('Upload KG and/or ontology files to initialize the graph.');
+  const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
   const [filterError, setFilterError] = useState('');
   const [ontologyMetadataRows, setOntologyMetadataRows] = useState([]);
   const [multiClassBadgeTooltip, setMultiClassBadgeTooltip] = useState(null);
+  const [restrictionNodeTooltip, setRestrictionNodeTooltip] = useState(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
@@ -563,6 +1007,160 @@ export default function App() {
     () => (selectedNodeId && graphData ? graphData.nodeMap.get(selectedNodeId) : null),
     [selectedNodeId, graphData],
   );
+  const selectedEdge = useMemo(
+    () => {
+      if (!selectedEdgeId || !graphData) {
+        return null;
+      }
+
+      const mappedEdge = graphData.edgeMap.get(selectedEdgeId);
+      if (mappedEdge) {
+        return mappedEdge;
+      }
+
+      const edgeElement = visibleElements.find((entry) => entry.data.source && entry.data.id === selectedEdgeId);
+      if (!edgeElement) {
+        return null;
+      }
+
+      const data = edgeElement.data;
+      return {
+        id: data.id,
+        source: data.source,
+        target: data.target,
+        predicate: data.predicate,
+        predicateLabel: data.predicateLabel,
+        category: data.category ?? 'object',
+        axiomKind: data.axiomKind ?? '',
+        restrictionKind: data.restrictionKind ?? '',
+      };
+    },
+    [selectedEdgeId, graphData, visibleElements],
+  );
+
+  function setSingleFocusedNode(nodeId) {
+    setSelectedEdgeId(null);
+    setSelectedNodeId(nodeId);
+    setFocusedNodeId(nodeId);
+    setFocusedNodeIds(nodeId ? [nodeId] : []);
+  }
+
+  function extendFocusedNodes(nodeId) {
+    if (!nodeId) {
+      return;
+    }
+    setSelectedEdgeId(null);
+    setSelectedNodeId(nodeId);
+    setFocusedNodeId(nodeId);
+    setFocusedNodeIds((current) => {
+      if (current.includes(nodeId)) {
+        return current;
+      }
+      return [...current, nodeId];
+    });
+  }
+
+  function clearFocusState() {
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setFocusedNodeId(null);
+    setFocusedNodeIds([]);
+  }
+
+  function captureCurrentViewSnapshot() {
+    const cy = cyRef.current;
+    if (!cy) {
+      return null;
+    }
+
+    const modeLabel = getCurrentViewLabel(graphProjectionMode, isLightOntologyViewActive);
+    const exportTimestamp = new Date();
+    const nodes = cy.nodes().map((node) => {
+      const modelNode = graphData?.nodeMap.get(node.id());
+      const nodeData = {
+        ...node.data(),
+        baseIri: modelNode?.baseIri ?? node.data('baseIri') ?? '',
+        classes: Array.isArray(modelNode?.classes) ? [...modelNode.classes] : [],
+        literalValue: modelNode?.literalValue ?? node.data('literalValue') ?? '',
+        literalDatatype: modelNode?.literalDatatype ?? node.data('literalDatatype') ?? '',
+        literalLanguage: modelNode?.literalLanguage ?? node.data('literalLanguage') ?? '',
+      };
+      return {
+        data: nodeData,
+        position: { x: node.position('x'), y: node.position('y') },
+        classes: node.classes(),
+      };
+    });
+    const edges = cy.edges().map((edge) => {
+      const modelEdge = graphData?.edgeMap.get(edge.id());
+      return {
+        data: {
+          ...edge.data(),
+          axiomKind: modelEdge?.axiomKind ?? edge.data('axiomKind') ?? '',
+          restrictionKind: modelEdge?.restrictionKind ?? edge.data('restrictionKind') ?? '',
+        },
+        classes: edge.classes(),
+      };
+    });
+
+    return {
+      nodes,
+      edges,
+      viewport: {
+        zoom: cy.zoom(),
+        pan: cy.pan(),
+      },
+      style: typeof cy.style().json === 'function' ? cy.style().json() : [],
+      metadata: {
+        title: 'IDEA* Viewer export',
+        viewLabel: modeLabel,
+        viewKey: getCurrentViewKey(graphProjectionMode, isLightOntologyViewActive),
+        exportedAtIso: exportTimestamp.toISOString(),
+        exportedAtLabel: exportTimestamp.toLocaleString(),
+      },
+    };
+  }
+
+  async function handleExport(format) {
+    const snapshot = captureCurrentViewSnapshot();
+    if (!snapshot) {
+      setStatus('Export is unavailable until a graph is rendered.');
+      return;
+    }
+
+    try {
+      const fileBase = `idea-viewer-${sanitizeFilenameSegment(snapshot.metadata.viewKey)}-${formatExportTimestamp()}`;
+
+      if (format === 'png') {
+        const cy = cyRef.current;
+        const pngDataUrl = cy?.png({
+          full: false,
+          scale: 2,
+          bg: '#fcfaf6',
+        });
+        if (!pngDataUrl) {
+          throw new Error('PNG export could not be generated.');
+        }
+        downloadDataUrl(`${fileBase}.png`, pngDataUrl);
+      } else if (format === 'csv') {
+        const csvText = buildCsvExport(snapshot);
+        downloadBlob(`${fileBase}.csv`, new Blob([csvText], { type: 'text/csv;charset=utf-8' }));
+      } else if (format === 'ttl') {
+        const ttlText = await buildTurtleExport(snapshot);
+        downloadBlob(`${fileBase}.ttl`, new Blob([ttlText], { type: 'text/turtle;charset=utf-8' }));
+      } else if (format === 'html') {
+        const htmlText = buildHtmlExport(snapshot);
+        downloadBlob(`${fileBase}.html`, new Blob([htmlText], { type: 'text/html;charset=utf-8' }));
+      } else {
+        throw new Error(`Unsupported export format: ${format}`);
+      }
+
+      setStatus(`Exported ${format.toUpperCase()} for the current ${snapshot.metadata.viewLabel.toLowerCase()}.`);
+      setIsExportMenuOpen(false);
+    } catch (error) {
+      setStatus(`Export failed: ${error.message || 'Unexpected export error.'}`);
+    }
+  }
 
   function fitCurrentGraphViewport(cy, duration = 250) {
     const visibleElementsForFit = cy.elements(':visible');
@@ -575,6 +1173,50 @@ export default function App() {
         padding: 42,
       },
       duration,
+    });
+  }
+
+  function nudgeNodesTowardLandscape(cy, targetRatio = 1.5) {
+    const nodes = cy.nodes(':visible');
+    if (nodes.length < 2) {
+      return;
+    }
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    nodes.forEach((node) => {
+      const x = node.position('x');
+      const y = node.position('y');
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    });
+
+    const spanX = maxX - minX;
+    const spanY = maxY - minY;
+    if (!Number.isFinite(spanX) || !Number.isFinite(spanY) || spanX <= 1 || spanY <= 1) {
+      return;
+    }
+
+    const currentRatio = spanX / spanY;
+    if (currentRatio >= targetRatio) {
+      return;
+    }
+
+    const scaleY = Math.max(0.35, currentRatio / targetRatio);
+    const centerY = (minY + maxY) / 2;
+
+    cy.batch(() => {
+      nodes.forEach((node) => {
+        const position = node.position();
+        node.position({
+          x: position.x,
+          y: centerY + (position.y - centerY) * scaleY,
+        });
+      });
     });
   }
 
@@ -636,6 +1278,34 @@ export default function App() {
     };
   }
 
+  function buildRestrictionTooltipPayload(event) {
+    const node = event.target;
+    if (!node || !event.renderedPosition) {
+      return null;
+    }
+
+    const blankExpressionType = String(node.data('blankExpressionType') ?? '');
+    const tooltipText = String(node.data('restrictionTooltip') ?? '').trim();
+    if (blankExpressionType !== 'Restriction' || !tooltipText) {
+      return null;
+    }
+
+    const cursor = event.renderedPosition;
+    const container = graphContainerRef.current;
+    const maxWidth = container?.clientWidth ?? 1200;
+    const maxHeight = container?.clientHeight ?? 800;
+    const tooltipWidth = Math.min(440, Math.max(260, Math.round(Math.min(tooltipText.length, 180) * 4.4)));
+    const left = Math.min(Math.max(8, cursor.x + 14), Math.max(8, maxWidth - tooltipWidth - 8));
+    const top = Math.min(Math.max(8, cursor.y + 12), Math.max(8, maxHeight - 120));
+
+    return {
+      left,
+      top,
+      text: tooltipText,
+      width: tooltipWidth,
+    };
+  }
+
   const selectedNodeDataProperties = useMemo(
     () => (selectedNodeId && graphData ? graphData.dataProperties.get(selectedNodeId) ?? [] : []),
     [selectedNodeId, graphData],
@@ -660,6 +1330,29 @@ export default function App() {
       iri: selectedNode.baseIri,
     };
   }, [selectedNode]);
+  const selectedNodeMetadataRows = useMemo(
+    () => (selectedNodeId && graphData ? graphData.nodeMetadata.get(selectedNodeId) ?? [] : []),
+    [selectedNodeId, graphData],
+  );
+  const selectedEdgeMetadataRows = useMemo(() => {
+    if (!selectedEdgeId || !graphData) {
+      return [];
+    }
+
+    const baseRows = graphData.edgeMetadata.get(selectedEdgeId) ?? [];
+    const edge = selectedEdge ?? graphData.edgeMap.get(selectedEdgeId);
+    if (!edge) {
+      return baseRows;
+    }
+
+    const predicateMetadata = graphData.nodeMetadata.get(edge.predicate) ?? [];
+    const predicateRows = predicateMetadata.map((row) => ({
+      key: `Predicate ${row.predicateLabel}`,
+      value: row.value,
+    }));
+
+    return [...baseRows, ...predicateRows];
+  }, [selectedEdgeId, graphData, selectedEdge]);
 
   const neighborRows = useMemo(
     () => buildNeighborRows(selectedNodeId, visibleElements, graphData),
@@ -668,6 +1361,9 @@ export default function App() {
 
   const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
+  const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
+  const isLightOntologyViewActive =
+    isLightOntologyView && isOntologyOnlyDataset && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
 
   const isAllClassesSelected =
     allClassIris.length === 0 ||
@@ -730,7 +1426,7 @@ export default function App() {
           },
         },
         {
-          selector: 'node[hasClass > 0]',
+          selector: 'node[hasClass > 0][entityCategory != "class-expression"]',
           style: {
             'background-image': 'data(badgeSvg)',
             'background-image-opacity': 1,
@@ -748,13 +1444,13 @@ export default function App() {
           },
         },
         {
-          selector: 'node[ontologyKind = "class"]',
+          selector: 'node[entityCategory = "class"]',
           style: {
             shape: 'ellipse',
           },
         },
         {
-          selector: 'node[ontologyKind = "individual"]',
+          selector: 'node[entityCategory = "individual"]',
           style: {
             shape: 'round-rectangle',
           },
@@ -769,7 +1465,16 @@ export default function App() {
           },
         },
         {
-          selector: 'node[ontologyKind = "data-property"]',
+          selector: 'node[entityCategory = "datatype"]',
+          style: {
+            shape: 'triangle',
+            'background-color': '#eee5da',
+            'border-color': '#8e7560',
+            color: '#1e1b16',
+          },
+        },
+        {
+          selector: 'node[entityCategory = "data-property"]',
           style: {
             shape: 'diamond',
             'background-color': '#f0e7db',
@@ -778,7 +1483,7 @@ export default function App() {
           },
         },
         {
-          selector: 'node[ontologyKind = "object-property"]',
+          selector: 'node[entityCategory = "object-property"]',
           style: {
             shape: 'hexagon',
             'background-color': '#efe4d7',
@@ -787,13 +1492,86 @@ export default function App() {
           },
         },
         {
-          selector: 'node[ontologyKind = "annotation-property"]',
+          selector: 'node[entityCategory = "annotation-property"]',
           style: {
-            shape: 'round-rectangle',
+            shape: 'round-diamond',
             'background-color': '#efe6dd',
             'border-color': '#9e846b',
             'border-style': 'dashed',
             color: '#1e1b16',
+          },
+        },
+        {
+          selector: 'node[entityCategory = "class-expression"]',
+          style: {
+            shape: 'hexagon',
+            'background-color': '#e8f2ef',
+            'border-color': '#2f8a81',
+            'border-width': 2.2,
+            color: '#1f4f4c',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1]',
+          style: {
+            shape: 'rectangle',
+            'background-image': 'none',
+            'background-width': 0,
+            'background-height': 0,
+            'background-repeat': 'no-repeat',
+            'bounds-expansion': 6,
+            'border-width': 1.25,
+            color: '#2a231d',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "class"]',
+          style: {
+            'background-color': '#d9c4ab',
+            'border-color': '#8d6b4c',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "object-property"]',
+          style: {
+            'background-color': '#d4e2f2',
+            'border-color': '#5d7fa8',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "data-property"]',
+          style: {
+            'background-color': '#d6ebd9',
+            'border-color': '#5f9067',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "annotation-property"]',
+          style: {
+            'background-color': '#f0d9e4',
+            'border-color': '#ab6f8a',
+            'border-style': 'solid',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "individual"]',
+          style: {
+            'background-color': '#dfdfdf',
+            'border-color': '#7f7f7f',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][kind = "literal"]',
+          style: {
+            'background-color': '#f5ebbe',
+            'border-color': '#b9a14f',
+          },
+        },
+        {
+          selector: 'node[lightOntologyView = 1][entityCategory = "datatype"]',
+          style: {
+            'background-color': '#d6ebd9',
+            'border-color': '#5f9067',
           },
         },
         {
@@ -838,6 +1616,28 @@ export default function App() {
           },
         },
         {
+          selector: 'edge[lightOntologyView = 1]',
+          style: {
+            width: 1.6,
+            'line-color': '#b8afa5',
+            'target-arrow-color': '#b8afa5',
+            color: '#5a524a',
+            'text-max-width': 180,
+          },
+        },
+        {
+          selector: 'edge[lightOntologyView = 1][lightRestrictionEdge = 1]',
+          style: {
+            width: 2,
+            'line-color': '#3f8f86',
+            'target-arrow-color': '#3f8f86',
+            color: '#3d665f',
+            'text-background-color': '#f8f5ef',
+            'text-border-color': '#d2cbc2',
+            'text-max-width': 220,
+          },
+        },
+        {
           selector: '.faded',
           style: {
             opacity: 0.12,
@@ -868,6 +1668,17 @@ export default function App() {
             opacity: 1,
           },
         },
+        {
+          selector: '.selected-relation',
+          style: {
+            width: 3.2,
+            'line-color': '#1e6b6a',
+            'target-arrow-color': '#1e6b6a',
+            'text-background-color': '#f0fff8',
+            'text-border-color': '#9fd5cb',
+            opacity: 1,
+          },
+        },
       ],
       layout: {
         name: 'cose',
@@ -882,10 +1693,30 @@ export default function App() {
         suppressNextTapRef.current = false;
         return;
       }
+      groupDragArmRef.current = null;
       setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
       const nodeId = event.target.id();
-      setSelectedNodeId(nodeId);
-      setFocusedNodeId(nodeId);
+      if (event.originalEvent instanceof MouseEvent && event.originalEvent.shiftKey) {
+        extendFocusedNodes(nodeId);
+        return;
+      }
+      setSingleFocusedNode(nodeId);
+    });
+
+    cy.on('tap', 'edge', (event) => {
+      if (suppressNextTapRef.current) {
+        suppressNextTapRef.current = false;
+        return;
+      }
+      groupDragArmRef.current = null;
+      setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
+      const edgeId = event.target.id();
+      setSelectedNodeId(null);
+      setFocusedNodeId(null);
+      setFocusedNodeIds([]);
+      setSelectedEdgeId(edgeId);
     });
 
     cy.on('tap', (event) => {
@@ -893,11 +1724,50 @@ export default function App() {
         suppressNextTapRef.current = false;
         return;
       }
+      groupDragArmRef.current = null;
       setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
       if (event.target === cy) {
-        setSelectedNodeId(null);
-        setFocusedNodeId(null);
+        clearFocusState();
       }
+    });
+
+    cy.on('mousedown', 'node', (event) => {
+      const originalEvent = event.originalEvent;
+      if (!(originalEvent instanceof MouseEvent) || originalEvent.button !== 0) {
+        return;
+      }
+
+      const activeFocusedNodeIds = focusedNodeIdsRef.current;
+      const downNode = event.target;
+
+      if (activeFocusedNodeIds.length === 0) {
+        groupDragArmRef.current = null;
+        return;
+      }
+
+      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      if (focusRoots.empty()) {
+        groupDragArmRef.current = null;
+        return;
+      }
+
+      const groupNodes = focusRoots.closedNeighborhood().nodes();
+      if (!groupNodes.has(downNode)) {
+        groupDragArmRef.current = null;
+        return;
+      }
+
+      if (originalEvent.ctrlKey) {
+        originalEvent.preventDefault();
+        groupDragArmRef.current = {
+          nodeId: downNode.id(),
+          focusedSignature: getFocusSignature(activeFocusedNodeIds),
+        };
+        return;
+      }
+
+      groupDragArmRef.current = null;
     });
 
     cy.on('dbltap', (event) => {
@@ -907,12 +1777,12 @@ export default function App() {
       if (event.originalEvent instanceof MouseEvent && event.originalEvent.button !== 0) {
         return;
       }
+      groupDragArmRef.current = null;
 
-      const activeFocusNodeId = focusedNodeIdRef.current;
-      if (activeFocusNodeId) {
+      const activeFocusedNodeIds = focusedNodeIdsRef.current;
+      if (activeFocusedNodeIds.length > 0) {
         shouldFitAfterFocusClearRef.current = true;
-        setFocusedNodeId(null);
-        setSelectedNodeId(null);
+        clearFocusState();
         return;
       }
 
@@ -920,24 +1790,38 @@ export default function App() {
     });
 
     cy.on('grab', 'node', (event) => {
-      const activeFocusNodeId = focusedNodeIdRef.current;
-      if (!activeFocusNodeId) {
-        groupDragStateRef.current = null;
-        return;
-      }
-
-      const focusNode = cy.$id(activeFocusNodeId);
-      if (focusNode.empty()) {
-        groupDragStateRef.current = null;
-        return;
-      }
-
-      const groupNodes = focusNode.closedNeighborhood().nodes();
+      const activeFocusedNodeIds = focusedNodeIdsRef.current;
       const grabbedNode = event.target;
+      if (activeFocusedNodeIds.length === 0) {
+        groupDragStateRef.current = null;
+        groupDragArmRef.current = null;
+        return;
+      }
+
+      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      if (focusRoots.empty()) {
+        groupDragStateRef.current = null;
+        groupDragArmRef.current = null;
+        return;
+      }
+
+      const groupNodes = focusRoots.closedNeighborhood().nodes();
       if (!groupNodes.has(grabbedNode)) {
         groupDragStateRef.current = null;
+        groupDragArmRef.current = null;
         return;
       }
+
+      const arm = groupDragArmRef.current;
+      const shouldUseGroupDrag =
+        Boolean(arm) &&
+        arm.nodeId === grabbedNode.id() &&
+        arm.focusedSignature === getFocusSignature(activeFocusedNodeIds);
+      if (!shouldUseGroupDrag) {
+        groupDragStateRef.current = null;
+        return;
+      }
+      groupDragArmRef.current = null;
 
       const followerIds = [];
       const followerStartPositions = new Map();
@@ -1001,17 +1885,20 @@ export default function App() {
       });
     });
 
-    const updateClassBadgeTooltip = (event) => {
+    const updateNodeHoverTooltips = (event) => {
       setMultiClassBadgeTooltip(buildClassBadgeTooltipPayload(event));
+      setRestrictionNodeTooltip(buildRestrictionTooltipPayload(event));
     };
 
-    cy.on('mouseover', 'node', updateClassBadgeTooltip);
-    cy.on('mousemove', 'node', updateClassBadgeTooltip);
+    cy.on('mouseover', 'node', updateNodeHoverTooltips);
+    cy.on('mousemove', 'node', updateNodeHoverTooltips);
     cy.on('mouseout', 'node', () => {
       setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
     });
     cy.on('pan zoom', () => {
       setMultiClassBadgeTooltip(null);
+      setRestrictionNodeTooltip(null);
     });
 
     const container = cy.container();
@@ -1078,7 +1965,7 @@ export default function App() {
 
     const onContextMenu = (event) => {
       const bothPressed = (event.buttons & 1) !== 0 && (event.buttons & 2) !== 0;
-      if (detachedPanModeRef.current || bothPressed) {
+      if (detachedPanModeRef.current || bothPressed || event.ctrlKey) {
         event.preventDefault();
       }
     };
@@ -1096,6 +1983,7 @@ export default function App() {
       container.removeEventListener('mouseleave', onMouseLeave);
       container.removeEventListener('contextmenu', onContextMenu);
       groupDragStateRef.current = null;
+      groupDragArmRef.current = null;
       shouldFitAfterFocusClearRef.current = false;
       layoutPositionCacheRef.current.clear();
       detachedPanModeRef.current = false;
@@ -1108,10 +1996,16 @@ export default function App() {
 
   useEffect(() => {
     focusedNodeIdRef.current = focusedNodeId;
-    if (!focusedNodeId) {
+    focusedNodeIdsRef.current = focusedNodeIds;
+    if (focusedNodeIds.length === 0) {
       groupDragStateRef.current = null;
+      groupDragArmRef.current = null;
+      return;
     }
-  }, [focusedNodeId]);
+    if (groupDragArmRef.current?.focusedSignature !== getFocusSignature(focusedNodeIds)) {
+      groupDragArmRef.current = null;
+    }
+  }, [focusedNodeId, focusedNodeIds]);
 
   useEffect(() => {
     hasAppliedInitialLayoutRef.current = false;
@@ -1119,8 +2013,41 @@ export default function App() {
   }, [graphData]);
 
   useEffect(() => {
+    groupDragStateRef.current = null;
+    groupDragArmRef.current = null;
     setMultiClassBadgeTooltip(null);
+    setRestrictionNodeTooltip(null);
+    setIsExportMenuOpen(false);
   }, [visibleElements]);
+
+  useEffect(() => {
+    if (!isExportMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (!target.closest('.graph-export-menu')) {
+        setIsExportMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsExportMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isExportMenuOpen]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -1163,6 +2090,9 @@ export default function App() {
         edgeElasticity: 80,
         nodeRepulsion: 20000,
       }).run();
+      if (isLightOntologyViewActive) {
+        nudgeNodesTowardLandscape(cy, 1.5);
+      }
       cy.nodes().forEach((node) => {
         positionCache.set(node.id(), {
           x: node.position('x'),
@@ -1201,6 +2131,10 @@ export default function App() {
       lockedNodes.unlock();
     }
 
+    if (isLightOntologyViewActive) {
+      nudgeNodesTowardLandscape(cy, 1.5);
+    }
+
     cy.nodes().forEach((node) => {
       positionCache.set(node.id(), {
         x: node.position('x'),
@@ -1210,7 +2144,7 @@ export default function App() {
 
     cy.zoom(previousViewport.zoom);
     cy.pan(previousViewport.pan);
-  }, [visibleElements]);
+  }, [visibleElements, isLightOntologyViewActive]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -1218,9 +2152,9 @@ export default function App() {
       return;
     }
 
-    const wasFocused = Boolean(previousFocusedNodeIdRef.current);
+    const wasFocused = previousFocusedNodeIdsRef.current.length > 0;
 
-    if (focusedNodeId && !wasFocused) {
+    if (focusedNodeIds.length > 0 && !wasFocused) {
       const pan = cy.pan();
       preFocusViewportRef.current = {
         zoom: cy.zoom(),
@@ -1231,28 +2165,28 @@ export default function App() {
     cy.batch(() => {
       cy.elements().removeClass('faded focus-node focus-neighbor focus-edge');
 
-      if (!focusedNodeId) {
+      if (focusedNodeIds.length === 0) {
         return;
       }
 
-      const focusNode = cy.$id(focusedNodeId);
-      if (focusNode.empty()) {
+      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      if (focusRoots.empty()) {
         return;
       }
 
-      const neighborhood = focusNode.closedNeighborhood();
+      const neighborhood = focusRoots.closedNeighborhood();
       cy.elements().difference(neighborhood).addClass('faded');
-      focusNode.addClass('focus-node');
-      focusNode.neighborhood('node').addClass('focus-neighbor');
-      focusNode.connectedEdges().addClass('focus-edge');
+      focusRoots.addClass('focus-node');
+      neighborhood.nodes().difference(focusRoots).addClass('focus-neighbor');
+      focusRoots.connectedEdges().addClass('focus-edge');
     });
 
-    if (focusedNodeId) {
-      const focusNode = cy.$id(focusedNodeId);
-      if (!focusNode.empty()) {
+    if (focusedNodeIds.length > 0) {
+      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      if (!focusRoots.empty()) {
         cy.animate({
           fit: {
-            eles: focusNode.closedNeighborhood(),
+            eles: focusRoots.closedNeighborhood(),
             padding: 76,
           },
           duration: 250,
@@ -1264,6 +2198,7 @@ export default function App() {
         fitCurrentGraphViewport(cy, 220);
         preFocusViewportRef.current = null;
         previousFocusedNodeIdRef.current = focusedNodeId;
+        previousFocusedNodeIdsRef.current = focusedNodeIds;
         return;
       }
 
@@ -1295,7 +2230,25 @@ export default function App() {
     }
 
     previousFocusedNodeIdRef.current = focusedNodeId;
-  }, [focusedNodeId, visibleElements]);
+    previousFocusedNodeIdsRef.current = focusedNodeIds;
+  }, [focusedNodeId, focusedNodeIds, visibleElements]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+
+    cy.edges().removeClass('selected-relation');
+    if (!selectedEdgeId) {
+      return;
+    }
+
+    const edge = cy.$id(selectedEdgeId);
+    if (!edge.empty()) {
+      edge.addClass('selected-relation');
+    }
+  }, [selectedEdgeId, visibleElements]);
 
   useEffect(() => {
     if (!graphData) {
@@ -1310,12 +2263,11 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = {
-          ...toViewOptions(ontologyViewMode),
-          showTypeLinks: graphData.hasOntology && graphData.hasKg,
-        };
+        const viewOptions = toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive);
         const classFilterActive =
-          graphData.classes.length > 0 && selectedClassIris.length !== graphData.classes.length;
+          !isOntologyOnlyDataset &&
+          graphData.classes.length > 0 &&
+          selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
           graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
         const nodeNameFilterActive = nodeNameQuery.trim().length > 0;
@@ -1357,10 +2309,7 @@ export default function App() {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
-            buildFocusedSubset(graphData, null, {
-              ...toViewOptions(ontologyViewMode),
-              showTypeLinks: graphData.hasOntology && graphData.hasKg,
-            }),
+            buildFocusedSubset(graphData, null, toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive)),
           );
         }
       } finally {
@@ -1381,11 +2330,33 @@ export default function App() {
     selectedBaseIris,
     nodeNameQuery,
     sparqlQuery,
+    graphProjectionMode,
     ontologyViewMode,
+    isOntologyOnlyDataset,
+    isLightOntologyViewActive,
   ]);
 
   useEffect(() => {
+    const visibleNodeIds = new Set(
+      visibleElements.filter((entry) => !entry.data.source).map((entry) => entry.data.id),
+    );
+
+    if (focusedNodeIdsRef.current.length > 0) {
+      const nextFocusedNodeIds = focusedNodeIdsRef.current.filter((nodeId) => visibleNodeIds.has(nodeId));
+      if (nextFocusedNodeIds.length !== focusedNodeIdsRef.current.length) {
+        setFocusedNodeIds(nextFocusedNodeIds);
+        setFocusedNodeId(nextFocusedNodeIds.length > 0 ? nextFocusedNodeIds[nextFocusedNodeIds.length - 1] : null);
+      }
+    }
+
     if (!selectedNodeId) {
+      if (!selectedEdgeId) {
+        return;
+      }
+      const hasSelectedEdge = visibleElements.some((entry) => entry.data.source && entry.data.id === selectedEdgeId);
+      if (!hasSelectedEdge) {
+        setSelectedEdgeId(null);
+      }
       return;
     }
 
@@ -1393,101 +2364,174 @@ export default function App() {
     if (!hasSelectedNode) {
       setSelectedNodeId(null);
       setFocusedNodeId(null);
+      setFocusedNodeIds([]);
     }
-  }, [visibleElements, selectedNodeId]);
+  }, [visibleElements, selectedNodeId, selectedEdgeId]);
 
-  async function handleLoadGraph() {
+  function clearLoadedGraph() {
+    setKgFiles([]);
+    setOntologyFiles([]);
+    setGraphData(null);
+    setVisibleElements([]);
+    setSelectedClassIris([]);
+    setSelectedBaseIris([]);
+    setNodeNameQuery('');
+    setSparqlDraft('');
+    setSparqlQuery('');
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setFocusedNodeId(null);
+    setFocusedNodeIds([]);
+    setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
+    setIsLightOntologyView(false);
+    setIsExportMenuOpen(false);
+    setOntologyMetadataRows([]);
+    setLoadError('');
+    setFilterError('');
+    setStatus(DEFAULT_STATUS);
+  }
+
+  useEffect(() => {
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
+      setGraphData(null);
+      setVisibleElements([]);
+      setSelectedClassIris([]);
+      setSelectedBaseIris([]);
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+      setFocusedNodeId(null);
+      setFocusedNodeIds([]);
+      setOntologyMetadataRows([]);
+      setIsLightOntologyView(false);
+      setLoadError('');
+      setFilterError('');
+      setIsLoading(false);
+      setStatus(DEFAULT_STATUS);
       return;
     }
 
-    setIsLoading(true);
-    setLoadError('');
-    setFilterError('');
-    setOntologyMetadataRows([]);
+    let cancelled = false;
 
-    try {
-      const kgQuadGroups = await Promise.all(
-        kgFiles.map(async (file) => {
-          const text = await file.text();
-          return parseRdfText(text, file.name);
-        }),
-      );
-      const ontologyParsedFiles = await Promise.all(
-        ontologyFiles.map(async (file) => {
-          const text = await file.text();
-          const quads = await parseRdfText(text, file.name);
-          const { headerQuads, contentQuads } = partitionOntologyHeaderQuads(quads);
-          const model = extractOntologyModel(contentQuads);
-          const hasSchema = modelHasOntologySchema(model);
-          return { fileName: file.name, headerQuads, contentQuads, hasSchema };
-        }),
-      );
+    const loadGraph = async () => {
+      setIsLoading(true);
+      setLoadError('');
+      setFilterError('');
+      setOntologyMetadataRows([]);
 
-      const kgQuads = kgQuadGroups.flat();
-      const schemaOntologyQuads = [];
-      const instanceOntologyQuads = [];
-      let schemaOntologyFileCount = 0;
-      let instanceOntologyFileCount = 0;
-      const metadataRows = [];
+      try {
+        const kgQuadGroups = await Promise.all(
+          kgFiles.map(async (file) => {
+            const text = await file.text();
+            return parseRdfText(text, file.name);
+          }),
+        );
+        const ontologyParsedFiles = await Promise.all(
+          ontologyFiles.map(async (file) => {
+            const text = await file.text();
+            const quads = await parseRdfText(text, file.name);
+            const { headerQuads, contentQuads } = partitionOntologyHeaderQuads(quads);
+            const model = extractOntologyModel(contentQuads);
+            const hasSchema = modelHasOntologySchema(model);
+            return { fileName: file.name, headerQuads, contentQuads, hasSchema };
+          }),
+        );
 
-      for (const parsed of ontologyParsedFiles) {
-        parsed.headerQuads.forEach((quad, index) => {
-          metadataRows.push({
-            id: `${parsed.fileName}-${index}-${getTermId(quad.subject)}-${getTermId(quad.object)}`,
-            fileName: parsed.fileName,
-            subject: formatTermForInspector(quad.subject),
-            predicate: formatTermForInspector(quad.predicate),
-            value: formatTermForInspector(quad.object),
+        if (cancelled) {
+          return;
+        }
+
+        const kgQuads = kgQuadGroups.flat();
+        const schemaOntologyQuads = [];
+        const instanceOntologyQuads = [];
+        let schemaOntologyFileCount = 0;
+        let instanceOntologyFileCount = 0;
+        const metadataRows = [];
+
+        for (const parsed of ontologyParsedFiles) {
+          parsed.headerQuads.forEach((quad, index) => {
+            metadataRows.push({
+              id: `${parsed.fileName}-${index}-${getTermId(quad.subject)}-${getTermId(quad.object)}`,
+              fileName: parsed.fileName,
+              subject: formatTermForInspector(quad.subject),
+              predicate: formatTermForInspector(quad.predicate),
+              value: formatTermForInspector(quad.object),
+            });
           });
+
+          if (parsed.hasSchema) {
+            schemaOntologyQuads.push(...parsed.contentQuads);
+            schemaOntologyFileCount += 1;
+          } else {
+            instanceOntologyQuads.push(...parsed.contentQuads);
+            instanceOntologyFileCount += 1;
+          }
+        }
+
+        const effectiveKgQuads = [...kgQuads, ...instanceOntologyQuads];
+        const mergedQuads = [...effectiveKgQuads, ...schemaOntologyQuads];
+        const ontologyModel = extractOntologyModel(schemaOntologyQuads);
+        const hasOntology = modelHasOntologySchema(ontologyModel) && schemaOntologyQuads.length > 0;
+        const hasKg = effectiveKgQuads.length > 0;
+        const nextGraphData = buildGraphData(mergedQuads, {
+          hasKg,
+          hasOntology,
+          ontologyModel,
+        });
+        const derivedPrefixRows = nextGraphData.baseIris.map((entry, index) => {
+          const prefix = getPrefixFromBaseIri(entry.id);
+          return {
+            id: `derived-prefix-${index}-${entry.id}`,
+            fileName: 'Derived prefixes',
+            subject: 'dataset',
+            predicate: 'prefix',
+            value: `${prefix}: <${entry.id}>`,
+          };
         });
 
-        if (parsed.hasSchema) {
-          schemaOntologyQuads.push(...parsed.contentQuads);
-          schemaOntologyFileCount += 1;
-        } else {
-          instanceOntologyQuads.push(...parsed.contentQuads);
-          instanceOntologyFileCount += 1;
+        if (cancelled) {
+          return;
+        }
+
+        setGraphData(nextGraphData);
+        setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
+        setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
+        setNodeNameQuery('');
+        setSparqlDraft('');
+        setSparqlQuery('');
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        setFocusedNodeId(null);
+        setFocusedNodeIds([]);
+        setOntologyMetadataRows([...metadataRows, ...derivedPrefixRows]);
+
+        setStatus(
+          `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${
+            kgFiles.length + instanceOntologyFileCount
+          } KG file${kgFiles.length + instanceOntologyFileCount === 1 ? '' : 's'}${
+            schemaOntologyFileCount > 0
+              ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
+              : ''
+          }`,
+        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setLoadError(error.message || 'Unable to parse one of the uploaded files.');
+        setOntologyMetadataRows([]);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
         }
       }
+    };
 
-      const effectiveKgQuads = [...kgQuads, ...instanceOntologyQuads];
-      const mergedQuads = [...effectiveKgQuads, ...schemaOntologyQuads];
-      const ontologyModel = extractOntologyModel(schemaOntologyQuads);
-      const hasOntology = modelHasOntologySchema(ontologyModel) && schemaOntologyQuads.length > 0;
-      const hasKg = effectiveKgQuads.length > 0;
-      const nextGraphData = buildGraphData(mergedQuads, {
-        hasKg,
-        hasOntology,
-        ontologyModel,
-      });
+    loadGraph();
 
-      setGraphData(nextGraphData);
-      setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
-      setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
-      setNodeNameQuery('');
-      setSparqlDraft('');
-      setSparqlQuery('');
-      setSelectedNodeId(null);
-      setFocusedNodeId(null);
-      setOntologyMetadataRows(metadataRows);
-
-      setStatus(
-        `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${
-          kgFiles.length + instanceOntologyFileCount
-        } KG file${kgFiles.length + instanceOntologyFileCount === 1 ? '' : 's'}${
-          schemaOntologyFileCount > 0
-            ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
-            : ''
-        }`,
-      );
-    } catch (error) {
-      setLoadError(error.message || 'Unable to parse one of the uploaded files.');
-      setOntologyMetadataRows([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [kgFiles, ontologyFiles]);
 
   function toggleClass(classIri) {
     setSelectedClassIris((current) => {
@@ -1736,6 +2780,15 @@ export default function App() {
     };
   }, [isGraphFullscreen]);
 
+  useEffect(() => {
+    if (!isLightOntologyView) {
+      return;
+    }
+    if (!isOntologyOnlyDataset || graphProjectionMode !== GRAPH_PROJECTION_MODES.ONTOLOGY) {
+      setIsLightOntologyView(false);
+    }
+  }, [isLightOntologyView, isOntologyOnlyDataset, graphProjectionMode]);
+
   const showLeftPanelContent = isGraphFullscreen ? leftFlyoutOpen : !leftCollapsed;
   const showRightPanelContent = isGraphFullscreen ? rightFlyoutOpen : !rightCollapsed;
 
@@ -1748,6 +2801,11 @@ export default function App() {
     '--right-gap': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : '18px',
   };
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
+  const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
+  const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
+  const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
+  const showLightOntologyLegend = isLightOntologyViewActive;
+  const hasExportableGraph = visibleElements.length > 0;
 
   return (
     <div
@@ -1808,6 +2866,16 @@ export default function App() {
                     {leftSectionOpen.source ? '-' : '+'}
                   </button>
                   <h2>Source File</h2>
+                  <button
+                    type="button"
+                    className="section-clear"
+                    onClick={clearLoadedGraph}
+                    disabled={kgFiles.length === 0 && ontologyFiles.length === 0}
+                    aria-label="Clear all uploaded files and graph"
+                    title="Clear graph"
+                  >
+                    Clear
+                  </button>
                 </div>
 
                 {leftSectionOpen.source && (
@@ -1818,7 +2886,11 @@ export default function App() {
                         type="file"
                         accept=".ttl,.rdf,.n3,.nt,.nq,.trig"
                         multiple
-                        onChange={(event) => setKgFiles(Array.from(event.target.files ?? []))}
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? []);
+                          setKgFiles((current) => mergeSelectedFiles(current, files));
+                          event.target.value = '';
+                        }}
                       />
                       <small>{formatSelectedFiles(kgFiles, 'No KG files selected')}</small>
                     </label>
@@ -1829,19 +2901,15 @@ export default function App() {
                         type="file"
                         accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
                         multiple
-                        onChange={(event) => setOntologyFiles(Array.from(event.target.files ?? []))}
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? []);
+                          setOntologyFiles((current) => mergeSelectedFiles(current, files));
+                          event.target.value = '';
+                        }}
                       />
                       <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
                     </label>
-
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={(kgFiles.length === 0 && ontologyFiles.length === 0) || isLoading}
-                      onClick={handleLoadGraph}
-                    >
-                      {isLoading ? 'Parsing...' : 'Build graph'}
-                    </button>
+                    <small className="muted">{isLoading ? 'Parsing and merging graph...' : 'Graph updates automatically when files are added.'}</small>
                   </div>
                 )}
               </section>
@@ -1862,7 +2930,17 @@ export default function App() {
 
                 {leftSectionOpen.filters && (
                   <div className="section-body">
-                    <h3 className="filter-group-title">Ontology view</h3>
+                    <h3 className="filter-group-title">Projection</h3>
+                    <p className="muted">
+                      Active view:{' '}
+                      {graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY
+                        ? isLightOntologyViewActive
+                          ? 'Ontology light view'
+                          : 'Ontology full detailed view'
+                        : 'KG view'}
+                    </p>
+
+                    <h3 className="filter-group-title">View filtering</h3>
                     <div className="option-list">
                       <label className="option-item">
                         <input
@@ -1871,7 +2949,7 @@ export default function App() {
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
                         />
-                        <span>Class structure only (`rdfs:subClassOf`)</span>
+                        <span>Class hierarchy</span>
                       </label>
 
                       <label className="option-item">
@@ -1881,7 +2959,7 @@ export default function App() {
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
                         />
-                        <span>Classes with object properties (default)</span>
+                        <span>Classes with object properties</span>
                       </label>
 
                       <label className="option-item">
@@ -1891,7 +2969,7 @@ export default function App() {
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
                         />
-                        <span>Class structure + object + data properties</span>
+                        <span>Classes + object properties + data properties</span>
                       </label>
 
                       <label className="option-item">
@@ -1901,11 +2979,47 @@ export default function App() {
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
                         />
-                        <span>Class structure + object + data + annotation properties</span>
+                        <span>All</span>
                       </label>
                     </div>
+                    {!isOntologyOnlyDataset && (
+                      <>
+                        <h3 className="filter-group-title">Class type</h3>
+                        <div className="mini-actions">
+                          <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearClassSelection}
+                            disabled={!graphData || selectedClassIris.length === 0}
+                          >
+                            Clear
+                          </button>
+                        </div>
 
-                    <h3 className="filter-group-title">Class type</h3>
+                        <div className="class-list">
+                          {!graphData && <p className="muted">Load data to list class types.</p>}
+                          {graphData && graphData.classes.length === 0 && (
+                            <p className="muted">No explicit `rdf:type` triples detected.</p>
+                          )}
+                          {graphData &&
+                            graphData.classes.map((entry) => (
+                              <label key={entry.id} className="class-item">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedClassIris.includes(entry.id)}
+                                  onChange={() => toggleClass(entry.id)}
+                                />
+                                <span className="class-label" title={entry.id}>
+                                  {entry.label}
+                                </span>
+                                <small>{entry.count}</small>
+                              </label>
+                            ))}
+                        </div>
+                      </>
+                    )}
                     <h3 className="filter-group-title">Node name</h3>
                     <div className="node-search-row">
                       <input
@@ -1918,40 +3032,6 @@ export default function App() {
                       <button type="button" onClick={() => setNodeNameQuery('')} disabled={!nodeNameQuery.trim()}>
                         Clear
                       </button>
-                    </div>
-
-                    <div className="mini-actions">
-                      <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
-                        Select all
-                      </button>
-                      <button
-                        type="button"
-                        onClick={clearClassSelection}
-                        disabled={!graphData || selectedClassIris.length === 0}
-                      >
-                        Clear
-                      </button>
-                    </div>
-
-                    <div className="class-list">
-                      {!graphData && <p className="muted">Load data to list class types.</p>}
-                      {graphData && graphData.classes.length === 0 && (
-                        <p className="muted">No explicit `rdf:type` triples detected.</p>
-                      )}
-                      {graphData &&
-                        graphData.classes.map((entry) => (
-                          <label key={entry.id} className="class-item">
-                            <input
-                              type="checkbox"
-                              checked={selectedClassIris.includes(entry.id)}
-                              onChange={() => toggleClass(entry.id)}
-                            />
-                            <span className="class-label" title={entry.id}>
-                              {entry.label}
-                            </span>
-                            <small>{entry.count}</small>
-                          </label>
-                        ))}
                     </div>
 
                     <h3 className="filter-group-title">Base IRI (ontology)</h3>
@@ -2145,7 +3225,104 @@ export default function App() {
             </div>
           )}
 
-          <div className="graph-tools">
+          <div className="graph-tools graph-tools-left">
+            <div
+              className={`projection-toggle theme-switch ${
+                graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'mode-kg' : 'mode-ontology'
+              }`}
+              role="tablist"
+              aria-label="Graph projection mode"
+            >
+              <span className="projection-switch-thumb" aria-hidden="true" />
+              <button
+                type="button"
+                className={`projection-toggle-button ${
+                  graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY ? 'active' : ''
+                }`}
+                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY)}
+                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY}
+                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
+                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
+              >
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
+                  <circle cx="8" cy="3.2" r="1.2" fill="currentColor" />
+                  <circle cx="12.2" cy="5" r="1.1" fill="currentColor" />
+                  <circle cx="12" cy="10.8" r="1.1" fill="currentColor" />
+                  <circle cx="4" cy="10.8" r="1.1" fill="currentColor" />
+                  <circle cx="3.8" cy="5" r="1.1" fill="currentColor" />
+                  <path
+                    d="M8 5.2V6.1M10.2 6.2L9.3 6.9M10 9.9L9.2 9.2M6.8 9.2L6 9.9M6.7 6.9L5.8 6.2"
+                    stroke="currentColor"
+                    strokeWidth="1"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className={`projection-toggle-button ${
+                  graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'active' : ''
+                }`}
+                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG)}
+                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.KG}
+                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
+                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
+              >
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
+                  <circle cx="12.5" cy="4" r="1.5" fill="currentColor" />
+                  <circle cx="8" cy="12" r="1.8" fill="currentColor" />
+                  <path
+                    d="M4.9 4.9L7.1 10.1M11.1 4.9L8.9 10.1M5.1 4H10.9"
+                    stroke="currentColor"
+                    strokeWidth="1.1"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div className="graph-tools graph-tools-right">
+            {isOntologyOnlyDataset && (
+              <button
+                type="button"
+                className={`graph-tool-button icon-only ${isLightOntologyViewActive ? 'active' : ''}`}
+                onClick={() => {
+                  const next = !isLightOntologyViewActive;
+                  setIsLightOntologyView(next);
+                  if (next) {
+                    setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+                  }
+                }}
+                aria-label={lightOntologyButtonLabel}
+                title={lightOntologyButtonLabel}
+                aria-pressed={isLightOntologyViewActive}
+              >
+                <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="2.4" y="3.4" width="11.2" height="8.2" rx="1.1" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M4.2 12.8H11.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <path d="M5.2 6.2H10.8M5.2 8.6H8.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+
+            <button
+              type="button"
+              className={`graph-tool-button icon-only ${isLegendOpen ? 'active' : ''}`}
+              onClick={() => setIsLegendOpen((value) => !value)}
+              aria-label={legendButtonLabel}
+              title={legendButtonLabel}
+              aria-pressed={isLegendOpen}
+            >
+              <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="2.5" y="3.2" width="11" height="1.4" rx="0.7" fill="currentColor" />
+                <rect x="2.5" y="7.3" width="7.6" height="1.4" rx="0.7" fill="currentColor" />
+                <rect x="2.5" y="11.4" width="9.6" height="1.4" rx="0.7" fill="currentColor" />
+                <circle cx="12.3" cy="8" r="1.2" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+            </button>
             <button
               type="button"
               className="graph-tool-button icon-only"
@@ -2175,6 +3352,144 @@ export default function App() {
                 )}
               </svg>
             </button>
+
+            <div className="graph-export-menu">
+              <button
+                type="button"
+                className={`graph-tool-button icon-only ${isExportMenuOpen ? 'active' : ''}`}
+                onClick={() => setIsExportMenuOpen((value) => !value)}
+                aria-label={exportButtonLabel}
+                title={exportButtonLabel}
+                aria-pressed={isExportMenuOpen}
+                disabled={!hasExportableGraph}
+              >
+                <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path
+                    d="M8 2.4V9.1M8 9.1L5.4 6.5M8 9.1L10.6 6.5"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M3.1 10.8V12.2C3.1 12.86 3.64 13.4 4.3 13.4H11.7C12.36 13.4 12.9 12.86 12.9 12.2V10.8"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+
+              {isExportMenuOpen && hasExportableGraph && (
+                <div className="graph-export-popover" role="dialog" aria-label="Export current view">
+                  <div className="graph-export-title">Export current view</div>
+                  <div className="graph-export-actions">
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('csv')}>
+                      CSV
+                    </button>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('ttl')}>
+                      TTL
+                    </button>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('png')}>
+                      PNG
+                    </button>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('html')}>
+                      HTML
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {isLegendOpen && (
+              <div className="graph-legend-popover" role="dialog" aria-label="Graph legend">
+                <div className="graph-legend-title">{showLightOntologyLegend ? 'Light Ontology Legend' : 'Legend'}</div>
+                <div className="graph-legend-list">
+                  {showLightOntologyLegend ? (
+                    <>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-class" />
+                        <span>Class</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-object-property" />
+                        <span>Object property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-data-property" />
+                        <span>Data property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-annotation-property" />
+                        <span>Annotation property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-individual" />
+                        <span>Named individual</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-literal" />
+                        <span>Literal value</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-light-datatype" />
+                        <span>Datatype</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker marker-light-edge" />
+                        <span>Labeled relation edge</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker marker-light-restriction-edge" />
+                        <span>Restriction bridge edge</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-class" />
+                        <span>Class</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-individual" />
+                        <span>Named individual or KG instance</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-literal" />
+                        <span>Literal value</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-datatype" />
+                        <span>Datatype</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-object-property" />
+                        <span>Object property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-data-property" />
+                        <span>Data property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-annotation-property" />
+                        <span>Annotation property</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-class-expression" />
+                        <span>Restriction or class expression (hover for details)</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker" />
+                        <span>Labeled relation edge</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {showLightOntologyLegend && (
+                  <p className="graph-legend-note">Restriction nodes are collapsed and shown as labeled bridge edges.</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div ref={graphContainerRef} className={`graph-canvas ${isDetachedPanMode ? 'detached-pan-mode' : ''}`} />
@@ -2193,6 +3508,15 @@ export default function App() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {restrictionNodeTooltip && (
+            <div
+              className="restriction-tooltip"
+              style={{ left: restrictionNodeTooltip.left, top: restrictionNodeTooltip.top, maxWidth: restrictionNodeTooltip.width }}
+            >
+              {restrictionNodeTooltip.text}
             </div>
           )}
 
@@ -2240,18 +3564,79 @@ export default function App() {
               <section className="panel-section details-card">
                 <h2>Entity Inspector</h2>
 
-                {!selectedNode && ontologyMetadataRows.length === 0 && (
-                  <p className="muted">Click a node to inspect properties and neighbors.</p>
+                {!selectedNode && !selectedEdge && ontologyMetadataRows.length === 0 && (
+                  <p className="muted">Click a node or relation to inspect metadata and provenance.</p>
                 )}
 
-                {!selectedNode && ontologyMetadataRows.length > 0 && (
+                {!selectedNode && !selectedEdge && ontologyMetadataRows.length > 0 && (
                   <>
-                    <h4>Ontology header metadata ({ontologyMetadataRows.length})</h4>
+                    <h4>Ontology metadata ({ontologyMetadataRows.length})</h4>
                     <div className="property-list">
                       {ontologyMetadataRows.map((row) => (
                         <div key={row.id} className="property-row" title={row.fileName}>
                           <div className="property-name">{row.predicate}</div>
                           <div className="property-meta breakable">{row.subject}</div>
+                          <div className="property-value breakable">{row.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {selectedEdge && (
+                  <>
+                    <h3 className="entity-title">{selectedEdge.predicateLabel}</h3>
+
+                    <dl className="entity-meta">
+                      <dt>Axiom</dt>
+                      <dd>{selectedEdge.axiomKind || 'Axiom'}</dd>
+
+                      {selectedEdge.restrictionKind && (
+                        <>
+                          <dt>Restriction</dt>
+                          <dd>{selectedEdge.restrictionKind}</dd>
+                        </>
+                      )}
+
+                      <dt>Category</dt>
+                      <dd>{selectedEdge.category}</dd>
+
+                      <dt>Predicate IRI</dt>
+                      <dd className="breakable mono">{selectedEdge.predicate}</dd>
+
+                      <dt>Source</dt>
+                      <dd>
+                        <button
+                          type="button"
+                          className="neighbor-row inspector-link"
+                          onClick={() => {
+                            setSingleFocusedNode(selectedEdge.source);
+                          }}
+                        >
+                          {graphData?.nodeMap.get(selectedEdge.source)?.fullLabel ?? selectedEdge.source}
+                        </button>
+                      </dd>
+
+                      <dt>Target</dt>
+                      <dd>
+                        <button
+                          type="button"
+                          className="neighbor-row inspector-link"
+                          onClick={() => {
+                            setSingleFocusedNode(selectedEdge.target);
+                          }}
+                        >
+                          {graphData?.nodeMap.get(selectedEdge.target)?.fullLabel ?? selectedEdge.target}
+                        </button>
+                      </dd>
+                    </dl>
+
+                    <h4>Relation metadata ({selectedEdgeMetadataRows.length})</h4>
+                    <div className="property-list">
+                      {selectedEdgeMetadataRows.length === 0 && <p className="muted">No additional metadata available.</p>}
+                      {selectedEdgeMetadataRows.map((row, index) => (
+                        <div key={`${row.key}-${index}`} className="property-row">
+                          <div className="property-name">{row.key}</div>
                           <div className="property-value breakable">{row.value}</div>
                         </div>
                       ))}
@@ -2266,6 +3651,9 @@ export default function App() {
                     <dl className="entity-meta">
                       <dt>Type</dt>
                       <dd>{selectedNode.termType}</dd>
+
+                      <dt>Category</dt>
+                      <dd>{selectedNode.entityCategory || selectedNode.ontologyKind || selectedNode.kind}</dd>
 
                       <dt>ID</dt>
                       <dd>
@@ -2291,21 +3679,36 @@ export default function App() {
                         </>
                       )}
 
-                    {selectedNodeClasses.length > 0 && (
-                      <>
-                        <dt>Classes</dt>
-                        <dd>
-                          <ol className="class-chain">
-                            {selectedNodeClasses.map((entry) => (
-                              <li key={entry.iri} title={entry.iri}>
-                                {entry.prefixed}
-                              </li>
-                            ))}
-                          </ol>
-                        </dd>
-                      </>
-                    )}
-                  </dl>
+                      {selectedNodeClasses.length > 0 && (
+                        <>
+                          <dt>Classes</dt>
+                          <dd>
+                            <ol className="class-chain">
+                              {selectedNodeClasses.map((entry) => (
+                                <li key={entry.iri} title={entry.iri}>
+                                  {entry.prefixed}
+                                </li>
+                              ))}
+                            </ol>
+                          </dd>
+                        </>
+                      )}
+                    </dl>
+
+                    <h4>Metadata / provenance ({selectedNodeMetadataRows.length})</h4>
+                    <div className="property-list">
+                      {selectedNodeMetadataRows.length === 0 && <p className="muted">No metadata rows available for this node.</p>}
+                      {selectedNodeMetadataRows.map((row, index) => (
+                        <div
+                          key={`${row.predicate}-${row.value}-${index}`}
+                          className="property-row"
+                          title={row.predicate}
+                        >
+                          <div className="property-name">{row.predicateLabel}</div>
+                          <div className="property-value breakable">{row.value}</div>
+                        </div>
+                      ))}
+                    </div>
 
                     <h4>Data properties ({selectedNodeDataProperties.length})</h4>
                     <div className="property-list">
@@ -2333,8 +3736,7 @@ export default function App() {
                           className="neighbor-row"
                           type="button"
                           onClick={() => {
-                            setSelectedNodeId(row.neighborId);
-                            setFocusedNodeId(row.neighborId);
+                            setSingleFocusedNode(row.neighborId);
                           }}
                           title={row.neighborLabel}
                         >

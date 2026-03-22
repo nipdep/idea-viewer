@@ -265,6 +265,10 @@ textarea {
   gap: 8px;
 }
 
+.section-header h2 {
+  flex: 1;
+}
+
 .section-toggle {
   width: 18px;
   height: 18px;
@@ -297,6 +301,23 @@ textarea {
 
 .section-body {
   margin-top: 8px;
+}
+
+.section-clear {
+  padding: 4px 9px;
+  font-size: 0.72rem;
+  line-height: 1;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f7f1e9;
+  color: #544c43;
+  box-shadow: none;
+}
+
+.section-clear:hover {
+  transform: none;
+  box-shadow: none;
+  background: #efe6db;
 }
 
 .collapsed-section {
@@ -623,6 +644,93 @@ textarea {
   z-index: 5;
 }
 
+.graph-tools-left {
+  left: 18px;
+  right: auto;
+}
+
+.graph-tools-right {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.projection-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 250, 242, 0.94);
+  padding: 4px;
+}
+
+.projection-toggle.theme-switch {
+  position: relative;
+  width: 92px;
+  height: 38px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.projection-switch-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  border-radius: 999px;
+  border: 1px solid rgba(42, 111, 110, 0.28);
+  background: rgba(42, 111, 110, 0.14);
+  transition: transform 180ms ease;
+  pointer-events: none;
+}
+
+.projection-toggle.theme-switch.mode-kg .projection-switch-thumb {
+  transform: translateX(100%);
+}
+
+.projection-toggle-button {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #5a524a;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.projection-toggle-button:hover {
+  transform: none;
+  box-shadow: none;
+  background: rgba(242, 232, 220, 0.55);
+}
+
+.projection-toggle-button.active {
+  border-color: transparent;
+  background: transparent;
+  color: #1f5f5e;
+}
+
+.projection-toggle-button svg {
+  width: 16px;
+  height: 16px;
+}
+
 .graph-tool-button {
   border: 1px solid var(--border);
   background: rgba(255, 250, 242, 0.94);
@@ -649,9 +757,282 @@ textarea {
   justify-content: center;
 }
 
+.graph-tool-button.icon-only.active {
+  border-color: rgba(42, 111, 110, 0.36);
+  background: rgba(42, 111, 110, 0.16);
+  color: #1f5f5e;
+}
+
 .graph-tool-icon {
   width: 16px;
   height: 16px;
+}
+
+.graph-export-menu {
+  position: relative;
+}
+
+.graph-export-popover {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 188px;
+  border: 1px solid rgba(30, 27, 22, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 250, 242, 0.92);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 22px rgba(30, 27, 22, 0.14);
+  padding: 10px;
+}
+
+.graph-export-title {
+  color: #3e352e;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.graph-export-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.graph-export-action {
+  width: 100%;
+  border: 1px solid rgba(30, 27, 22, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  color: #3f3730;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 9px 8px;
+  border-radius: 9px;
+}
+
+.graph-export-action:hover {
+  background: rgba(242, 232, 220, 0.9);
+  box-shadow: 0 8px 16px rgba(30, 27, 22, 0.08);
+}
+
+.graph-legend-popover {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: min(320px, calc(100vw - 24px));
+  border: 1px solid rgba(30, 27, 22, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 250, 242, 0.84);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 22px rgba(30, 27, 22, 0.14);
+  padding: 10px 11px;
+  pointer-events: auto;
+}
+
+.graph-legend-title {
+  color: #3e352e;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.graph-legend-list {
+  display: grid;
+  gap: 6px;
+}
+
+.graph-legend-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #4f463d;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.graph-legend-marker {
+  width: 26px;
+  height: 16px;
+  border: 1.5px solid #7e6f60;
+  background: #e7ded3;
+  justify-self: center;
+  display: inline-block;
+}
+
+.graph-legend-marker.marker-class {
+  border-radius: 999px;
+}
+
+.graph-legend-marker.marker-individual {
+  border-radius: 6px;
+}
+
+.graph-legend-marker.marker-literal {
+  border-radius: 0;
+  background: #f0e4d7;
+  border-color: #9b7458;
+}
+
+.graph-legend-marker.marker-datatype {
+  width: 18px;
+  height: 16px;
+  border-radius: 0;
+  background: #eee5da;
+  border-color: #8e7560;
+  clip-path: polygon(50% 5%, 97% 95%, 3% 95%);
+}
+
+.graph-legend-marker.marker-object-property {
+  width: 24px;
+  height: 16px;
+  border-radius: 0;
+  background: #efe4d7;
+  border-color: #9f7a57;
+  clip-path: polygon(22% 4%, 78% 4%, 97% 50%, 78% 96%, 22% 96%, 3% 50%);
+}
+
+.graph-legend-marker.marker-data-property {
+  width: 15px;
+  height: 15px;
+  border-radius: 1px;
+  background: #f0e7db;
+  border-color: #9b7f66;
+  transform: rotate(45deg);
+  transform-origin: center;
+}
+
+.graph-legend-marker.marker-annotation-property {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  background: #efe6dd;
+  border-color: #9e846b;
+  border-style: dashed;
+  transform: rotate(45deg);
+  transform-origin: center;
+}
+
+.graph-legend-marker.marker-class-expression {
+  width: 24px;
+  height: 16px;
+  border-radius: 0;
+  background: #e8f2ef;
+  border-color: #2f8a81;
+  border-width: 2px;
+  clip-path: polygon(22% 4%, 78% 4%, 97% 50%, 78% 96%, 22% 96%, 3% 50%);
+}
+
+.graph-legend-marker.marker-light-class,
+.graph-legend-marker.marker-light-object-property,
+.graph-legend-marker.marker-light-data-property,
+.graph-legend-marker.marker-light-annotation-property,
+.graph-legend-marker.marker-light-individual,
+.graph-legend-marker.marker-light-literal,
+.graph-legend-marker.marker-light-datatype {
+  width: 24px;
+  height: 16px;
+  border-radius: 4px;
+  clip-path: none;
+  transform: none;
+}
+
+.graph-legend-marker.marker-light-class {
+  background: #d9c4ab;
+  border-color: #8d6b4c;
+}
+
+.graph-legend-marker.marker-light-object-property {
+  background: #d4e2f2;
+  border-color: #5d7fa8;
+}
+
+.graph-legend-marker.marker-light-data-property {
+  background: #d6ebd9;
+  border-color: #5f9067;
+}
+
+.graph-legend-marker.marker-light-annotation-property {
+  background: #f0d9e4;
+  border-color: #ab6f8a;
+}
+
+.graph-legend-marker.marker-light-individual {
+  background: #dfdfdf;
+  border-color: #7f7f7f;
+}
+
+.graph-legend-marker.marker-light-literal {
+  background: #f5ebbe;
+  border-color: #b9a14f;
+}
+
+.graph-legend-marker.marker-light-datatype {
+  background: #d6ebd9;
+  border-color: #5f9067;
+}
+
+.graph-legend-edge-marker {
+  position: relative;
+  width: 26px;
+  height: 12px;
+  justify-self: center;
+}
+
+.graph-legend-edge-marker::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  right: 8px;
+  border-top: 1.5px solid #c8bfb4;
+  transform: translateY(-50%);
+}
+
+.graph-legend-edge-marker::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 1px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid #c8bfb4;
+  transform: translateY(-50%);
+}
+
+.graph-legend-edge-marker.marker-light-edge::before {
+  border-top-color: #b8afa5;
+}
+
+.graph-legend-edge-marker.marker-light-edge::after {
+  border-left-color: #b8afa5;
+}
+
+.graph-legend-edge-marker.marker-light-restriction-edge::before {
+  border-top-color: #3f8f86;
+}
+
+.graph-legend-edge-marker.marker-light-restriction-edge::after {
+  border-left-color: #3f8f86;
+}
+
+.graph-legend-note {
+  margin: 8px 2px 1px;
+  color: #5a5148;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.73rem;
+  line-height: 1.3;
 }
 
 .graph-canvas {
@@ -710,6 +1091,22 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.restriction-tooltip {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+  border: 1px solid rgba(30, 27, 22, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 250, 242, 0.97);
+  color: #3f362e;
+  box-shadow: 0 10px 20px rgba(30, 27, 22, 0.14);
+  padding: 7px 9px;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .status-bar {
@@ -894,6 +1291,10 @@ textarea {
   text-align: left;
 }
 
+.inspector-link {
+  width: 100%;
+}
+
 .badge {
   border-radius: 999px;
   padding: 2px 8px;
@@ -915,6 +1316,10 @@ textarea {
     --left-panel-open-width: 280px;
     --right-panel-open-width: 320px;
     padding: 10px 20px 20px;
+  }
+
+  .projection-toggle-button {
+    font-size: 0.7rem;
   }
 }
 
@@ -994,6 +1399,16 @@ textarea {
     bottom: 18px;
   }
 
+  .graph-tools-left {
+    left: 12px;
+    right: auto;
+    top: 12px;
+  }
+
+  .projection-toggle {
+    max-width: calc(100vw - 160px);
+  }
+
   .graph-canvas {
     min-height: 320px;
   }
@@ -1026,6 +1441,11 @@ textarea {
 .page-shell.fullscreen-mode .graph-tools {
   top: 12px;
   right: 12px;
+}
+
+.page-shell.fullscreen-mode .graph-tools-left {
+  left: 12px;
+  right: auto;
 }
 
 .page-shell.fullscreen-mode .status-bar.overlay {

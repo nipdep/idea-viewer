@@ -12,16 +12,51 @@ const RDF_FIRST = `${RDF_NS}first`;
 const RDF_REST = `${RDF_NS}rest`;
 const RDF_NIL = `${RDF_NS}nil`;
 const RDFS_CLASS = `${RDFS_NS}Class`;
+const RDFS_COMMENT = `${RDFS_NS}comment`;
+const RDFS_DATATYPE = `${RDFS_NS}Datatype`;
 const RDFS_DOMAIN = `${RDFS_NS}domain`;
 const RDFS_RANGE = `${RDFS_NS}range`;
 const OWL_CLASS = `${OWL_NS}Class`;
+const OWL_DATATYPE = `${OWL_NS}Datatype`;
 const OWL_OBJECT_PROPERTY = `${OWL_NS}ObjectProperty`;
 const OWL_DATATYPE_PROPERTY = `${OWL_NS}DatatypeProperty`;
 const OWL_ANNOTATION_PROPERTY = `${OWL_NS}AnnotationProperty`;
 const OWL_NAMED_INDIVIDUAL = `${OWL_NS}NamedIndividual`;
 const OWL_ONTOLOGY = `${OWL_NS}Ontology`;
+const OWL_IMPORTS = `${OWL_NS}imports`;
+const OWL_VERSION_IRI = `${OWL_NS}versionIRI`;
+const OWL_VERSION_INFO = `${OWL_NS}versionInfo`;
+const OWL_EQUIVALENT_CLASS = `${OWL_NS}equivalentClass`;
+const OWL_DISJOINT_WITH = `${OWL_NS}disjointWith`;
+const OWL_EQUIVALENT_PROPERTY = `${OWL_NS}equivalentProperty`;
+const OWL_INVERSE_OF = `${OWL_NS}inverseOf`;
+const OWL_SAME_AS = `${OWL_NS}sameAs`;
+const OWL_DIFFERENT_FROM = `${OWL_NS}differentFrom`;
+const OWL_HAS_KEY = `${OWL_NS}hasKey`;
+const OWL_INTERSECTION_OF = `${OWL_NS}intersectionOf`;
+const OWL_UNION_OF = `${OWL_NS}unionOf`;
+const OWL_COMPLEMENT_OF = `${OWL_NS}complementOf`;
+const OWL_ONE_OF = `${OWL_NS}oneOf`;
+const OWL_RESTRICTION = `${OWL_NS}Restriction`;
+const OWL_ON_PROPERTY = `${OWL_NS}onProperty`;
+const OWL_SOME_VALUES_FROM = `${OWL_NS}someValuesFrom`;
+const OWL_ALL_VALUES_FROM = `${OWL_NS}allValuesFrom`;
+const OWL_HAS_VALUE = `${OWL_NS}hasValue`;
+const OWL_MIN_CARDINALITY = `${OWL_NS}minCardinality`;
+const OWL_MAX_CARDINALITY = `${OWL_NS}maxCardinality`;
+const OWL_CARDINALITY = `${OWL_NS}cardinality`;
+const OWL_MIN_QUALIFIED_CARDINALITY = `${OWL_NS}minQualifiedCardinality`;
+const OWL_MAX_QUALIFIED_CARDINALITY = `${OWL_NS}maxQualifiedCardinality`;
+const OWL_QUALIFIED_CARDINALITY = `${OWL_NS}qualifiedCardinality`;
+const OWL_ON_CLASS = `${OWL_NS}onClass`;
+const OWL_ON_DATA_RANGE = `${OWL_NS}onDataRange`;
+const OWL_HAS_SELF = `${OWL_NS}hasSelf`;
+const OWL_WITH_RESTRICTIONS = `${OWL_NS}withRestrictions`;
+const PROV_WAS_DERIVED_FROM = 'http://www.w3.org/ns/prov#wasDerivedFrom';
+const DCT_SOURCE = 'http://purl.org/dc/terms/source';
 
 const CLASS_TYPE_IRIS = new Set([RDFS_CLASS, OWL_CLASS]);
+const DATATYPE_TYPE_IRIS = new Set([RDFS_DATATYPE, OWL_DATATYPE]);
 const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
   OWL_DATATYPE_PROPERTY,
   OWL_OBJECT_PROPERTY,
@@ -31,22 +66,96 @@ const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
 ]);
 const BUILTIN_ANNOTATION_PREDICATES = new Set([
   `${RDFS_NS}label`,
-  `${RDFS_NS}comment`,
+  RDFS_COMMENT,
   `${RDFS_NS}seeAlso`,
   `${RDFS_NS}isDefinedBy`,
-  `${OWL_NS}versionInfo`,
+  OWL_VERSION_INFO,
   `${OWL_NS}priorVersion`,
   `${OWL_NS}backwardCompatibleWith`,
   `${OWL_NS}incompatibleWith`,
   `${OWL_NS}deprecated`,
 ]);
 
+const EXPRESSION_NODE_PREDICATE_LABELS = new Map([
+  [OWL_INTERSECTION_OF, 'Intersection'],
+  [OWL_UNION_OF, 'Union'],
+  [OWL_COMPLEMENT_OF, 'Complement'],
+  [OWL_ONE_OF, 'OneOf'],
+  [OWL_WITH_RESTRICTIONS, 'DataRange'],
+  [OWL_ON_CLASS, 'NamedClass'],
+  [OWL_ON_DATA_RANGE, 'DataRange'],
+]);
+
+const RESTRICTION_PREDICATE_LABELS = new Map([
+  [OWL_ON_PROPERTY, 'onProperty'],
+  [OWL_SOME_VALUES_FROM, 'someValuesFrom'],
+  [OWL_ALL_VALUES_FROM, 'allValuesFrom'],
+  [OWL_HAS_VALUE, 'hasValue'],
+  [OWL_MIN_CARDINALITY, 'minCardinality'],
+  [OWL_MAX_CARDINALITY, 'maxCardinality'],
+  [OWL_CARDINALITY, 'exactCardinality'],
+  [OWL_MIN_QUALIFIED_CARDINALITY, 'minQualifiedCardinality'],
+  [OWL_MAX_QUALIFIED_CARDINALITY, 'maxQualifiedCardinality'],
+  [OWL_QUALIFIED_CARDINALITY, 'qualifiedCardinality'],
+  [OWL_HAS_SELF, 'hasSelf'],
+]);
+
+const RESTRICTION_DISPLAY_PREDICATE_ORDER = [
+  OWL_SOME_VALUES_FROM,
+  OWL_ALL_VALUES_FROM,
+  OWL_HAS_VALUE,
+  OWL_MIN_QUALIFIED_CARDINALITY,
+  OWL_MAX_QUALIFIED_CARDINALITY,
+  OWL_QUALIFIED_CARDINALITY,
+  OWL_MIN_CARDINALITY,
+  OWL_MAX_CARDINALITY,
+  OWL_CARDINALITY,
+  OWL_HAS_SELF,
+  OWL_ON_CLASS,
+  OWL_ON_DATA_RANGE,
+  OWL_ON_PROPERTY,
+];
+
+const RESTRICTION_BRIDGE_VALUE_PREDICATES = new Set([
+  OWL_SOME_VALUES_FROM,
+  OWL_ALL_VALUES_FROM,
+  OWL_HAS_VALUE,
+  OWL_MIN_CARDINALITY,
+  OWL_MAX_CARDINALITY,
+  OWL_CARDINALITY,
+  OWL_MIN_QUALIFIED_CARDINALITY,
+  OWL_MAX_QUALIFIED_CARDINALITY,
+  OWL_QUALIFIED_CARDINALITY,
+  OWL_ON_CLASS,
+  OWL_ON_DATA_RANGE,
+]);
+
+const RESTRICTION_ANCHOR_AXIOM_PREDICATES = new Set([RDFS_SUBCLASS_OF, OWL_EQUIVALENT_CLASS, OWL_DISJOINT_WITH]);
+
+const AXIOM_KIND_BY_PREDICATE = new Map([
+  [RDFS_SUBCLASS_OF, 'SubClassOf'],
+  [OWL_EQUIVALENT_CLASS, 'EquivalentClasses'],
+  [OWL_DISJOINT_WITH, 'DisjointClasses'],
+  [RDF_TYPE, 'ClassAssertion'],
+  [RDFS_DOMAIN, 'Domain'],
+  [RDFS_RANGE, 'Range'],
+  [RDFS_SUBPROPERTY_OF, 'SubPropertyOf'],
+  [OWL_EQUIVALENT_PROPERTY, 'EquivalentProperty'],
+  [OWL_INVERSE_OF, 'InverseProperties'],
+  [OWL_SAME_AS, 'SameIndividual'],
+  [OWL_DIFFERENT_FROM, 'DifferentIndividuals'],
+  [OWL_HAS_KEY, 'Keys'],
+  [OWL_IMPORTS, 'Imports'],
+]);
+
 export const DEFAULT_VIEW_OPTIONS = Object.freeze({
+  projectionMode: 'ontology',
   showDataProperties: false,
   showAnnotationProperties: false,
   showObjectProperties: true,
   showNamedIndividuals: false,
   showTypeLinks: false,
+  lightOntologyMode: false,
 });
 
 const { namedNode, literal, quad, blankNode } = DataFactory;
@@ -56,6 +165,16 @@ const LABEL_PREDICATES = new Set([
   'http://www.w3.org/2004/02/skos/core#prefLabel',
   'http://schema.org/name',
   'http://xmlns.com/foaf/0.1/name',
+]);
+
+const METADATA_PREDICATES = new Set([
+  ...LABEL_PREDICATES,
+  RDFS_COMMENT,
+  OWL_IMPORTS,
+  OWL_VERSION_IRI,
+  OWL_VERSION_INFO,
+  PROV_WAS_DERIVED_FROM,
+  DCT_SOURCE,
 ]);
 
 function hashText(value) {
@@ -659,9 +778,21 @@ function buildLabelIndex(quads) {
   return labels;
 }
 
-function makeNodeData(term, labelIndex) {
+function applyNodeDisplayLabel(node, fullLabel) {
+  const displayLabel = makeDisplayLabel(fullLabel);
+  const metrics = computeNodeMetrics(displayLabel);
+  node.fullLabel = fullLabel;
+  node.displayLabel = displayLabel;
+  node.labelLength = Math.min(Math.max(metrics.maxLineLength * metrics.lineCount, 4), 120);
+  node.nodeWidth = metrics.nodeWidth;
+  node.nodeHeight = metrics.nodeHeight;
+  node.textMaxWidth = metrics.textMaxWidth;
+}
+
+function makeNodeData(term, labelIndex, options = {}) {
   const id = getTermId(term);
   const termType = term.termType;
+  const blankLabel = options.blankLabelById?.get(id) ?? '';
 
   let fullLabel = '';
   if (termType === 'Literal') {
@@ -670,6 +801,8 @@ function makeNodeData(term, labelIndex) {
     fullLabel = labelIndex.get(id);
   } else if (termType === 'NamedNode') {
     fullLabel = compactIri(term.value);
+  } else if (blankLabel) {
+    fullLabel = blankLabel;
   } else {
     fullLabel = `[Blank ${term.value}]`;
   }
@@ -682,8 +815,15 @@ function makeNodeData(term, labelIndex) {
     iri: term.value,
     baseIri: termType === 'NamedNode' ? getBaseIri(term.value) : '',
     termType,
+    literalValue: termType === 'Literal' ? term.value : '',
+    literalDatatype: termType === 'Literal' ? term.datatype?.value ?? '' : '',
+    literalLanguage: termType === 'Literal' ? term.language ?? '' : '',
     kind: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
     ontologyKind: '',
+    entityCategory: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
+    blankExpressionType: '',
+    restrictionKind: '',
+    restrictionTooltip: '',
     graphRole: '',
     fullLabel,
     displayLabel,
@@ -695,7 +835,7 @@ function makeNodeData(term, labelIndex) {
   };
 }
 
-function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIris, annotationPropertyIris) {
+function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIris, dataPropertyIris, annotationPropertyIris) {
   if (predicateIri === RDFS_SUBCLASS_OF) {
     return 'subclass';
   }
@@ -712,6 +852,10 @@ function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIri
     return 'annotation';
   }
 
+  if (dataPropertyIris.has(predicateIri)) {
+    return 'data';
+  }
+
   if (objectTermType === 'Literal') {
     return 'data';
   }
@@ -724,6 +868,268 @@ function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIri
   }
 
   return 'other';
+}
+
+function getRestrictionKind(predicateIri) {
+  if (predicateIri === RDF_TYPE) {
+    return '';
+  }
+
+  if (RESTRICTION_PREDICATE_LABELS.has(predicateIri)) {
+    return RESTRICTION_PREDICATE_LABELS.get(predicateIri);
+  }
+
+  return '';
+}
+
+function getAxiomKind(quad, category, objectPropertyIris, dataPropertyIris, annotationPropertyIris) {
+  if (AXIOM_KIND_BY_PREDICATE.has(quad.predicate.value)) {
+    return AXIOM_KIND_BY_PREDICATE.get(quad.predicate.value);
+  }
+
+  if (EXPRESSION_NODE_PREDICATE_LABELS.has(quad.predicate.value)) {
+    return 'ClassExpression';
+  }
+
+  const restrictionKind = getRestrictionKind(quad.predicate.value);
+  if (restrictionKind) {
+    return 'Restriction';
+  }
+
+  if (category === 'annotation' || annotationPropertyIris.has(quad.predicate.value)) {
+    return 'AnnotationAssertion';
+  }
+
+  if (category === 'data' || dataPropertyIris.has(quad.predicate.value)) {
+    return 'PropertyAssertion';
+  }
+
+  if (category === 'object' || objectPropertyIris.has(quad.predicate.value)) {
+    return 'PropertyAssertion';
+  }
+
+  return 'Axiom';
+}
+
+function termToMetadataValue(term) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'Literal') {
+    const base = term.value;
+    if (term.language) {
+      return `${base} (@${term.language})`;
+    }
+    const datatype = term.datatype?.value;
+    if (datatype && datatype !== 'http://www.w3.org/2001/XMLSchema#string') {
+      return `${base}^^${compactIri(datatype)}`;
+    }
+    return base;
+  }
+
+  if (term.termType === 'NamedNode') {
+    return term.value;
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `_:${term.value}`;
+  }
+
+  return term.value ?? '';
+}
+
+function compactTermForRestriction(term) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'NamedNode') {
+    return compactIri(term.value);
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `[Blank ${term.value}]`;
+  }
+
+  if (term.termType === 'Literal') {
+    if (term.language) {
+      return `"${term.value}"@${term.language}`;
+    }
+    return `"${term.value}"`;
+  }
+
+  return term.value ?? '';
+}
+
+function buildBlankExpressionIndex(quads) {
+  const blankRoles = new Map();
+  const restrictionTermsById = new Map();
+
+  const registerRole = (blankId, role, priority) => {
+    if (!blankId || !role) {
+      return;
+    }
+
+    const previous = blankRoles.get(blankId);
+    if (!previous || priority > previous.priority) {
+      blankRoles.set(blankId, { role, priority });
+    }
+  };
+
+  const registerRestrictionTerm = (blankId, predicateIri, term) => {
+    if (!blankId || !predicateIri || !term) {
+      return;
+    }
+
+    let predicateTerms = restrictionTermsById.get(blankId);
+    if (!predicateTerms) {
+      predicateTerms = new Map();
+      restrictionTermsById.set(blankId, predicateTerms);
+    }
+
+    const values = predicateTerms.get(predicateIri) ?? [];
+    values.push(term);
+    predicateTerms.set(predicateIri, values);
+  };
+
+  for (const quad of quads) {
+    if (quad.subject.termType === 'BlankNode') {
+      const subjectId = getTermId(quad.subject);
+      if (
+        quad.predicate.value === RDF_TYPE &&
+        quad.object.termType === 'NamedNode' &&
+        quad.object.value === OWL_RESTRICTION
+      ) {
+        registerRole(subjectId, 'Restriction', 90);
+      }
+
+      const restrictionKind = getRestrictionKind(quad.predicate.value);
+      if (restrictionKind) {
+        registerRole(subjectId, `Restriction:${restrictionKind}`, 100);
+        registerRestrictionTerm(subjectId, quad.predicate.value, quad.object);
+      }
+
+      if (EXPRESSION_NODE_PREDICATE_LABELS.has(quad.predicate.value)) {
+        registerRole(subjectId, EXPRESSION_NODE_PREDICATE_LABELS.get(quad.predicate.value), 80);
+      }
+
+      if (quad.predicate.value === RDF_FIRST || quad.predicate.value === RDF_REST) {
+        registerRole(subjectId, 'List', 40);
+      }
+    }
+
+    if (quad.object.termType === 'BlankNode') {
+      const objectId = getTermId(quad.object);
+
+      if (quad.predicate.value === RDF_FIRST || quad.predicate.value === RDF_REST) {
+        registerRole(objectId, 'List', 40);
+      }
+
+      if (
+        quad.predicate.value === RDFS_SUBCLASS_OF ||
+        quad.predicate.value === OWL_EQUIVALENT_CLASS ||
+        quad.predicate.value === OWL_DISJOINT_WITH
+      ) {
+        registerRole(objectId, 'ClassExpression', 70);
+      }
+
+      if (
+        quad.predicate.value === OWL_ON_PROPERTY ||
+        quad.predicate.value === OWL_ON_CLASS ||
+        quad.predicate.value === OWL_ON_DATA_RANGE ||
+        quad.predicate.value === OWL_SOME_VALUES_FROM ||
+        quad.predicate.value === OWL_ALL_VALUES_FROM ||
+        quad.predicate.value === OWL_HAS_VALUE ||
+        quad.predicate.value === OWL_MIN_CARDINALITY ||
+        quad.predicate.value === OWL_MAX_CARDINALITY ||
+        quad.predicate.value === OWL_CARDINALITY ||
+        quad.predicate.value === OWL_MIN_QUALIFIED_CARDINALITY ||
+        quad.predicate.value === OWL_MAX_QUALIFIED_CARDINALITY ||
+        quad.predicate.value === OWL_QUALIFIED_CARDINALITY ||
+        quad.predicate.value === OWL_HAS_SELF ||
+        quad.predicate.value === OWL_INTERSECTION_OF ||
+        quad.predicate.value === OWL_UNION_OF ||
+        quad.predicate.value === OWL_COMPLEMENT_OF ||
+        quad.predicate.value === OWL_ONE_OF ||
+        quad.predicate.value === OWL_WITH_RESTRICTIONS
+      ) {
+        registerRole(objectId, 'ClassExpression', 65);
+      }
+    }
+  }
+
+  const restrictionKindById = new Map();
+  for (const [blankId, predicateTerms] of restrictionTermsById.entries()) {
+    const preferredPredicate = RESTRICTION_DISPLAY_PREDICATE_ORDER.find((predicate) => {
+      const terms = predicateTerms.get(predicate);
+      return Array.isArray(terms) && terms.length > 0;
+    });
+    if (!preferredPredicate) {
+      continue;
+    }
+
+    const preferredKind = RESTRICTION_PREDICATE_LABELS.get(preferredPredicate) ?? compactIri(preferredPredicate);
+    if (preferredKind) {
+      restrictionKindById.set(blankId, preferredKind);
+    }
+  }
+
+  const blankLabelById = new Map();
+  const restrictionTooltipById = new Map();
+  for (const [blankId, info] of blankRoles.entries()) {
+    if (info.role.startsWith('Restriction')) {
+      const preferredKind = restrictionKindById.get(blankId);
+      const fallbackKind = info.role.startsWith('Restriction:')
+        ? info.role.slice('Restriction:'.length) || 'Restriction'
+        : 'Restriction';
+      blankLabelById.set(blankId, preferredKind || fallbackKind);
+    } else {
+      blankLabelById.set(blankId, info.role);
+    }
+  }
+
+  const restrictionOrder = [
+    OWL_ON_PROPERTY,
+    OWL_ON_CLASS,
+    OWL_ON_DATA_RANGE,
+    OWL_SOME_VALUES_FROM,
+    OWL_ALL_VALUES_FROM,
+    OWL_HAS_VALUE,
+    OWL_MIN_CARDINALITY,
+    OWL_MAX_CARDINALITY,
+    OWL_CARDINALITY,
+    OWL_MIN_QUALIFIED_CARDINALITY,
+    OWL_MAX_QUALIFIED_CARDINALITY,
+    OWL_QUALIFIED_CARDINALITY,
+    OWL_HAS_SELF,
+  ];
+  for (const [blankId, predicateTerms] of restrictionTermsById.entries()) {
+    const parts = [];
+    for (const predicate of restrictionOrder) {
+      const terms = predicateTerms.get(predicate);
+      if (!terms || terms.length === 0) {
+        continue;
+      }
+      const label = RESTRICTION_PREDICATE_LABELS.get(predicate) ?? compactIri(predicate);
+      for (const term of terms) {
+        parts.push(`${label} ${compactTermForRestriction(term)}`);
+      }
+    }
+
+    if (parts.length > 0) {
+      restrictionTooltipById.set(blankId, `Restriction(${parts.join('; ')})`);
+    } else if (blankRoles.get(blankId)?.role?.startsWith('Restriction')) {
+      restrictionTooltipById.set(blankId, 'Restriction');
+    }
+  }
+
+  return {
+    blankRoles,
+    blankLabelById,
+    restrictionKindById,
+    restrictionTooltipById,
+  };
 }
 
 function annotationObjectToLiteralValue(term) {
@@ -756,6 +1162,7 @@ export function extractOntologyModel(quads) {
   const dataPropertyIds = new Set();
   const annotationPropertyIds = new Set();
   const namedIndividualIds = new Set();
+  const datatypeIds = new Set();
 
   for (const quad of quads) {
     if (!isEntityTerm(quad.subject)) {
@@ -798,6 +1205,14 @@ export function extractOntologyModel(quads) {
       quad.object.value === OWL_NAMED_INDIVIDUAL
     ) {
       namedIndividualIds.add(getTermId(quad.subject));
+    }
+
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      DATATYPE_TYPE_IRIS.has(quad.object.value)
+    ) {
+      datatypeIds.add(getTermId(quad.subject));
     }
   }
 
@@ -851,6 +1266,15 @@ export function extractOntologyModel(quads) {
     ) {
       classIds.add(getTermId(quad.object));
     }
+
+    if (
+      quad.predicate.value === RDFS_RANGE &&
+      quad.subject.termType === 'NamedNode' &&
+      quad.object.termType === 'NamedNode' &&
+      dataPropertyIds.has(getTermId(quad.subject))
+    ) {
+      datatypeIds.add(getTermId(quad.object));
+    }
   }
 
   return {
@@ -859,6 +1283,7 @@ export function extractOntologyModel(quads) {
     dataPropertyIds,
     annotationPropertyIds,
     namedIndividualIds,
+    datatypeIds,
   };
 }
 
@@ -879,6 +1304,8 @@ export function buildGraphData(quads, options = {}) {
     ontologyModel.dataPropertyIds instanceof Set ? ontologyModel.dataPropertyIds : new Set();
   const ontologyAnnotationPropertyNodeIds =
     ontologyModel.annotationPropertyIds instanceof Set ? ontologyModel.annotationPropertyIds : new Set();
+  const ontologyDatatypeNodeIds = ontologyModel.datatypeIds instanceof Set ? ontologyModel.datatypeIds : new Set();
+  const { blankRoles, blankLabelById, restrictionKindById, restrictionTooltipById } = buildBlankExpressionIndex(quads);
 
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -887,27 +1314,101 @@ export function buildGraphData(quads, options = {}) {
   const classMap = new Map();
   const classAssignments = new Map();
   const dataProperties = new Map();
+  const nodeMetadata = new Map();
+  const edgeMetadata = new Map();
   const baseIriCounts = new Map();
   const classNodeIds = new Set();
+  const badgeClassNodeIds = new Set();
   const namedIndividualNodeIds = new Set();
-  const objectPropertyIris = new Set();
-  const annotationPropertyIris = new Set(BUILTIN_ANNOTATION_PREDICATES);
+  const datatypeNodeIds = new Set();
+  const objectPropertyIris = new Set(ontologyObjectPropertyNodeIds);
+  const dataPropertyIris = new Set(ontologyDataPropertyNodeIds);
+  const annotationPropertyIris = new Set([...BUILTIN_ANNOTATION_PREDICATES, ...ontologyAnnotationPropertyNodeIds]);
+
+  const ensureNode = (term) => {
+    const nodeId = getTermId(term);
+    if (!nodeMap.has(nodeId)) {
+      nodeMap.set(nodeId, makeNodeData(term, labelIndex, { blankLabelById }));
+    }
+    return nodeMap.get(nodeId);
+  };
+
+  const addNodeMetadataRow = (nodeId, row) => {
+    const rows = nodeMetadata.get(nodeId) ?? [];
+    rows.push(row);
+    nodeMetadata.set(nodeId, rows);
+  };
+
+  const registerEdgeMetadata = (edgeId, edge, quad, category, axiomKind, restrictionKind) => {
+    edgeMetadata.set(edgeId, [
+      {
+        key: 'Axiom',
+        value: axiomKind,
+      },
+      {
+        key: 'Category',
+        value: category,
+      },
+      ...(restrictionKind
+        ? [
+            {
+              key: 'Restriction',
+              value: restrictionKind,
+            },
+          ]
+        : []),
+      {
+        key: 'Predicate',
+        value: edge.predicate,
+      },
+      {
+        key: 'Subject',
+        value: termToMetadataValue(quad.subject),
+      },
+      {
+        key: 'Object',
+        value: termToMetadataValue(quad.object),
+      },
+    ]);
+  };
 
   for (const quad of quads) {
     if (quad.predicate.value === RDF_TYPE && quad.subject.termType === 'NamedNode' && quad.object.termType === 'NamedNode') {
       if (quad.object.value === OWL_OBJECT_PROPERTY) {
         objectPropertyIris.add(quad.subject.value);
+      } else if (quad.object.value === OWL_DATATYPE_PROPERTY) {
+        dataPropertyIris.add(quad.subject.value);
       } else if (quad.object.value === OWL_ANNOTATION_PROPERTY) {
         annotationPropertyIris.add(quad.subject.value);
       } else if (quad.object.value === OWL_NAMED_INDIVIDUAL) {
         namedIndividualNodeIds.add(getTermId(quad.subject));
       } else if (CLASS_TYPE_IRIS.has(quad.object.value)) {
         classNodeIds.add(getTermId(quad.subject));
+      } else if (DATATYPE_TYPE_IRIS.has(quad.object.value)) {
+        datatypeNodeIds.add(getTermId(quad.subject));
       }
 
       if (CLASS_TYPE_IRIS.has(quad.object.value)) {
         classNodeIds.add(getTermId(quad.object));
       }
+    }
+
+    if (
+      quad.predicate.value === RDFS_SUBPROPERTY_OF &&
+      quad.subject.termType === 'NamedNode' &&
+      quad.object.termType === 'NamedNode'
+    ) {
+      objectPropertyIris.add(quad.subject.value);
+      objectPropertyIris.add(quad.object.value);
+    }
+
+    if (
+      quad.predicate.value === RDFS_RANGE &&
+      quad.subject.termType === 'NamedNode' &&
+      quad.object.termType === 'NamedNode' &&
+      dataPropertyIris.has(quad.subject.value)
+    ) {
+      datatypeNodeIds.add(getTermId(quad.object));
     }
 
     if (quad.predicate.value === RDFS_SUBCLASS_OF && isEntityTerm(quad.subject) && isEntityTerm(quad.object)) {
@@ -928,22 +1429,45 @@ export function buildGraphData(quads, options = {}) {
 
     const sourceId = getTermId(quad.subject);
     if (!nodeMap.has(sourceId)) {
-      nodeMap.set(sourceId, makeNodeData(quad.subject, labelIndex));
+      ensureNode(quad.subject);
+    }
+
+    if (METADATA_PREDICATES.has(quad.predicate.value)) {
+      addNodeMetadataRow(sourceId, {
+        predicate: quad.predicate.value,
+        predicateLabel: compactIri(quad.predicate.value),
+        value: termToMetadataValue(quad.object),
+      });
+    }
+
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_ONTOLOGY
+    ) {
+      addNodeMetadataRow(sourceId, {
+        predicate: quad.predicate.value,
+        predicateLabel: 'source ontology',
+        value: quad.subject.value,
+      });
     }
 
     const category = detectPredicateCategory(
       quad.predicate.value,
       quad.object.termType,
       objectPropertyIris,
+      dataPropertyIris,
       annotationPropertyIris,
     );
+    const axiomKind = getAxiomKind(quad, category, objectPropertyIris, dataPropertyIris, annotationPropertyIris);
+    const restrictionKind = getRestrictionKind(quad.predicate.value);
 
     if (category === 'annotation') {
       const annotationValue = annotationObjectToLiteralValue(quad.object);
       const annotationLiteral = literal(annotationValue);
       const literalId = getTermId(annotationLiteral);
       if (!nodeMap.has(literalId)) {
-        nodeMap.set(literalId, makeNodeData(annotationLiteral, labelIndex));
+        ensureNode(annotationLiteral);
       }
 
       const edgeId = `l${literalEdgeCounter}`;
@@ -954,9 +1478,12 @@ export function buildGraphData(quads, options = {}) {
         predicate: quad.predicate.value,
         predicateLabel: compactIri(quad.predicate.value),
         category: 'annotation',
+        axiomKind,
+        restrictionKind,
       };
       literalEdges.push(literalEdge);
       edgeMap.set(edgeId, literalEdge);
+      registerEdgeMetadata(edgeId, literalEdge, quad, 'annotation', axiomKind, restrictionKind);
       literalEdgeCounter += 1;
 
       const rows = dataProperties.get(sourceId) ?? [];
@@ -979,7 +1506,7 @@ export function buildGraphData(quads, options = {}) {
 
       const targetId = getTermId(quad.object);
       if (!nodeMap.has(targetId)) {
-        nodeMap.set(targetId, makeNodeData(quad.object, labelIndex));
+        ensureNode(quad.object);
       }
 
       if (quad.predicate.value === RDFS_SUBCLASS_OF) {
@@ -996,14 +1523,17 @@ export function buildGraphData(quads, options = {}) {
         predicate: quad.predicate.value,
         predicateLabel,
         category,
+        axiomKind,
+        restrictionKind,
       };
       objectEdges.push(edge);
       edgeMap.set(edgeId, edge);
+      registerEdgeMetadata(edgeId, edge, quad, category, axiomKind, restrictionKind);
       objectEdgeCounter += 1;
     } else if (quad.object.termType === 'Literal') {
       const literalId = getTermId(quad.object);
       if (!nodeMap.has(literalId)) {
-        nodeMap.set(literalId, makeNodeData(quad.object, labelIndex));
+        ensureNode(quad.object);
       }
 
       const literalCategory = category === 'annotation' ? 'annotation' : 'data';
@@ -1015,9 +1545,12 @@ export function buildGraphData(quads, options = {}) {
         predicate: quad.predicate.value,
         predicateLabel: compactIri(quad.predicate.value),
         category: literalCategory,
+        axiomKind,
+        restrictionKind,
       };
       literalEdges.push(literalEdge);
       edgeMap.set(edgeId, literalEdge);
+      registerEdgeMetadata(edgeId, literalEdge, quad, literalCategory, axiomKind, restrictionKind);
       literalEdgeCounter += 1;
 
       const rows = dataProperties.get(sourceId) ?? [];
@@ -1084,6 +1617,12 @@ export function buildGraphData(quads, options = {}) {
     node.classCount = node.classes.length;
     node.classTooltip = !hasOntology && hasMultipleClasses ? classLabelList.join('\n') : '';
 
+    if (node.hasClass > 0 && node.termType === 'NamedNode') {
+      for (const classIri of classes) {
+        badgeClassNodeIds.add(classIri);
+      }
+    }
+
     for (const classIri of classes) {
       const classEntry = classMap.get(classIri);
       if (classEntry) {
@@ -1093,31 +1632,87 @@ export function buildGraphData(quads, options = {}) {
   }
 
   if (hasOntology) {
-    classNodeIds.clear();
     for (const ontologyClassId of ontologyClassIds) {
       classNodeIds.add(ontologyClassId);
     }
-  } else {
-    for (const classIri of classMap.keys()) {
-      classNodeIds.add(classIri);
-    }
+  }
+  for (const classIri of classMap.keys()) {
+    classNodeIds.add(classIri);
   }
 
+  for (const datatypeId of ontologyDatatypeNodeIds) {
+    datatypeNodeIds.add(datatypeId);
+  }
+
+  const ontologyObjectPropertyIds = new Set([
+    ...Array.from(ontologyObjectPropertyNodeIds),
+    ...Array.from(objectPropertyIris.values()),
+  ]);
+  const ontologyDataPropertyIds = new Set([
+    ...Array.from(ontologyDataPropertyNodeIds),
+    ...Array.from(dataPropertyIris.values()),
+  ]);
+  const ontologyAnnotationPropertyIds = new Set([
+    ...Array.from(ontologyAnnotationPropertyNodeIds),
+    ...Array.from(annotationPropertyIris.values()),
+  ]);
+
   for (const node of nodeMap.values()) {
+    if (node.termType === 'BlankNode') {
+      const role = blankRoles.get(node.id)?.role ?? '';
+      if (role) {
+        if (role.startsWith('Restriction')) {
+          node.blankExpressionType = 'Restriction';
+          const fallbackKind = role.startsWith('Restriction:') ? role.slice('Restriction:'.length) || 'Restriction' : 'Restriction';
+          node.restrictionKind = restrictionKindById.get(node.id) ?? fallbackKind;
+        } else {
+          node.blankExpressionType = role;
+        }
+        node.restrictionTooltip = restrictionTooltipById.get(node.id) ?? '';
+        node.entityCategory = 'class-expression';
+        applyNodeDisplayLabel(node, blankLabelById.get(node.id) ?? role);
+        node.hasClass = 0;
+        node.classBadge = '';
+        node.badgeSvg = '';
+        node.badgeWidth = 0;
+        node.classCount = 0;
+        node.classTooltip = '';
+      }
+      continue;
+    }
+
+    if (node.termType === 'Literal') {
+      node.entityCategory = 'literal';
+      continue;
+    }
+
     if (node.termType !== 'NamedNode') {
       continue;
     }
 
-    if (ontologyDataPropertyNodeIds.has(node.id)) {
+    if (ontologyDataPropertyIds.has(node.id) || dataPropertyIris.has(node.id)) {
       node.ontologyKind = 'data-property';
-    } else if (ontologyObjectPropertyNodeIds.has(node.id)) {
+      node.entityCategory = 'data-property';
+    } else if (ontologyObjectPropertyIds.has(node.id) || objectPropertyIris.has(node.id)) {
       node.ontologyKind = 'object-property';
-    } else if (ontologyAnnotationPropertyNodeIds.has(node.id)) {
+      node.entityCategory = 'object-property';
+    } else if (ontologyAnnotationPropertyIds.has(node.id) || annotationPropertyIris.has(node.id)) {
       node.ontologyKind = 'annotation-property';
+      node.entityCategory = 'annotation-property';
     } else if (ontologyClassIds.has(node.id)) {
       node.ontologyKind = 'class';
+      node.entityCategory = 'class';
+    } else if (classNodeIds.has(node.id)) {
+      node.ontologyKind = 'class';
+      node.entityCategory = 'class';
     } else if (namedIndividualNodeIds.has(node.id)) {
       node.ontologyKind = 'individual';
+      node.entityCategory = 'individual';
+    } else if (datatypeNodeIds.has(node.id)) {
+      node.ontologyKind = 'datatype';
+      node.entityCategory = 'datatype';
+    } else {
+      node.entityCategory = 'named-entity';
     }
 
     if (hasOntology && hasKg) {
@@ -1164,14 +1759,24 @@ export function buildGraphData(quads, options = {}) {
     classes,
     baseIris,
     classNodeIds,
+    badgeClassNodeIds,
     namedIndividualNodeIds,
+    datatypeNodeIds,
     hasOntology,
     hasKg,
     ontologyClassIds,
-    ontologyObjectPropertyNodeIds,
-    ontologyDataPropertyNodeIds,
-    ontologyAnnotationPropertyNodeIds,
+    ontologyObjectPropertyNodeIds: ontologyObjectPropertyIds,
+    ontologyDataPropertyNodeIds: ontologyDataPropertyIds,
+    ontologyAnnotationPropertyNodeIds: ontologyAnnotationPropertyIds,
+    ontologyDatatypeNodeIds,
+    blankExpressionNodeIds: new Set(
+      Array.from(blankRoles.entries())
+        .filter(([, info]) => Boolean(info?.role))
+        .map(([id]) => id),
+    ),
     dataProperties,
+    nodeMetadata,
+    edgeMetadata,
     nodeMap,
     edgeMap,
     elements: [],
@@ -1189,12 +1794,20 @@ export function toElements(nodes, edges) {
         label: node.displayLabel,
         fullLabel: node.fullLabel,
         iri: node.iri,
+        baseIri: node.baseIri ?? '',
         kind: node.kind,
         ontologyKind: node.ontologyKind ?? '',
+        entityCategory: node.entityCategory ?? '',
+        blankExpressionType: node.blankExpressionType ?? '',
+        restrictionKind: node.restrictionKind ?? '',
+        restrictionTooltip: node.restrictionTooltip ?? '',
         graphRole: node.graphRole ?? '',
         isOntologyNode: node.isOntologyNode ?? 0,
         mixedMode: node.mixedMode ?? 0,
         termType: node.termType,
+        literalValue: node.literalValue ?? '',
+        literalDatatype: node.literalDatatype ?? '',
+        literalLanguage: node.literalLanguage ?? '',
         labelLength: node.labelLength,
         nodeWidth: node.nodeWidth ?? 96,
         nodeHeight: node.nodeHeight ?? 52,
@@ -1205,6 +1818,7 @@ export function toElements(nodes, edges) {
         badgeSvg: node.badgeSvg,
         badgeWidth: node.badgeWidth,
         classTooltip: node.classTooltip ?? '',
+        lightOntologyView: node.lightOntologyView ?? 0,
       },
     })),
     ...edges.map((edge) => ({
@@ -1215,6 +1829,10 @@ export function toElements(nodes, edges) {
         predicate: edge.predicate,
         predicateLabel: edge.predicateLabel,
         category: edge.category ?? 'object',
+        axiomKind: edge.axiomKind ?? '',
+        restrictionKind: edge.restrictionKind ?? '',
+        lightRestrictionEdge: edge.lightRestrictionEdge ?? 0,
+        lightOntologyView: edge.lightOntologyView ?? 0,
       },
     })),
   ];
@@ -1222,12 +1840,129 @@ export function toElements(nodes, edges) {
 
 function normalizeViewOptions(viewOptions) {
   return {
+    projectionMode: viewOptions?.projectionMode === 'kg' ? 'kg' : 'ontology',
     showDataProperties: Boolean(viewOptions?.showDataProperties),
     showAnnotationProperties: Boolean(viewOptions?.showAnnotationProperties),
     showObjectProperties: Boolean(viewOptions?.showObjectProperties),
     showNamedIndividuals: Boolean(viewOptions?.showNamedIndividuals),
     showTypeLinks: Boolean(viewOptions?.showTypeLinks),
+    lightOntologyMode: Boolean(viewOptions?.lightOntologyMode),
   };
+}
+
+function toRestrictionEdgeLabel(restrictionNode) {
+  const raw = (restrictionNode?.restrictionTooltip || '').trim();
+  if (raw) {
+    const matched = raw.match(/^Restriction\((.*)\)$/);
+    if (matched?.[1]) {
+      return matched[1];
+    }
+    return raw;
+  }
+  return restrictionNode?.restrictionKind || 'Restriction';
+}
+
+function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibleEdges) {
+  const restrictionNodeIds = new Set();
+  for (const nodeId of visibleNodeIds) {
+    const node = graphData.nodeMap.get(nodeId);
+    if (node?.termType === 'BlankNode' && node.blankExpressionType === 'Restriction') {
+      restrictionNodeIds.add(nodeId);
+    }
+  }
+
+  if (restrictionNodeIds.size === 0) {
+    return;
+  }
+
+  const edgesByRestrictionNode = new Map();
+  const preservedEdges = [];
+
+  for (const edge of visibleEdges) {
+    const sourceIsRestriction = restrictionNodeIds.has(edge.source);
+    const targetIsRestriction = restrictionNodeIds.has(edge.target);
+    if (!sourceIsRestriction && !targetIsRestriction) {
+      preservedEdges.push(edge);
+      continue;
+    }
+
+    const restrictionNodeId = sourceIsRestriction ? edge.source : edge.target;
+    const rows = edgesByRestrictionNode.get(restrictionNodeId) ?? [];
+    rows.push(edge);
+    edgesByRestrictionNode.set(restrictionNodeId, rows);
+  }
+
+  for (const restrictionNodeId of restrictionNodeIds) {
+    visibleNodeIds.delete(restrictionNodeId);
+  }
+
+  const syntheticEdges = [];
+  const syntheticEdgeIds = new Set();
+
+  const isClassNode = (nodeId) => {
+    const node = graphData.nodeMap.get(nodeId);
+    if (!node || node.termType !== 'NamedNode') {
+      return false;
+    }
+    return node.ontologyKind === 'class' || graphData.classNodeIds.has(nodeId);
+  };
+
+  for (const [restrictionNodeId, connectedEdges] of edgesByRestrictionNode.entries()) {
+    const restrictionNode = graphData.nodeMap.get(restrictionNodeId);
+    const anchorClassIds = new Set();
+    const fillerClassIds = new Set();
+
+    for (const edge of connectedEdges) {
+      if (RESTRICTION_ANCHOR_AXIOM_PREDICATES.has(edge.predicate)) {
+        if (edge.source === restrictionNodeId && isClassNode(edge.target)) {
+          anchorClassIds.add(edge.target);
+        } else if (edge.target === restrictionNodeId && isClassNode(edge.source)) {
+          anchorClassIds.add(edge.source);
+        }
+      }
+
+      if (edge.source === restrictionNodeId && RESTRICTION_BRIDGE_VALUE_PREDICATES.has(edge.predicate) && isClassNode(edge.target)) {
+        fillerClassIds.add(edge.target);
+      }
+    }
+
+    if (anchorClassIds.size === 0 || fillerClassIds.size === 0) {
+      continue;
+    }
+
+    const restrictionLabel = toRestrictionEdgeLabel(restrictionNode);
+    for (const sourceId of anchorClassIds) {
+      for (const targetId of fillerClassIds) {
+        if (sourceId === targetId) {
+          continue;
+        }
+
+        const edgeId = `light-restriction:${restrictionNodeId}:${sourceId}:${targetId}`;
+        const dedupeKey = `${sourceId}|${targetId}|${restrictionLabel}`;
+        if (syntheticEdgeIds.has(dedupeKey)) {
+          continue;
+        }
+        syntheticEdgeIds.add(dedupeKey);
+
+        syntheticEdges.push({
+          id: edgeId,
+          source: sourceId,
+          target: targetId,
+          predicate: `${OWL_NS}restrictionBridge`,
+          predicateLabel: restrictionLabel,
+          category: 'restriction',
+          axiomKind: 'Restriction',
+          restrictionKind: restrictionNode?.restrictionKind ?? '',
+          lightRestrictionEdge: 1,
+        });
+        visibleNodeIds.add(sourceId);
+        visibleNodeIds.add(targetId);
+      }
+    }
+  }
+
+  visibleEdges.length = 0;
+  visibleEdges.push(...preservedEdges, ...syntheticEdges);
 }
 
 function shouldIncludeObjectEdge(edge, options) {
@@ -1291,17 +2026,38 @@ function shouldIncludeOntologyObjectEdgeByNodeKinds(graphData, edge, options) {
   return true;
 }
 
-function shouldIncludeStandaloneNode(node, graphData, options, kgClassNodeIds = null) {
-  if (!node || node.termType === 'Literal' || node.termType === 'BlankNode') {
+function shouldIncludeStandaloneNode(node, graphData, options) {
+  if (!node) {
     return false;
   }
 
-  if (!graphData.hasOntology) {
-    // In KG-only mode, do not render class target nodes from `<entity> rdf:type <Class>`.
-    // Class information is represented on instance nodes as badges.
-    if (kgClassNodeIds?.has(node.id)) {
+  // Literal nodes should only appear through visible literal edges, never as standalone nodes.
+  if (node.termType === 'Literal') {
+    return false;
+  }
+
+  if (node.termType === 'BlankNode') {
+    return false;
+  }
+
+  // Do not duplicate class representation: if a class is already rendered as a badge on
+  // instance nodes, hide the standalone class node in all projections.
+  if (graphData.badgeClassNodeIds?.has(node.id)) {
+    return false;
+  }
+
+  if (options.projectionMode === 'kg') {
+    if (
+      node.entityCategory === 'object-property' ||
+      node.entityCategory === 'data-property' ||
+      node.entityCategory === 'annotation-property'
+    ) {
       return false;
     }
+    return true;
+  }
+
+  if (!graphData.hasOntology) {
     return true;
   }
 
@@ -1325,8 +2081,113 @@ function shouldIncludeStandaloneNode(node, graphData, options, kgClassNodeIds = 
     return options.showAnnotationProperties;
   }
 
+  if (node.ontologyKind === 'datatype' || node.entityCategory === 'datatype') {
+    return true;
+  }
+
   // KG instances and other named nodes should stay visible even without edges.
   return true;
+}
+
+function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
+  const visibleNodeIds = new Set();
+  const visibleEdges = [];
+
+  const isVisibleKgEntityNode = (nodeId) => {
+    const node = graphData.nodeMap.get(nodeId);
+    if (!node) {
+      return false;
+    }
+
+    if (node.termType === 'BlankNode') {
+      return false;
+    }
+
+    if (
+      node.entityCategory === 'object-property' ||
+      node.entityCategory === 'data-property' ||
+      node.entityCategory === 'annotation-property'
+    ) {
+      return false;
+    }
+
+    if (node.termType === 'Literal') {
+      return false;
+    }
+
+    if (graphData.badgeClassNodeIds?.has(node.id)) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const isVisibleKgLiteralNode = (nodeId) => {
+    const node = graphData.nodeMap.get(nodeId);
+    if (!node || node.termType !== 'Literal') {
+      return false;
+    }
+
+    return options.showDataProperties || options.showAnnotationProperties;
+  };
+
+  for (const edge of graphData.objectEdges) {
+    if (edge.category === 'type') {
+      if (!options.showTypeLinks) {
+        continue;
+      }
+    } else if (!shouldIncludeObjectEdge(edge, options)) {
+      continue;
+    }
+
+    if (edge.predicate === RDF_FIRST || edge.predicate === RDF_REST) {
+      continue;
+    }
+
+    if (focusedNodeIds && (!focusedNodeIds.has(edge.source) || !focusedNodeIds.has(edge.target))) {
+      continue;
+    }
+
+    if (!isVisibleKgEntityNode(edge.source) || !isVisibleKgEntityNode(edge.target)) {
+      continue;
+    }
+
+    visibleEdges.push(edge);
+    visibleNodeIds.add(edge.source);
+    visibleNodeIds.add(edge.target);
+  }
+
+  for (const edge of graphData.literalEdges) {
+    if (!shouldIncludeLiteralEdge(edge, options)) {
+      continue;
+    }
+
+    if (focusedNodeIds && !focusedNodeIds.has(edge.source)) {
+      continue;
+    }
+
+    if (!isVisibleKgEntityNode(edge.source) || !isVisibleKgLiteralNode(edge.target)) {
+      continue;
+    }
+
+    visibleEdges.push(edge);
+    visibleNodeIds.add(edge.source);
+    visibleNodeIds.add(edge.target);
+  }
+
+  const candidateNodes = focusedNodeIds
+    ? graphData.nodes.filter((node) => focusedNodeIds.has(node.id))
+    : graphData.nodes;
+
+  for (const node of candidateNodes) {
+    if (!isVisibleKgEntityNode(node.id)) {
+      continue;
+    }
+    visibleNodeIds.add(node.id);
+  }
+
+  const nodes = graphData.nodes.filter((node) => visibleNodeIds.has(node.id));
+  return toElements(nodes, visibleEdges);
 }
 
 export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
@@ -1338,8 +2199,9 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     return [];
   }
 
+  const options = normalizeViewOptions(viewOptions);
   const effectiveFocusedNodeIds =
-    focusedNodeIds && graphData.hasOntology && graphData.hasKg
+    focusedNodeIds && graphData.hasOntology && graphData.hasKg && options.projectionMode === 'kg'
       ? (() => {
           const combined = new Set(focusedNodeIds);
           for (const node of graphData.nodes) {
@@ -1351,8 +2213,10 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
         })()
       : focusedNodeIds;
 
-  const options = normalizeViewOptions(viewOptions);
-  const kgClassNodeIds = graphData.hasOntology ? null : new Set((graphData.classes ?? []).map((entry) => entry.id));
+  if (options.projectionMode === 'kg') {
+    return buildKgProjectionSubset(graphData, effectiveFocusedNodeIds, options);
+  }
+
   const classStructureOnly =
     !options.showDataProperties && !options.showAnnotationProperties && !options.showObjectProperties;
   const visibleNodeIds = new Set();
@@ -1367,24 +2231,46 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       return false;
     }
 
+    if (options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg) {
+      if (node.termType === 'NamedNode' && node.iri === OWL_RESTRICTION) {
+        return true;
+      }
+    }
+
     if (node.termType === 'BlankNode') {
-      return true;
+      return node.entityCategory !== 'class-expression';
     }
 
     return node.termType === 'NamedNode' && node.iri === RDF_NIL;
   };
   const isNamedIndividualVisible = (nodeId) =>
     options.showNamedIndividuals || !graphData.namedIndividualNodeIds.has(nodeId);
-  const isOntologyObjectPropertyNodeVisible = (nodeId) =>
-    !(graphData.hasOntology && graphData.hasKg && graphData.ontologyObjectPropertyNodeIds.has(nodeId));
+  const isOntologyObjectPropertyNodeVisible = (nodeId) => {
+    const node = graphData.nodeMap.get(nodeId);
+    if (!node) {
+      return false;
+    }
+
+    if (node.ontologyKind === 'object-property') {
+      return options.showObjectProperties;
+    }
+    if (node.ontologyKind === 'data-property') {
+      return options.showDataProperties;
+    }
+    if (node.ontologyKind === 'annotation-property') {
+      return options.showAnnotationProperties;
+    }
+
+    return true;
+  };
 
   for (const edge of graphData.objectEdges) {
-    if (graphData.hasOntology && (edge.predicate === RDF_FIRST || edge.predicate === RDF_REST)) {
+    if (graphData.badgeClassNodeIds?.has(edge.source) || graphData.badgeClassNodeIds?.has(edge.target)) {
       continue;
     }
 
     if (edge.category === 'type') {
-      if (!options.showTypeLinks || !graphData.ontologyClassIds.has(edge.target)) {
+      if (!options.showTypeLinks) {
         continue;
       }
     } else if (!shouldIncludeObjectEdge(edge, options)) {
@@ -1406,10 +2292,12 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       continue;
     }
 
-    if (
-      edge.category === 'subclass' &&
-      (!graphData.classNodeIds.has(edge.source) || !graphData.classNodeIds.has(edge.target))
-    ) {
+    const sourceIsClassLike =
+      graphData.classNodeIds.has(edge.source) || graphData.blankExpressionNodeIds?.has(edge.source);
+    const targetIsClassLike =
+      graphData.classNodeIds.has(edge.target) || graphData.blankExpressionNodeIds?.has(edge.target);
+
+    if (edge.category === 'subclass' && (!sourceIsClassLike || !targetIsClassLike)) {
       continue;
     }
 
@@ -1432,6 +2320,10 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
   }
 
   for (const edge of graphData.literalEdges) {
+    if (graphData.badgeClassNodeIds?.has(edge.source) || graphData.badgeClassNodeIds?.has(edge.target)) {
+      continue;
+    }
+
     if (!shouldIncludeLiteralEdge(edge, options)) {
       continue;
     }
@@ -1454,8 +2346,15 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     visibleNodeIds.add(edge.target);
   }
 
+  if (options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg) {
+    collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibleEdges);
+  }
+
   if (graphData.hasOntology && (!effectiveFocusedNodeIds || classStructureOnly)) {
     for (const classNodeId of graphData.classNodeIds) {
+      if (graphData.badgeClassNodeIds?.has(classNodeId)) {
+        continue;
+      }
       if (isOntologyStructuralNodeHidden(classNodeId)) {
         continue;
       }
@@ -1479,7 +2378,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     if (!isOntologyObjectPropertyNodeVisible(node.id)) {
       continue;
     }
-    if (!shouldIncludeStandaloneNode(node, graphData, options, kgClassNodeIds)) {
+    if (!shouldIncludeStandaloneNode(node, graphData, options)) {
       continue;
     }
     visibleNodeIds.add(node.id);
@@ -1491,5 +2390,43 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       isOntologyObjectPropertyNodeVisible(node.id) &&
       !isOntologyStructuralNodeHidden(node.id),
   );
-  return toElements(nodes, visibleEdges);
+  const elements = toElements(nodes, visibleEdges);
+  if (!(options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg)) {
+    return elements;
+  }
+
+  const restrictionNodeIds = new Set();
+  for (const element of elements) {
+    const data = element?.data;
+    if (!data || data.source) {
+      continue;
+    }
+    const isRestrictionNode =
+      data.iri === OWL_RESTRICTION ||
+      data.blankExpressionType === 'Restriction' ||
+      (data.kind === 'blank' && Boolean(data.restrictionKind));
+    if (isRestrictionNode) {
+      restrictionNodeIds.add(data.id);
+    }
+  }
+
+  const filteredElements = elements.filter((element) => {
+    const data = element?.data;
+    if (!data) {
+      return false;
+    }
+    if (data.source) {
+      return !restrictionNodeIds.has(data.source) && !restrictionNodeIds.has(data.target);
+    }
+    return !restrictionNodeIds.has(data.id);
+  });
+
+  return filteredElements.map((element) => ({
+    ...element,
+    data: {
+      ...element.data,
+      lightOntologyView: 1,
+      lightRestrictionEdge: element.data.source ? Number(element.data.lightRestrictionEdge ?? 0) : 0,
+    },
+  }));
 }

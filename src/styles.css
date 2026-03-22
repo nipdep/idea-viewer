@@ -45,7 +45,7 @@ textarea {
 
 .page-shell {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: 100%;
   height: 100%;
 }
@@ -58,6 +58,10 @@ textarea {
 }
 
 .page-shell.fullscreen-mode .app-header {
+  display: none;
+}
+
+.page-shell.fullscreen-mode .app-footer {
   display: none;
 }
 
@@ -76,22 +80,31 @@ textarea {
   font-size: 24px;
   line-height: 0.88;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   font-weight: 500;
   font-family: "Eternal Bloom", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+}
+
+.brand-lockup {
+  position: relative;
+  display: inline-block;
+  padding-right: 0.2em;
 }
 
 .brand-word {
   display: inline-block;
 }
 
+.brand-word-viewer {
+  margin-left: 0.04em;
+}
+
 .brand-star {
   color: var(--accent);
   font-weight: 700;
-  display: inline-block;
-  margin-left: -0.12em;
-  margin-right: 0.08em;
-  transform: translateY(-0.16em);
+  position: absolute;
+  left: calc(100% - 0.16em);
+  top: -0.18em;
   line-height: 1;
 }
 
@@ -109,6 +122,14 @@ textarea {
   min-height: 0;
   padding: 8px 24px 24px;
   transition: grid-template-columns 220ms ease;
+}
+
+.app-footer {
+  padding: 0 24px 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .panel.left {
@@ -1372,6 +1393,11 @@ textarea {
     padding: 12px 14px 8px;
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .app-footer {
+    padding: 0 12px 12px;
+    font-size: 0.75rem;
   }
 
   .app-shell {

@@ -2816,11 +2816,13 @@ export default function App() {
       <header className="app-header">
         <div>
           <h1 className="brand-title">
-            <span className="brand-word">IDEA</span>
-            <span className="brand-star" aria-hidden="true">
-              *
+            <span className="brand-lockup">
+              <span className="brand-word">IDEA</span>
+              <span className="brand-star" aria-hidden="true">
+                *
+              </span>
             </span>
-            <span className="brand-word">VIEWER</span>
+            <span className="brand-word brand-word-viewer">VIEWER</span>
           </h1>
         </div>
       </header>
@@ -3772,6 +3774,10 @@ export default function App() {
           </>
         )}
       </div>
+
+      <footer className="app-footer">
+        Copyright © 2026 Rensselaer Polytechnic Institute | Tetherless World Constellation
+      </footer>
     </div>
   );
 }

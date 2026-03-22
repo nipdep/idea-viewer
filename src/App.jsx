@@ -47,7 +47,6 @@ const ONTOLOGY_VIEW_MODES = {
   CLASS_OBJECT_DATA: 'class-object-data',
   FULL: 'full',
 };
-const GROUP_DRAG_DOUBLE_CLICK_MS = 320;
 const RDFS_LABEL_IRI = 'http://www.w3.org/2000/01/rdf-schema#label';
 const XSD_BOOLEAN_IRI = 'http://www.w3.org/2001/XMLSchema#boolean';
 const XSD_DECIMAL_IRI = 'http://www.w3.org/2001/XMLSchema#decimal';
@@ -948,7 +947,6 @@ export default function App() {
   const layoutPositionCacheRef = useRef(new Map());
   const groupDragStateRef = useRef(null);
   const groupDragArmRef = useRef(null);
-  const groupDragClickRef = useRef({ nodeId: '', at: 0 });
   const shouldFitAfterFocusClearRef = useRef(false);
   const detachedPanModeRef = useRef(false);
   const detachedPanLastMouseRef = useRef(null);
@@ -1742,11 +1740,6 @@ export default function App() {
 
       const activeFocusedNodeIds = focusedNodeIdsRef.current;
       const downNode = event.target;
-      const now = Date.now();
-      const previousClick = groupDragClickRef.current;
-      const isNodeDoubleClick =
-        previousClick.nodeId === downNode.id() && now - previousClick.at <= GROUP_DRAG_DOUBLE_CLICK_MS;
-      groupDragClickRef.current = { nodeId: downNode.id(), at: now };
 
       if (activeFocusedNodeIds.length === 0) {
         groupDragArmRef.current = null;
@@ -1765,42 +1758,16 @@ export default function App() {
         return;
       }
 
-      if (isNodeDoubleClick) {
+      if (originalEvent.ctrlKey) {
+        originalEvent.preventDefault();
         groupDragArmRef.current = {
           nodeId: downNode.id(),
           focusedSignature: getFocusSignature(activeFocusedNodeIds),
         };
-      }
-    });
-
-    cy.on('dbltap', 'node', (event) => {
-      if (event.originalEvent instanceof MouseEvent && event.originalEvent.button !== 0) {
         return;
       }
 
-      const activeFocusedNodeIds = focusedNodeIdsRef.current;
-      if (activeFocusedNodeIds.length === 0) {
-        groupDragArmRef.current = null;
-        return;
-      }
-
-      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
-      if (focusRoots.empty()) {
-        groupDragArmRef.current = null;
-        return;
-      }
-
-      const tappedNode = event.target;
-      const groupNodes = focusRoots.closedNeighborhood().nodes();
-      if (!groupNodes.has(tappedNode)) {
-        groupDragArmRef.current = null;
-        return;
-      }
-
-      groupDragArmRef.current = {
-        nodeId: tappedNode.id(),
-        focusedSignature: getFocusSignature(activeFocusedNodeIds),
-      };
+      groupDragArmRef.current = null;
     });
 
     cy.on('dbltap', (event) => {
@@ -1998,7 +1965,7 @@ export default function App() {
 
     const onContextMenu = (event) => {
       const bothPressed = (event.buttons & 1) !== 0 && (event.buttons & 2) !== 0;
-      if (detachedPanModeRef.current || bothPressed) {
+      if (detachedPanModeRef.current || bothPressed || event.ctrlKey) {
         event.preventDefault();
       }
     };
@@ -2017,7 +1984,6 @@ export default function App() {
       container.removeEventListener('contextmenu', onContextMenu);
       groupDragStateRef.current = null;
       groupDragArmRef.current = null;
-      groupDragClickRef.current = { nodeId: '', at: 0 };
       shouldFitAfterFocusClearRef.current = false;
       layoutPositionCacheRef.current.clear();
       detachedPanModeRef.current = false;
@@ -2034,7 +2000,6 @@ export default function App() {
     if (focusedNodeIds.length === 0) {
       groupDragStateRef.current = null;
       groupDragArmRef.current = null;
-      groupDragClickRef.current = { nodeId: '', at: 0 };
       return;
     }
     if (groupDragArmRef.current?.focusedSignature !== getFocusSignature(focusedNodeIds)) {
@@ -2050,7 +2015,6 @@ export default function App() {
   useEffect(() => {
     groupDragStateRef.current = null;
     groupDragArmRef.current = null;
-    groupDragClickRef.current = { nodeId: '', at: 0 };
     setMultiClassBadgeTooltip(null);
     setRestrictionNodeTooltip(null);
     setIsExportMenuOpen(false);

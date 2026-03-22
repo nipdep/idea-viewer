@@ -106,6 +106,109 @@ npm run dev
 
 Then open the URL printed by Vite (typically [http://localhost:5173](http://localhost:5173)).
 
+## Docker
+
+The repo includes a production-oriented Docker setup for the UI with:
+- multi-stage build (`node:22-alpine` -> `nginx:alpine`)
+- a generic static runtime image that anyone can run directly
+- a single mapped UI port
+- configurable Vite build base path and matching runtime route handling
+
+Your personal Caddy reverse proxy remains optional and external to the container.
+
+Notes:
+- `VITE_BASE_PATH` controls how the app is built.
+- `APP_BASE_PATH` controls how the runtime server routes requests.
+- Keep them aligned for subpath deployments.
+- `APP_BASE_PATH` does not rewrite built asset URLs by itself.
+
+### 1) Build
+
+Build the image locally for the root path:
+
+```bash
+docker build --build-arg VITE_BASE_PATH=/ -t idea-viewer-ui .
+```
+
+Build the image locally for `/idea-viewer/`:
+
+```bash
+docker build --build-arg VITE_BASE_PATH=/idea-viewer/ -t idea-viewer-ui .
+```
+
+If you prefer Compose for a local build + run flow:
+
+```bash
+docker compose up --build
+```
+
+Subpath example:
+
+```bash
+VITE_BASE_PATH=/idea-viewer/ APP_BASE_PATH=/idea-viewer/ docker compose up --build
+```
+
+### 2) Run
+
+#### Run from a local build
+
+Run the locally built root-path image:
+
+```bash
+docker run --rm -p 8080:8080 idea-viewer-ui
+```
+
+Open [http://localhost:8080](http://localhost:8080).
+
+Change the host port if needed:
+
+```bash
+docker run --rm -p 3000:8080 idea-viewer-ui
+```
+
+Run the locally built subpath image that was built with `VITE_BASE_PATH=/idea-viewer/`:
+
+```bash
+docker run --rm -p 8080:8080 idea-viewer-ui
+```
+
+Open [http://localhost:8080/idea-viewer/](http://localhost:8080/idea-viewer/).
+
+If you need to override the runtime base path, make sure the image was built with the same base path:
+
+```bash
+docker run --rm -p 8080:8080 -e APP_BASE_PATH=/idea-viewer/ idea-viewer-ui
+```
+
+#### Run from Docker Hub
+
+Replace `<your-dockerhub-user>/idea-viewer-ui:<tag>` with your published image name.
+
+Pull a root-path image:
+
+```bash
+docker pull <your-dockerhub-user>/idea-viewer-ui:latest
+```
+
+Run it:
+
+```bash
+docker run --rm -p 8080:8080 <your-dockerhub-user>/idea-viewer-ui:latest
+```
+
+Open [http://localhost:8080](http://localhost:8080).
+
+For `/idea-viewer/`, publish and pull a tag that was built with `VITE_BASE_PATH=/idea-viewer/`.
+
+Example:
+
+```bash
+docker pull <your-dockerhub-user>/idea-viewer-ui:idea-viewer-base
+docker run --rm -p 8080:8080 <your-dockerhub-user>/idea-viewer-ui:idea-viewer-base
+```
+
+Open [http://localhost:8080/idea-viewer/](http://localhost:8080/idea-viewer/).
+
 ## Reverse Proxy with Caddy
 
 The app supports reverse-proxy routing under `/idea-viewer/`, including HMR over WSS.

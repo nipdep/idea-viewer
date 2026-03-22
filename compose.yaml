@@ -1,0 +1,13 @@
+services:
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
+    environment:
+      VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
+      APP_BASE_PATH: ${APP_BASE_PATH:-}
+    ports:
+      - "${UI_PORT:-8080}:8080"
+    restart: unless-stopped

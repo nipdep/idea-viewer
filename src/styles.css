@@ -768,6 +768,58 @@ textarea {
   height: 16px;
 }
 
+.graph-export-menu {
+  position: relative;
+}
+
+.graph-export-popover {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 188px;
+  border: 1px solid rgba(30, 27, 22, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 250, 242, 0.92);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 22px rgba(30, 27, 22, 0.14);
+  padding: 10px;
+}
+
+.graph-export-title {
+  color: #3e352e;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.graph-export-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.graph-export-action {
+  width: 100%;
+  border: 1px solid rgba(30, 27, 22, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  color: #3f3730;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 9px 8px;
+  border-radius: 9px;
+}
+
+.graph-export-action:hover {
+  background: rgba(242, 232, 220, 0.9);
+  box-shadow: 0 8px 16px rgba(30, 27, 22, 0.08);
+}
+
 .graph-legend-popover {
   position: absolute;
   top: 44px;

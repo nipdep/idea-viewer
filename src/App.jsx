@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
+import { DataFactory, Writer } from 'n3';
 import { buildFocusedSubset, buildGraphData, compactIri, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
 import './styles.css';
 
@@ -47,6 +48,375 @@ const ONTOLOGY_VIEW_MODES = {
   FULL: 'full',
 };
 const GROUP_DRAG_DOUBLE_CLICK_MS = 320;
+const RDFS_LABEL_IRI = 'http://www.w3.org/2000/01/rdf-schema#label';
+const XSD_BOOLEAN_IRI = 'http://www.w3.org/2001/XMLSchema#boolean';
+const XSD_DECIMAL_IRI = 'http://www.w3.org/2001/XMLSchema#decimal';
+const VIEW_EXPORT_NS = 'https://idea-viewer.local/view#';
+const CYTOSCAPE_CDN_URL = 'https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js';
+
+const { blankNode, literal, namedNode, quad } = DataFactory;
+
+function sanitizeFilenameSegment(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || 'view';
+}
+
+function formatExportTimestamp(date = new Date()) {
+  const parts = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+    String(date.getHours()).padStart(2, '0'),
+    String(date.getMinutes()).padStart(2, '0'),
+    String(date.getSeconds()).padStart(2, '0'),
+  ];
+  return `${parts[0]}${parts[1]}${parts[2]}-${parts[3]}${parts[4]}${parts[5]}`;
+}
+
+function escapeCsvCell(value) {
+  const text = Array.isArray(value) ? value.join(' | ') : value == null ? '' : String(value);
+  const normalized = text.replace(/\r?\n/g, ' ');
+  if (/[",\n]/.test(normalized)) {
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+  return normalized;
+}
+
+function toInlineJson(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadDataUrl(filename, dataUrl) {
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function getCurrentViewKey(projectionMode, isLightOntologyViewActive) {
+  if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
+    return 'kg-view';
+  }
+  return isLightOntologyViewActive ? 'ontology-light-view' : 'ontology-full-view';
+}
+
+function getCurrentViewLabel(projectionMode, isLightOntologyViewActive) {
+  if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
+    return 'KG view';
+  }
+  return isLightOntologyViewActive ? 'Ontology light view' : 'Ontology full detailed view';
+}
+
+function snapshotNodeToTerm(nodeData) {
+  if (!nodeData) {
+    return null;
+  }
+
+  if (nodeData.termType === 'NamedNode') {
+    return namedNode(nodeData.iri || nodeData.id);
+  }
+
+  if (nodeData.termType === 'BlankNode') {
+    return blankNode(String(nodeData.id || '').replace(/^_:/, ''));
+  }
+
+  if (nodeData.termType === 'Literal') {
+    const literalValue = nodeData.literalValue ?? nodeData.iri ?? nodeData.fullLabel ?? '';
+    if (nodeData.literalLanguage) {
+      return literal(literalValue, nodeData.literalLanguage);
+    }
+    if (nodeData.literalDatatype) {
+      return literal(literalValue, namedNode(nodeData.literalDatatype));
+    }
+    return literal(literalValue);
+  }
+
+  return null;
+}
+
+function buildCsvExport(snapshot) {
+  const rows = [];
+  const nodeById = new Map(snapshot.nodes.map((node) => [node.data.id, node]));
+  const header = [
+    'row_type',
+    'id',
+    'label',
+    'full_label',
+    'term_type',
+    'entity_category',
+    'ontology_kind',
+    'graph_role',
+    'iri',
+    'base_iri',
+    'class_iris',
+    'position_x',
+    'position_y',
+    'cy_classes',
+    'source',
+    'target',
+    'source_label',
+    'target_label',
+    'predicate',
+    'predicate_label',
+    'edge_category',
+    'axiom_kind',
+    'restriction_kind',
+    'literal_language',
+    'literal_datatype',
+  ];
+  rows.push(header.join(','));
+
+  for (const node of snapshot.nodes) {
+    rows.push(
+      [
+        'node',
+        node.data.id,
+        node.data.label,
+        node.data.fullLabel,
+        node.data.termType,
+        node.data.entityCategory,
+        node.data.ontologyKind,
+        node.data.graphRole,
+        node.data.iri,
+        node.data.baseIri,
+        node.data.classes ?? [],
+        Number(node.position.x).toFixed(3),
+        Number(node.position.y).toFixed(3),
+        node.classes,
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        node.data.literalLanguage,
+        node.data.literalDatatype,
+      ].map(escapeCsvCell).join(','),
+    );
+  }
+
+  for (const edge of snapshot.edges) {
+    const sourceNode = nodeById.get(edge.data.source);
+    const targetNode = nodeById.get(edge.data.target);
+    rows.push(
+      [
+        'edge',
+        edge.data.id,
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        edge.classes,
+        edge.data.source,
+        edge.data.target,
+        sourceNode?.data.fullLabel ?? sourceNode?.data.label ?? '',
+        targetNode?.data.fullLabel ?? targetNode?.data.label ?? '',
+        edge.data.predicate,
+        edge.data.predicateLabel,
+        edge.data.category,
+        edge.data.axiomKind,
+        edge.data.restrictionKind,
+        '',
+        '',
+      ].map(escapeCsvCell).join(','),
+    );
+  }
+
+  return rows.join('\n');
+}
+
+function buildHtmlExport(snapshot) {
+  const elements = [
+    ...snapshot.nodes.map((node) => ({
+      data: node.data,
+      position: node.position,
+      classes: node.classes,
+    })),
+    ...snapshot.edges.map((edge) => ({
+      data: edge.data,
+      classes: edge.classes,
+    })),
+  ];
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${snapshot.metadata.title}</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(circle at top left, #f8e6d6 0%, #fef6ee 40%, #f3f5f4 100%);
+        color: #1e1b16;
+        font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+      }
+      .export-shell {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        width: 100%;
+        height: 100%;
+      }
+      .export-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 20px;
+        padding: 18px 22px 10px;
+      }
+      .export-title {
+        margin: 0;
+        font-size: 1.3rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .export-subtitle,
+      .export-meta {
+        margin: 4px 0 0;
+        color: #6b6157;
+        font-size: 0.92rem;
+      }
+      #cy {
+        min-height: 0;
+        margin: 0 18px 18px;
+        border: 1px solid #e0d6cb;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #fcfaf6 0%, #f8f3ec 100%);
+        overflow: hidden;
+      }
+    </style>
+    <script src="${CYTOSCAPE_CDN_URL}"></script>
+  </head>
+  <body>
+    <div class="export-shell">
+      <div class="export-header">
+        <div>
+          <h1 class="export-title">${snapshot.metadata.title}</h1>
+          <p class="export-subtitle">${snapshot.metadata.viewLabel}</p>
+        </div>
+        <p class="export-meta">${snapshot.metadata.exportedAtLabel}</p>
+      </div>
+      <div id="cy"></div>
+    </div>
+    <script>
+      const snapshot = ${toInlineJson({
+        elements,
+        style: snapshot.style,
+        viewport: snapshot.viewport,
+      })};
+      const cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements: snapshot.elements,
+        style: snapshot.style,
+        layout: { name: 'preset', fit: false },
+        wheelSensitivity: 0.2,
+        boxSelectionEnabled: false,
+      });
+      cy.ready(() => {
+        cy.zoom(snapshot.viewport.zoom);
+        cy.pan(snapshot.viewport.pan);
+      });
+    </script>
+  </body>
+</html>`;
+}
+
+async function buildTurtleExport(snapshot) {
+  const writer = new Writer({
+    prefixes: {
+      rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+      rdfs: 'http://www.w3.org/2000/01/rdf-schema#',
+      owl: 'http://www.w3.org/2002/07/owl#',
+      xsd: 'http://www.w3.org/2001/XMLSchema#',
+      view: VIEW_EXPORT_NS,
+    },
+  });
+
+  const nodeById = new Map(snapshot.nodes.map((node) => [node.data.id, node]));
+  const decimalDatatype = namedNode(XSD_DECIMAL_IRI);
+  const booleanDatatype = namedNode(XSD_BOOLEAN_IRI);
+
+  for (const edge of snapshot.edges) {
+    const sourceNode = nodeById.get(edge.data.source);
+    const targetNode = nodeById.get(edge.data.target);
+    const sourceTerm = snapshotNodeToTerm(sourceNode?.data);
+    const targetTerm = snapshotNodeToTerm(targetNode?.data);
+    if (!sourceTerm || !targetTerm || !edge.data.predicate) {
+      continue;
+    }
+    writer.addQuad(quad(sourceTerm, namedNode(edge.data.predicate), targetTerm));
+  }
+
+  for (const node of snapshot.nodes) {
+    const subject = snapshotNodeToTerm(node.data);
+    if (!subject || subject.termType === 'Literal') {
+      continue;
+    }
+
+    writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}visibleNode`), literal('true', booleanDatatype)));
+    writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}x`), literal(String(Number(node.position.x).toFixed(3)), decimalDatatype)));
+    writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}y`), literal(String(Number(node.position.y).toFixed(3)), decimalDatatype)));
+
+    if (node.data.fullLabel) {
+      writer.addQuad(quad(subject, namedNode(RDFS_LABEL_IRI), literal(node.data.fullLabel)));
+    }
+    if (node.data.entityCategory) {
+      writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}entityCategory`), literal(node.data.entityCategory)));
+    }
+    if (node.data.ontologyKind) {
+      writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}ontologyKind`), literal(node.data.ontologyKind)));
+    }
+    if (node.data.baseIri) {
+      writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}baseIri`), literal(node.data.baseIri)));
+    }
+    if (Array.isArray(node.data.classes)) {
+      for (const classIri of node.data.classes) {
+        if (typeof classIri === 'string' && /^https?:/.test(classIri)) {
+          writer.addQuad(quad(subject, namedNode(`${VIEW_EXPORT_NS}class`), namedNode(classIri)));
+        }
+      }
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    writer.end((error, result) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(result);
+    });
+  });
+}
 
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
@@ -596,6 +966,7 @@ export default function App() {
   const [rightFlyoutOpen, setRightFlyoutOpen] = useState(false);
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isLightOntologyView, setIsLightOntologyView] = useState(false);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
@@ -642,6 +1013,101 @@ export default function App() {
     },
     [selectedEdgeId, graphData, visibleElements],
   );
+
+  function captureCurrentViewSnapshot() {
+    const cy = cyRef.current;
+    if (!cy) {
+      return null;
+    }
+
+    const modeLabel = getCurrentViewLabel(graphProjectionMode, isLightOntologyViewActive);
+    const exportTimestamp = new Date();
+    const nodes = cy.nodes().map((node) => {
+      const modelNode = graphData?.nodeMap.get(node.id());
+      const nodeData = {
+        ...node.data(),
+        baseIri: modelNode?.baseIri ?? node.data('baseIri') ?? '',
+        classes: Array.isArray(modelNode?.classes) ? [...modelNode.classes] : [],
+        literalValue: modelNode?.literalValue ?? node.data('literalValue') ?? '',
+        literalDatatype: modelNode?.literalDatatype ?? node.data('literalDatatype') ?? '',
+        literalLanguage: modelNode?.literalLanguage ?? node.data('literalLanguage') ?? '',
+      };
+      return {
+        data: nodeData,
+        position: { x: node.position('x'), y: node.position('y') },
+        classes: node.classes(),
+      };
+    });
+    const edges = cy.edges().map((edge) => {
+      const modelEdge = graphData?.edgeMap.get(edge.id());
+      return {
+        data: {
+          ...edge.data(),
+          axiomKind: modelEdge?.axiomKind ?? edge.data('axiomKind') ?? '',
+          restrictionKind: modelEdge?.restrictionKind ?? edge.data('restrictionKind') ?? '',
+        },
+        classes: edge.classes(),
+      };
+    });
+
+    return {
+      nodes,
+      edges,
+      viewport: {
+        zoom: cy.zoom(),
+        pan: cy.pan(),
+      },
+      style: typeof cy.style().json === 'function' ? cy.style().json() : [],
+      metadata: {
+        title: 'IDEA* Viewer export',
+        viewLabel: modeLabel,
+        viewKey: getCurrentViewKey(graphProjectionMode, isLightOntologyViewActive),
+        exportedAtIso: exportTimestamp.toISOString(),
+        exportedAtLabel: exportTimestamp.toLocaleString(),
+      },
+    };
+  }
+
+  async function handleExport(format) {
+    const snapshot = captureCurrentViewSnapshot();
+    if (!snapshot) {
+      setStatus('Export is unavailable until a graph is rendered.');
+      return;
+    }
+
+    try {
+      const fileBase = `idea-viewer-${sanitizeFilenameSegment(snapshot.metadata.viewKey)}-${formatExportTimestamp()}`;
+
+      if (format === 'png') {
+        const cy = cyRef.current;
+        const pngDataUrl = cy?.png({
+          full: false,
+          scale: 2,
+          bg: '#fcfaf6',
+        });
+        if (!pngDataUrl) {
+          throw new Error('PNG export could not be generated.');
+        }
+        downloadDataUrl(`${fileBase}.png`, pngDataUrl);
+      } else if (format === 'csv') {
+        const csvText = buildCsvExport(snapshot);
+        downloadBlob(`${fileBase}.csv`, new Blob([csvText], { type: 'text/csv;charset=utf-8' }));
+      } else if (format === 'ttl') {
+        const ttlText = await buildTurtleExport(snapshot);
+        downloadBlob(`${fileBase}.ttl`, new Blob([ttlText], { type: 'text/turtle;charset=utf-8' }));
+      } else if (format === 'html') {
+        const htmlText = buildHtmlExport(snapshot);
+        downloadBlob(`${fileBase}.html`, new Blob([htmlText], { type: 'text/html;charset=utf-8' }));
+      } else {
+        throw new Error(`Unsupported export format: ${format}`);
+      }
+
+      setStatus(`Exported ${format.toUpperCase()} for the current ${snapshot.metadata.viewLabel.toLowerCase()}.`);
+      setIsExportMenuOpen(false);
+    } catch (error) {
+      setStatus(`Export failed: ${error.message || 'Unexpected export error.'}`);
+    }
+  }
 
   function fitCurrentGraphViewport(cy, duration = 250) {
     const visibleElementsForFit = cy.elements(':visible');
@@ -1532,7 +1998,37 @@ export default function App() {
     groupDragClickRef.current = { nodeId: '', at: 0 };
     setMultiClassBadgeTooltip(null);
     setRestrictionNodeTooltip(null);
+    setIsExportMenuOpen(false);
   }, [visibleElements]);
+
+  useEffect(() => {
+    if (!isExportMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (!target.closest('.graph-export-menu')) {
+        setIsExportMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsExportMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isExportMenuOpen]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -1853,6 +2349,7 @@ export default function App() {
     setFocusedNodeId(null);
     setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
     setIsLightOntologyView(false);
+    setIsExportMenuOpen(false);
     setOntologyMetadataRows([]);
     setLoadError('');
     setFilterError('');
@@ -2269,7 +2766,9 @@ export default function App() {
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
   const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
+  const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
   const showLightOntologyLegend = isLightOntologyViewActive;
+  const hasExportableGraph = visibleElements.length > 0;
 
   return (
     <div
@@ -2816,6 +3315,54 @@ export default function App() {
                 )}
               </svg>
             </button>
+
+            <div className="graph-export-menu">
+              <button
+                type="button"
+                className={`graph-tool-button icon-only ${isExportMenuOpen ? 'active' : ''}`}
+                onClick={() => setIsExportMenuOpen((value) => !value)}
+                aria-label={exportButtonLabel}
+                title={exportButtonLabel}
+                aria-pressed={isExportMenuOpen}
+                disabled={!hasExportableGraph}
+              >
+                <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path
+                    d="M8 2.4V9.1M8 9.1L5.4 6.5M8 9.1L10.6 6.5"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M3.1 10.8V12.2C3.1 12.86 3.64 13.4 4.3 13.4H11.7C12.36 13.4 12.9 12.86 12.9 12.2V10.8"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+
+              {isExportMenuOpen && hasExportableGraph && (
+                <div className="graph-export-popover" role="dialog" aria-label="Export current view">
+                  <div className="graph-export-title">Export current view</div>
+                  <div className="graph-export-actions">
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('csv')}>
+                      CSV
+                    </button>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('ttl')}>
+                      TTL
+                    </button>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('png')}>
+                      PNG
+                    </button>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('html')}>
+                      HTML
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {isLegendOpen && (
               <div className="graph-legend-popover" role="dialog" aria-label="Graph legend">

@@ -124,6 +124,29 @@ function getCurrentViewLabel(projectionMode, isLightOntologyViewActive) {
   return isLightOntologyViewActive ? 'Ontology light view' : 'Ontology full detailed view';
 }
 
+function normalizeFocusedNodeIds(nodeIds) {
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+    return [];
+  }
+  return Array.from(new Set(nodeIds.filter(Boolean)));
+}
+
+function getFocusSignature(nodeIds) {
+  return normalizeFocusedNodeIds(nodeIds).sort().join('|');
+}
+
+function collectFocusRoots(cy, nodeIds) {
+  const focusIds = normalizeFocusedNodeIds(nodeIds);
+  let roots = cy.collection();
+  for (const nodeId of focusIds) {
+    const node = cy.$id(nodeId);
+    if (!node.empty()) {
+      roots = roots.union(node);
+    }
+  }
+  return roots;
+}
+
 function snapshotNodeToTerm(nodeData) {
   if (!nodeData) {
     return null;
@@ -913,7 +936,9 @@ export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
   const previousFocusedNodeIdRef = useRef(null);
+  const previousFocusedNodeIdsRef = useRef([]);
   const focusedNodeIdRef = useRef(null);
+  const focusedNodeIdsRef = useRef([]);
   const preFocusViewportRef = useRef(null);
   const queryEngineRef = useRef(new QueryEngine());
   const leftFlyoutTimerRef = useRef(null);
@@ -946,6 +971,7 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [focusedNodeId, setFocusedNodeId] = useState(null);
+  const [focusedNodeIds, setFocusedNodeIds] = useState([]);
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -1013,6 +1039,35 @@ export default function App() {
     },
     [selectedEdgeId, graphData, visibleElements],
   );
+
+  function setSingleFocusedNode(nodeId) {
+    setSelectedEdgeId(null);
+    setSelectedNodeId(nodeId);
+    setFocusedNodeId(nodeId);
+    setFocusedNodeIds(nodeId ? [nodeId] : []);
+  }
+
+  function extendFocusedNodes(nodeId) {
+    if (!nodeId) {
+      return;
+    }
+    setSelectedEdgeId(null);
+    setSelectedNodeId(nodeId);
+    setFocusedNodeId(nodeId);
+    setFocusedNodeIds((current) => {
+      if (current.includes(nodeId)) {
+        return current;
+      }
+      return [...current, nodeId];
+    });
+  }
+
+  function clearFocusState() {
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setFocusedNodeId(null);
+    setFocusedNodeIds([]);
+  }
 
   function captureCurrentViewSnapshot() {
     const cy = cyRef.current;
@@ -1644,9 +1699,11 @@ export default function App() {
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
       const nodeId = event.target.id();
-      setSelectedEdgeId(null);
-      setSelectedNodeId(nodeId);
-      setFocusedNodeId(nodeId);
+      if (event.originalEvent instanceof MouseEvent && event.originalEvent.shiftKey) {
+        extendFocusedNodes(nodeId);
+        return;
+      }
+      setSingleFocusedNode(nodeId);
     });
 
     cy.on('tap', 'edge', (event) => {
@@ -1660,6 +1717,7 @@ export default function App() {
       const edgeId = event.target.id();
       setSelectedNodeId(null);
       setFocusedNodeId(null);
+      setFocusedNodeIds([]);
       setSelectedEdgeId(edgeId);
     });
 
@@ -1672,9 +1730,7 @@ export default function App() {
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
       if (event.target === cy) {
-        setSelectedNodeId(null);
-        setFocusedNodeId(null);
-        setSelectedEdgeId(null);
+        clearFocusState();
       }
     });
 
@@ -1684,7 +1740,7 @@ export default function App() {
         return;
       }
 
-      const activeFocusNodeId = focusedNodeIdRef.current;
+      const activeFocusedNodeIds = focusedNodeIdsRef.current;
       const downNode = event.target;
       const now = Date.now();
       const previousClick = groupDragClickRef.current;
@@ -1692,18 +1748,18 @@ export default function App() {
         previousClick.nodeId === downNode.id() && now - previousClick.at <= GROUP_DRAG_DOUBLE_CLICK_MS;
       groupDragClickRef.current = { nodeId: downNode.id(), at: now };
 
-      if (!activeFocusNodeId) {
+      if (activeFocusedNodeIds.length === 0) {
         groupDragArmRef.current = null;
         return;
       }
 
-      const focusNode = cy.$id(activeFocusNodeId);
-      if (focusNode.empty()) {
+      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      if (focusRoots.empty()) {
         groupDragArmRef.current = null;
         return;
       }
 
-      const groupNodes = focusNode.closedNeighborhood().nodes();
+      const groupNodes = focusRoots.closedNeighborhood().nodes();
       if (!groupNodes.has(downNode)) {
         groupDragArmRef.current = null;
         return;
@@ -1712,7 +1768,7 @@ export default function App() {
       if (isNodeDoubleClick) {
         groupDragArmRef.current = {
           nodeId: downNode.id(),
-          focusedNodeId: activeFocusNodeId,
+          focusedSignature: getFocusSignature(activeFocusedNodeIds),
         };
       }
     });
@@ -1722,20 +1778,20 @@ export default function App() {
         return;
       }
 
-      const activeFocusNodeId = focusedNodeIdRef.current;
-      if (!activeFocusNodeId) {
+      const activeFocusedNodeIds = focusedNodeIdsRef.current;
+      if (activeFocusedNodeIds.length === 0) {
         groupDragArmRef.current = null;
         return;
       }
 
-      const focusNode = cy.$id(activeFocusNodeId);
-      if (focusNode.empty()) {
+      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      if (focusRoots.empty()) {
         groupDragArmRef.current = null;
         return;
       }
 
       const tappedNode = event.target;
-      const groupNodes = focusNode.closedNeighborhood().nodes();
+      const groupNodes = focusRoots.closedNeighborhood().nodes();
       if (!groupNodes.has(tappedNode)) {
         groupDragArmRef.current = null;
         return;
@@ -1743,7 +1799,7 @@ export default function App() {
 
       groupDragArmRef.current = {
         nodeId: tappedNode.id(),
-        focusedNodeId: activeFocusNodeId,
+        focusedSignature: getFocusSignature(activeFocusedNodeIds),
       };
     });
 
@@ -1756,12 +1812,10 @@ export default function App() {
       }
       groupDragArmRef.current = null;
 
-      const activeFocusNodeId = focusedNodeIdRef.current;
-      if (activeFocusNodeId) {
+      const activeFocusedNodeIds = focusedNodeIdsRef.current;
+      if (activeFocusedNodeIds.length > 0) {
         shouldFitAfterFocusClearRef.current = true;
-        setFocusedNodeId(null);
-        setSelectedNodeId(null);
-        setSelectedEdgeId(null);
+        clearFocusState();
         return;
       }
 
@@ -1769,22 +1823,22 @@ export default function App() {
     });
 
     cy.on('grab', 'node', (event) => {
-      const activeFocusNodeId = focusedNodeIdRef.current;
+      const activeFocusedNodeIds = focusedNodeIdsRef.current;
       const grabbedNode = event.target;
-      if (!activeFocusNodeId) {
+      if (activeFocusedNodeIds.length === 0) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
         return;
       }
 
-      const focusNode = cy.$id(activeFocusNodeId);
-      if (focusNode.empty()) {
+      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      if (focusRoots.empty()) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
         return;
       }
 
-      const groupNodes = focusNode.closedNeighborhood().nodes();
+      const groupNodes = focusRoots.closedNeighborhood().nodes();
       if (!groupNodes.has(grabbedNode)) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
@@ -1795,7 +1849,7 @@ export default function App() {
       const shouldUseGroupDrag =
         Boolean(arm) &&
         arm.nodeId === grabbedNode.id() &&
-        arm.focusedNodeId === activeFocusNodeId;
+        arm.focusedSignature === getFocusSignature(activeFocusedNodeIds);
       if (!shouldUseGroupDrag) {
         groupDragStateRef.current = null;
         return;
@@ -1976,16 +2030,17 @@ export default function App() {
 
   useEffect(() => {
     focusedNodeIdRef.current = focusedNodeId;
-    if (!focusedNodeId) {
+    focusedNodeIdsRef.current = focusedNodeIds;
+    if (focusedNodeIds.length === 0) {
       groupDragStateRef.current = null;
       groupDragArmRef.current = null;
       groupDragClickRef.current = { nodeId: '', at: 0 };
       return;
     }
-    if (groupDragArmRef.current?.focusedNodeId !== focusedNodeId) {
+    if (groupDragArmRef.current?.focusedSignature !== getFocusSignature(focusedNodeIds)) {
       groupDragArmRef.current = null;
     }
-  }, [focusedNodeId]);
+  }, [focusedNodeId, focusedNodeIds]);
 
   useEffect(() => {
     hasAppliedInitialLayoutRef.current = false;
@@ -2133,9 +2188,9 @@ export default function App() {
       return;
     }
 
-    const wasFocused = Boolean(previousFocusedNodeIdRef.current);
+    const wasFocused = previousFocusedNodeIdsRef.current.length > 0;
 
-    if (focusedNodeId && !wasFocused) {
+    if (focusedNodeIds.length > 0 && !wasFocused) {
       const pan = cy.pan();
       preFocusViewportRef.current = {
         zoom: cy.zoom(),
@@ -2146,28 +2201,28 @@ export default function App() {
     cy.batch(() => {
       cy.elements().removeClass('faded focus-node focus-neighbor focus-edge');
 
-      if (!focusedNodeId) {
+      if (focusedNodeIds.length === 0) {
         return;
       }
 
-      const focusNode = cy.$id(focusedNodeId);
-      if (focusNode.empty()) {
+      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      if (focusRoots.empty()) {
         return;
       }
 
-      const neighborhood = focusNode.closedNeighborhood();
+      const neighborhood = focusRoots.closedNeighborhood();
       cy.elements().difference(neighborhood).addClass('faded');
-      focusNode.addClass('focus-node');
-      focusNode.neighborhood('node').addClass('focus-neighbor');
-      focusNode.connectedEdges().addClass('focus-edge');
+      focusRoots.addClass('focus-node');
+      neighborhood.nodes().difference(focusRoots).addClass('focus-neighbor');
+      focusRoots.connectedEdges().addClass('focus-edge');
     });
 
-    if (focusedNodeId) {
-      const focusNode = cy.$id(focusedNodeId);
-      if (!focusNode.empty()) {
+    if (focusedNodeIds.length > 0) {
+      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      if (!focusRoots.empty()) {
         cy.animate({
           fit: {
-            eles: focusNode.closedNeighborhood(),
+            eles: focusRoots.closedNeighborhood(),
             padding: 76,
           },
           duration: 250,
@@ -2179,6 +2234,7 @@ export default function App() {
         fitCurrentGraphViewport(cy, 220);
         preFocusViewportRef.current = null;
         previousFocusedNodeIdRef.current = focusedNodeId;
+        previousFocusedNodeIdsRef.current = focusedNodeIds;
         return;
       }
 
@@ -2210,7 +2266,8 @@ export default function App() {
     }
 
     previousFocusedNodeIdRef.current = focusedNodeId;
-  }, [focusedNodeId, visibleElements]);
+    previousFocusedNodeIdsRef.current = focusedNodeIds;
+  }, [focusedNodeId, focusedNodeIds, visibleElements]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -2316,6 +2373,18 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    const visibleNodeIds = new Set(
+      visibleElements.filter((entry) => !entry.data.source).map((entry) => entry.data.id),
+    );
+
+    if (focusedNodeIdsRef.current.length > 0) {
+      const nextFocusedNodeIds = focusedNodeIdsRef.current.filter((nodeId) => visibleNodeIds.has(nodeId));
+      if (nextFocusedNodeIds.length !== focusedNodeIdsRef.current.length) {
+        setFocusedNodeIds(nextFocusedNodeIds);
+        setFocusedNodeId(nextFocusedNodeIds.length > 0 ? nextFocusedNodeIds[nextFocusedNodeIds.length - 1] : null);
+      }
+    }
+
     if (!selectedNodeId) {
       if (!selectedEdgeId) {
         return;
@@ -2331,6 +2400,7 @@ export default function App() {
     if (!hasSelectedNode) {
       setSelectedNodeId(null);
       setFocusedNodeId(null);
+      setFocusedNodeIds([]);
     }
   }, [visibleElements, selectedNodeId, selectedEdgeId]);
 
@@ -2347,6 +2417,7 @@ export default function App() {
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
     setFocusedNodeId(null);
+    setFocusedNodeIds([]);
     setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
     setIsLightOntologyView(false);
     setIsExportMenuOpen(false);
@@ -2365,6 +2436,7 @@ export default function App() {
       setSelectedNodeId(null);
       setSelectedEdgeId(null);
       setFocusedNodeId(null);
+      setFocusedNodeIds([]);
       setOntologyMetadataRows([]);
       setIsLightOntologyView(false);
       setLoadError('');
@@ -2465,6 +2537,7 @@ export default function App() {
         setSelectedNodeId(null);
         setSelectedEdgeId(null);
         setFocusedNodeId(null);
+        setFocusedNodeIds([]);
         setOntologyMetadataRows([...metadataRows, ...derivedPrefixRows]);
 
         setStatus(
@@ -3573,9 +3646,7 @@ export default function App() {
                           type="button"
                           className="neighbor-row inspector-link"
                           onClick={() => {
-                            setSelectedEdgeId(null);
-                            setSelectedNodeId(selectedEdge.source);
-                            setFocusedNodeId(selectedEdge.source);
+                            setSingleFocusedNode(selectedEdge.source);
                           }}
                         >
                           {graphData?.nodeMap.get(selectedEdge.source)?.fullLabel ?? selectedEdge.source}
@@ -3588,9 +3659,7 @@ export default function App() {
                           type="button"
                           className="neighbor-row inspector-link"
                           onClick={() => {
-                            setSelectedEdgeId(null);
-                            setSelectedNodeId(selectedEdge.target);
-                            setFocusedNodeId(selectedEdge.target);
+                            setSingleFocusedNode(selectedEdge.target);
                           }}
                         >
                           {graphData?.nodeMap.get(selectedEdge.target)?.fullLabel ?? selectedEdge.target}
@@ -3703,9 +3772,7 @@ export default function App() {
                           className="neighbor-row"
                           type="button"
                           onClick={() => {
-                            setSelectedEdgeId(null);
-                            setSelectedNodeId(row.neighborId);
-                            setFocusedNodeId(row.neighborId);
+                            setSingleFocusedNode(row.neighborId);
                           }}
                           title={row.neighborLabel}
                         >

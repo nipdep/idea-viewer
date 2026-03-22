@@ -121,6 +121,7 @@ Notes:
 - `APP_BASE_PATH` controls how the runtime server routes requests.
 - Keep them aligned for subpath deployments.
 - `APP_BASE_PATH` does not rewrite built asset URLs by itself.
+- Multi-arch builds use the native builder platform for the Vite compile step, then package the static output into each target image.
 
 ### 1) Build
 
@@ -134,6 +135,26 @@ Build the image locally for `/idea-viewer/`:
 
 ```bash
 docker build --build-arg VITE_BASE_PATH=/idea-viewer/ -t idea-viewer-ui .
+```
+
+Build and push multi-arch images from an ARM machine:
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg VITE_BASE_PATH=/ \
+  -t <your-dockerhub-user>/idea-viewer-ui:latest \
+  --push .
+```
+
+Subpath tag example:
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg VITE_BASE_PATH=/idea-viewer/ \
+  -t <your-dockerhub-user>/idea-viewer-ui:idea-viewer-base \
+  --push .
 ```
 
 If you prefer Compose for a local build + run flow:

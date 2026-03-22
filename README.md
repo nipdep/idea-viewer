@@ -84,6 +84,18 @@ Install dependencies:
 npm install
 ```
 
+Optional local env file:
+
+```bash
+cp .env.example .env.local
+```
+
+By default, Vercel Analytics is disabled locally:
+
+```dotenv
+VITE_ENABLE_VERCEL_ANALYTICS=false
+```
+
 ## Run Instructions
 
 Start dev server:
@@ -221,6 +233,66 @@ Preview production build:
 ```bash
 npm run preview
 ```
+
+## Vercel Analytics
+
+`idea* viewer` supports [Vercel Analytics](https://vercel.com/docs/analytics) behind an explicit Vite env flag.
+
+Behavior:
+- Disabled by default
+- Only rendered in production builds
+- Intended to be enabled in Vercel project environment variables
+
+### Local behavior
+
+Keep analytics off in local development:
+
+```bash
+cp .env.example .env.local
+```
+
+`.env.local`
+
+```dotenv
+VITE_ENABLE_VERCEL_ANALYTICS=false
+```
+
+### Enable it in Vercel
+
+1. Make sure dependencies are installed locally and committed:
+
+```bash
+npm install
+```
+
+2. In your Vercel project, open:
+   `Project -> Settings -> Environment Variables`
+
+3. Add this variable:
+
+```dotenv
+VITE_ENABLE_VERCEL_ANALYTICS=true
+```
+
+4. Scope it to the environments where you want analytics enabled:
+   - `Production` only, if you only want production traffic tracked
+   - `Preview` too, if you also want preview deployments tracked
+
+5. Redeploy the project.
+
+### What the app checks
+
+Analytics renders only when both conditions are true:
+
+```text
+import.meta.env.PROD
+VITE_ENABLE_VERCEL_ANALYTICS === "true"
+```
+
+That means:
+- local `npm run dev` stays off
+- builds without the env flag stay off
+- Vercel deployments with the env flag turned on will send analytics
 
 ## Notes
 

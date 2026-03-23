@@ -1305,6 +1305,8 @@ export function buildGraphData(quads, options = {}) {
   const ontologyAnnotationPropertyNodeIds =
     ontologyModel.annotationPropertyIds instanceof Set ? ontologyModel.annotationPropertyIds : new Set();
   const ontologyDatatypeNodeIds = ontologyModel.datatypeIds instanceof Set ? ontologyModel.datatypeIds : new Set();
+  const ontologyNamedIndividualNodeIds =
+    ontologyModel.namedIndividualIds instanceof Set ? ontologyModel.namedIndividualIds : new Set();
   const { blankRoles, blankLabelById, restrictionKindById, restrictionTooltipById } = buildBlankExpressionIndex(quads);
 
   const nodeMap = new Map();
@@ -1691,6 +1693,7 @@ export function buildGraphData(quads, options = {}) {
     }
 
     const isExplicitNamedIndividual = namedIndividualNodeIds.has(node.id);
+    const isOntologyNamedIndividual = ontologyNamedIndividualNodeIds.has(node.id);
     const isInstanceNode = node.classes.length > 0 || isExplicitNamedIndividual;
 
     if (ontologyDataPropertyIds.has(node.id) || dataPropertyIris.has(node.id)) {
@@ -1711,9 +1714,10 @@ export function buildGraphData(quads, options = {}) {
     } else if (isInstanceNode) {
       // In KG data, owl:NamedIndividual is supplemental typing, not a distinct node kind.
       // Normalize both explicit owl:NamedIndividual and ordinary class-asserted instances
-      // into the same instance category. Reserve ontologyKind=individual for ontology-only
-      // datasets where named individuals participate in ontology view filtering.
-      node.ontologyKind = hasOntology && !hasKg ? 'individual' : '';
+      // into the same instance category. Reserve ontologyKind=individual for ontology-defined
+      // named individuals so ontology view filtering can still hide/show them without affecting
+      // KG instance nodes that happen to include owl:NamedIndividual.
+      node.ontologyKind = isOntologyNamedIndividual ? 'individual' : '';
       node.entityCategory = 'individual';
     } else if (datatypeNodeIds.has(node.id)) {
       node.ontologyKind = 'datatype';
@@ -2250,8 +2254,13 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
 
     return node.termType === 'NamedNode' && node.iri === RDF_NIL;
   };
-  const isNamedIndividualVisible = (nodeId) =>
-    options.showNamedIndividuals || !graphData.namedIndividualNodeIds.has(nodeId);
+  const isNamedIndividualVisible = (nodeId) => {
+    const node = graphData.nodeMap.get(nodeId);
+    if (!node) {
+      return false;
+    }
+    return options.showNamedIndividuals || node.ontologyKind !== 'individual';
+  };
   const isOntologyObjectPropertyNodeVisible = (nodeId) => {
     const node = graphData.nodeMap.get(nodeId);
     if (!node) {

@@ -1690,6 +1690,9 @@ export function buildGraphData(quads, options = {}) {
       continue;
     }
 
+    const isExplicitNamedIndividual = namedIndividualNodeIds.has(node.id);
+    const isInstanceNode = node.classes.length > 0 || isExplicitNamedIndividual;
+
     if (ontologyDataPropertyIds.has(node.id) || dataPropertyIris.has(node.id)) {
       node.ontologyKind = 'data-property';
       node.entityCategory = 'data-property';
@@ -1705,8 +1708,12 @@ export function buildGraphData(quads, options = {}) {
     } else if (classNodeIds.has(node.id)) {
       node.ontologyKind = 'class';
       node.entityCategory = 'class';
-    } else if (namedIndividualNodeIds.has(node.id)) {
-      node.ontologyKind = 'individual';
+    } else if (isInstanceNode) {
+      // In KG data, owl:NamedIndividual is supplemental typing, not a distinct node kind.
+      // Normalize both explicit owl:NamedIndividual and ordinary class-asserted instances
+      // into the same instance category. Reserve ontologyKind=individual for ontology-only
+      // datasets where named individuals participate in ontology view filtering.
+      node.ontologyKind = hasOntology && !hasKg ? 'individual' : '';
       node.entityCategory = 'individual';
     } else if (datatypeNodeIds.has(node.id)) {
       node.ontologyKind = 'datatype';
@@ -1718,7 +1725,7 @@ export function buildGraphData(quads, options = {}) {
     if (hasOntology && hasKg) {
       if (ontologyClassIds.has(node.id)) {
         node.graphRole = 'ontology-class';
-      } else if (node.classes.length > 0 || namedIndividualNodeIds.has(node.id)) {
+      } else if (isInstanceNode) {
         node.graphRole = 'kg-instance';
       }
     }

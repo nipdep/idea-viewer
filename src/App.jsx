@@ -1051,12 +1051,22 @@ export default function App() {
       return;
     }
     setSelectedEdgeId(null);
-    setSelectedNodeId(nodeId);
-    setFocusedNodeId(nodeId);
     setFocusedNodeIds((current) => {
       if (current.includes(nodeId)) {
-        return current;
+        const nextFocusedNodeIds = current.filter((id) => id !== nodeId);
+        const activeFocusedNodeId = focusedNodeIdRef.current;
+        const nextPrimaryNodeId =
+          nextFocusedNodeIds.length === 0
+            ? null
+            : activeFocusedNodeId && activeFocusedNodeId !== nodeId && nextFocusedNodeIds.includes(activeFocusedNodeId)
+              ? activeFocusedNodeId
+              : nextFocusedNodeIds[nextFocusedNodeIds.length - 1];
+        setSelectedNodeId(nextPrimaryNodeId);
+        setFocusedNodeId(nextPrimaryNodeId);
+        return nextFocusedNodeIds;
       }
+      setSelectedNodeId(nodeId);
+      setFocusedNodeId(nodeId);
       return [...current, nodeId];
     });
   }

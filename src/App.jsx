@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
-import { DataFactory, Writer } from 'n3';
-import { buildFocusedSubset, buildGraphData, compactIri, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
+import { DataFactory, Store, Writer } from 'n3';
+import { buildFocusedSubset, compactIri, getTermId } from './lib/rdf';
 import './styles.css';
 
-const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
-const OWL_ONTOLOGY_IRI = 'http://www.w3.org/2002/07/owl#Ontology';
 const LEFT_PANEL_MIN_WIDTH = 220;
 const RIGHT_PANEL_MIN_WIDTH = 240;
 const PANEL_MAX_WIDTH_RATIO = 0.55;
@@ -54,7 +52,7 @@ const VIEW_EXPORT_NS = 'https://idea-viewer.local/view#';
 const CYTOSCAPE_CDN_URL = 'https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js';
 const GITHUB_ISSUES_URL = 'https://github.com/nipdep/idea-viewer/issues';
 
-const { blankNode, literal, namedNode, quad } = DataFactory;
+const { blankNode, defaultGraph, literal, namedNode, quad } = DataFactory;
 
 function sanitizeFilenameSegment(value) {
   const normalized = String(value ?? '')
@@ -484,8 +482,83 @@ async function collectEntityIds(bindingsStream) {
   return entityIds;
 }
 
-async function runClassFilter(engine, store, classIris) {
+function deserializeSerializedTerm(term) {
+  if (!term) {
+    return defaultGraph();
+  }
+
+  if (term.termType === 'NamedNode') {
+    return namedNode(term.value);
+  }
+
+  if (term.termType === 'BlankNode') {
+    return blankNode(String(term.value || '').replace(/^_:/, ''));
+  }
+
+  if (term.termType === 'Literal') {
+    if (term.language) {
+      return literal(term.value ?? '', term.language);
+    }
+    if (term.datatype) {
+      return literal(term.value ?? '', namedNode(term.datatype));
+    }
+    return literal(term.value ?? '');
+  }
+
+  return defaultGraph();
+}
+
+function deserializeSerializedQuad(serializedQuad) {
+  return quad(
+    deserializeSerializedTerm(serializedQuad.subject),
+    deserializeSerializedTerm(serializedQuad.predicate),
+    deserializeSerializedTerm(serializedQuad.object),
+    deserializeSerializedTerm(serializedQuad.graph),
+  );
+}
+
+function ensureGraphStore(graphData) {
+  if (!graphData) {
+    return null;
+  }
+
+  if (graphData.store) {
+    return graphData.store;
+  }
+
+  const serializedQuads = Array.isArray(graphData.serializedQuads) ? graphData.serializedQuads : [];
+  const store = new Store(serializedQuads.map(deserializeSerializedQuad));
+  graphData.store = store;
+  return store;
+}
+
+function formatSerializedTermForInspector(term) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'NamedNode') {
+    return toPrefixedName(term.value);
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `[Blank ${String(term.value || '').replace(/^_:/, '')}]`;
+  }
+
+  if (term.termType === 'Literal') {
+    return term.value || '';
+  }
+
+  return term.value || '';
+}
+
+async function runClassFilter(engine, graphData, classIris) {
   if (classIris.length === 0) {
+    return new Set();
+  }
+
+  const store = ensureGraphStore(graphData);
+  if (!store) {
     return new Set();
   }
 
@@ -502,7 +575,11 @@ async function runClassFilter(engine, store, classIris) {
   return collectEntityIds(bindingsStream);
 }
 
-async function runSparqlFilter(engine, store, query) {
+async function runSparqlFilter(engine, graphData, query) {
+  const store = ensureGraphStore(graphData);
+  if (!store) {
+    return new Set();
+  }
   const bindingsStream = await engine.queryBindings(query, { sources: [store] });
   return collectEntityIds(bindingsStream);
 }
@@ -750,66 +827,35 @@ function buildExecutableSparqlQuery(coreQuery, prefixRows, fixedPrefixRows = FIX
   return `${prefixLines.join('\n')}\n${queryCore}`;
 }
 
-function partitionOntologyHeaderQuads(quads) {
-  if (!quads || quads.length === 0) {
-    return {
-      headerQuads: [],
-      contentQuads: [],
-    };
-  }
+function buildOntologyMetadataRows(headerGroups, baseIris) {
+  const metadataRows = [];
 
-  const ontologySubjectIds = new Set();
-  for (const quad of quads) {
-    if (
-      quad.predicate.value === RDF_TYPE_IRI &&
-      quad.object.termType === 'NamedNode' &&
-      quad.object.value === OWL_ONTOLOGY_IRI
-    ) {
-      ontologySubjectIds.add(getTermId(quad.subject));
+  for (const group of headerGroups) {
+    const headerQuads = Array.isArray(group?.headerQuads) ? group.headerQuads : [];
+    for (let index = 0; index < headerQuads.length; index += 1) {
+      const serializedQuad = headerQuads[index];
+      metadataRows.push({
+        id: `${group.fileName}-${index}-${serializedQuad?.subject?.value ?? ''}-${serializedQuad?.object?.value ?? ''}`,
+        fileName: group.fileName,
+        subject: formatSerializedTermForInspector(serializedQuad?.subject),
+        predicate: formatSerializedTermForInspector(serializedQuad?.predicate),
+        value: formatSerializedTermForInspector(serializedQuad?.object),
+      });
     }
   }
 
-  if (ontologySubjectIds.size === 0) {
+  const derivedPrefixRows = (baseIris ?? []).map((entry, index) => {
+    const prefix = getPrefixFromBaseIri(entry.id);
     return {
-      headerQuads: [],
-      contentQuads: quads,
+      id: `derived-prefix-${index}-${entry.id}`,
+      fileName: 'Derived prefixes',
+      subject: 'dataset',
+      predicate: 'prefix',
+      value: `${prefix}: <${entry.id}>`,
     };
-  }
+  });
 
-  const headerQuads = [];
-  const contentQuads = [];
-  for (const quad of quads) {
-    if (ontologySubjectIds.has(getTermId(quad.subject))) {
-      headerQuads.push(quad);
-    } else {
-      contentQuads.push(quad);
-    }
-  }
-
-  return {
-    headerQuads,
-    contentQuads,
-  };
-}
-
-function formatTermForInspector(term) {
-  if (!term) {
-    return '';
-  }
-
-  if (term.termType === 'NamedNode') {
-    return toPrefixedName(term.value);
-  }
-
-  if (term.termType === 'BlankNode') {
-    return `[Blank ${term.value}]`;
-  }
-
-  if (term.termType === 'Literal') {
-    return term.value;
-  }
-
-  return term.value || '';
+  return [...metadataRows, ...derivedPrefixRows];
 }
 
 function orderClassesSubToSuper(classIris, graphData) {
@@ -995,6 +1041,7 @@ export default function App() {
   const [isLightOntologyView, setIsLightOntologyView] = useState(false);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
+  const [loadingMessage, setLoadingMessage] = useState('');
   const [loadError, setLoadError] = useState('');
   const [filterError, setFilterError] = useState('');
   const [ontologyMetadataRows, setOntologyMetadataRows] = useState([]);
@@ -2286,7 +2333,7 @@ export default function App() {
 
         if (!classFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
-            setVisibleElements(buildFocusedSubset(graphData, null, viewOptions));
+            setVisibleElements(graphData.elements?.length ? graphData.elements : buildFocusedSubset(graphData, null, viewOptions));
           }
           return;
         }
@@ -2299,7 +2346,7 @@ export default function App() {
         }
 
         if (classFilterActive) {
-          const classMatches = await runClassFilter(engine, graphData.store, selectedClassIris);
+          const classMatches = await runClassFilter(engine, graphData, selectedClassIris);
           selectedEntities = selectedEntities ? intersectSets(selectedEntities, classMatches) : classMatches;
         }
 
@@ -2309,7 +2356,7 @@ export default function App() {
         }
 
         if (sparqlActive) {
-          const sparqlResult = await runSparqlFilter(engine, graphData.store, sparqlQuery);
+          const sparqlResult = await runSparqlFilter(engine, graphData, sparqlQuery);
           selectedEntities = selectedEntities ? intersectSets(selectedEntities, sparqlResult) : sparqlResult;
         }
 
@@ -2397,6 +2444,7 @@ export default function App() {
     setIsLightOntologyView(false);
     setIsExportMenuOpen(false);
     setOntologyMetadataRows([]);
+    setLoadingMessage('');
     setLoadError('');
     setFilterError('');
     setStatus(DEFAULT_STATUS);
@@ -2413,6 +2461,7 @@ export default function App() {
       setFocusedNodeId(null);
       setFocusedNodeIds([]);
       setOntologyMetadataRows([]);
+      setLoadingMessage('');
       setIsLightOntologyView(false);
       setLoadError('');
       setFilterError('');
@@ -2422,125 +2471,89 @@ export default function App() {
     }
 
     let cancelled = false;
+    const worker = new Worker(new URL('./lib/graphLoad.worker.js', import.meta.url), { type: 'module' });
 
-    const loadGraph = async () => {
-      setIsLoading(true);
-      setLoadError('');
-      setFilterError('');
-      setOntologyMetadataRows([]);
+    setIsLoading(true);
+    setLoadingMessage('Preparing graph files...');
+    setLoadError('');
+    setFilterError('');
+    setOntologyMetadataRows([]);
 
-      try {
-        const kgQuadGroups = await Promise.all(
-          kgFiles.map(async (file) => {
-            const text = await file.text();
-            return parseRdfText(text, file.name);
-          }),
-        );
-        const ontologyParsedFiles = await Promise.all(
-          ontologyFiles.map(async (file) => {
-            const text = await file.text();
-            const quads = await parseRdfText(text, file.name);
-            const { headerQuads, contentQuads } = partitionOntologyHeaderQuads(quads);
-            const model = extractOntologyModel(contentQuads);
-            const hasSchema = modelHasOntologySchema(model);
-            return { fileName: file.name, headerQuads, contentQuads, hasSchema };
-          }),
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        const kgQuads = kgQuadGroups.flat();
-        const schemaOntologyQuads = [];
-        const instanceOntologyQuads = [];
-        let schemaOntologyFileCount = 0;
-        let instanceOntologyFileCount = 0;
-        const metadataRows = [];
-
-        for (const parsed of ontologyParsedFiles) {
-          parsed.headerQuads.forEach((quad, index) => {
-            metadataRows.push({
-              id: `${parsed.fileName}-${index}-${getTermId(quad.subject)}-${getTermId(quad.object)}`,
-              fileName: parsed.fileName,
-              subject: formatTermForInspector(quad.subject),
-              predicate: formatTermForInspector(quad.predicate),
-              value: formatTermForInspector(quad.object),
-            });
-          });
-
-          if (parsed.hasSchema) {
-            schemaOntologyQuads.push(...parsed.contentQuads);
-            schemaOntologyFileCount += 1;
-          } else {
-            instanceOntologyQuads.push(...parsed.contentQuads);
-            instanceOntologyFileCount += 1;
-          }
-        }
-
-        const effectiveKgQuads = [...kgQuads, ...instanceOntologyQuads];
-        const mergedQuads = [...effectiveKgQuads, ...schemaOntologyQuads];
-        const ontologyModel = extractOntologyModel(schemaOntologyQuads);
-        const hasOntology = modelHasOntologySchema(ontologyModel) && schemaOntologyQuads.length > 0;
-        const hasKg = effectiveKgQuads.length > 0;
-        const nextGraphData = buildGraphData(mergedQuads, {
-          hasKg,
-          hasOntology,
-          ontologyModel,
-        });
-        const derivedPrefixRows = nextGraphData.baseIris.map((entry, index) => {
-          const prefix = getPrefixFromBaseIri(entry.id);
-          return {
-            id: `derived-prefix-${index}-${entry.id}`,
-            fileName: 'Derived prefixes',
-            subject: 'dataset',
-            predicate: 'prefix',
-            value: `${prefix}: <${entry.id}>`,
-          };
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        setGraphData(nextGraphData);
-        setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
-        setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
-        setNodeNameQuery('');
-        setSparqlDraft('');
-        setSparqlQuery('');
-        setSelectedNodeId(null);
-        setSelectedEdgeId(null);
-        setFocusedNodeId(null);
-        setFocusedNodeIds([]);
-        setOntologyMetadataRows([...metadataRows, ...derivedPrefixRows]);
-
-        setStatus(
-          `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${
-            kgFiles.length + instanceOntologyFileCount
-          } KG file${kgFiles.length + instanceOntologyFileCount === 1 ? '' : 's'}${
-            schemaOntologyFileCount > 0
-              ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
-              : ''
-          }`,
-        );
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setLoadError(error.message || 'Unable to parse one of the uploaded files.');
-        setOntologyMetadataRows([]);
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+    worker.onmessage = (event) => {
+      if (cancelled) {
+        return;
       }
+
+      const message = event.data ?? {};
+      if (message.type === 'progress') {
+        setLoadingMessage(message.message || 'Preparing graph...');
+        return;
+      }
+
+      if (message.type === 'error') {
+        setLoadError(message.error || 'Unable to parse one of the uploaded files.');
+        setOntologyMetadataRows([]);
+        setIsLoading(false);
+        setLoadingMessage('');
+        worker.terminate();
+        return;
+      }
+
+      if (message.type !== 'result') {
+        return;
+      }
+
+      const {
+        graphData: nextGraphData,
+        ontologyHeaderGroups,
+        schemaOntologyFileCount,
+        instanceOntologyFileCount,
+        kgFileCount,
+      } = message.payload;
+
+      setGraphData(nextGraphData);
+      setVisibleElements(nextGraphData.elements ?? []);
+      setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
+      setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
+      setNodeNameQuery('');
+      setSparqlDraft('');
+      setSparqlQuery('');
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+      setFocusedNodeId(null);
+      setFocusedNodeIds([]);
+      setOntologyMetadataRows(buildOntologyMetadataRows(ontologyHeaderGroups, nextGraphData.baseIris));
+
+      setStatus(
+        `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${
+          kgFileCount + instanceOntologyFileCount
+        } KG file${kgFileCount + instanceOntologyFileCount === 1 ? '' : 's'}${
+          schemaOntologyFileCount > 0
+            ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
+            : ''
+        }`,
+      );
+      setIsLoading(false);
+      setLoadingMessage('');
+      worker.terminate();
     };
 
-    loadGraph();
+    worker.onerror = (event) => {
+      if (cancelled) {
+        return;
+      }
+      setLoadError(event.message || 'Unable to prepare the graph in the background worker.');
+      setOntologyMetadataRows([]);
+      setIsLoading(false);
+      setLoadingMessage('');
+      worker.terminate();
+    };
+
+    worker.postMessage({ kgFiles, ontologyFiles });
 
     return () => {
       cancelled = true;
+      worker.terminate();
     };
   }, [kgFiles, ontologyFiles]);
 
@@ -2837,6 +2850,12 @@ export default function App() {
           </h1>
         </div>
         <div className="header-actions">
+          {isLoading && (
+            <div className="header-loading" role="status" aria-live="polite" title={loadingMessage || 'Loading graph...'}>
+              <span className="loading-spinner" aria-hidden="true" />
+              <span>{loadingMessage || 'Loading graph...'}</span>
+            </div>
+          )}
           <a
             className="header-icon-link"
             href={GITHUB_ISSUES_URL}
@@ -2939,7 +2958,9 @@ export default function App() {
                       />
                       <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
                     </label>
-                    <small className="muted">{isLoading ? 'Parsing and merging graph...' : 'Graph updates automatically when files are added.'}</small>
+                    <small className="muted">
+                      {isLoading ? loadingMessage || 'Preparing graph...' : 'Graph updates automatically when files are added.'}
+                    </small>
                   </div>
                 )}
               </section>

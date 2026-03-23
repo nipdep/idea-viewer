@@ -113,6 +113,7 @@ textarea {
   align-items: center;
   justify-content: flex-end;
   flex-shrink: 0;
+  gap: 10px;
 }
 
 .header-icon-link {
@@ -140,6 +141,44 @@ textarea {
   width: 18px;
   height: 18px;
   fill: currentColor;
+}
+
+.header-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(44vw, 360px);
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(42, 111, 110, 0.18);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--accent-2);
+  box-shadow: var(--shadow);
+  font-size: 0.82rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.header-loading span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loading-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 2px solid rgba(42, 111, 110, 0.18);
+  border-top-color: var(--accent-2);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .app-shell {
@@ -1434,6 +1473,12 @@ textarea {
     width: 36px;
     height: 36px;
     border-radius: 10px;
+  }
+
+  .header-loading {
+    max-width: min(68vw, 320px);
+    padding: 7px 10px;
+    font-size: 0.76rem;
   }
 
   .app-footer {

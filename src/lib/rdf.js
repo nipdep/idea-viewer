@@ -1292,7 +1292,7 @@ export function extractOntologyClassIds(quads) {
 }
 
 export function buildGraphData(quads, options = {}) {
-  const store = new Store(quads);
+  const store = options.createStore === false ? null : new Store(quads);
   const labelIndex = buildLabelIndex(quads);
   const hasOntology = Boolean(options.hasOntology);
   const hasKg = Boolean(options.hasKg);

@@ -998,6 +998,9 @@ export default function App() {
   const detachedPanModeRef = useRef(false);
   const detachedPanLastMouseRef = useRef(null);
   const suppressNextTapRef = useRef(false);
+  const progressiveGraphLoadRef = useRef(false);
+  const pendingFinalLayoutRef = useRef(false);
+  const hasProgressiveSnapshotsRef = useRef(false);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -1276,6 +1279,64 @@ export default function App() {
         });
       });
     });
+  }
+
+  function placeIncrementalNodes(cy, positionCache) {
+    const nodes = cy.nodes();
+    const newNodes = [];
+    let freeNodeIndex = 0;
+
+    cy.batch(() => {
+      nodes.forEach((node) => {
+        const cachedPosition = positionCache.get(node.id());
+        if (cachedPosition) {
+          node.position(cachedPosition);
+          return;
+        }
+        newNodes.push(node);
+      });
+
+      newNodes.forEach((node, index) => {
+        const anchoredNeighbors = node
+          .neighborhood('node')
+          .filter((neighbor) => positionCache.has(neighbor.id()));
+
+        let position;
+        if (anchoredNeighbors.length > 0) {
+          let sumX = 0;
+          let sumY = 0;
+          anchoredNeighbors.forEach((neighbor) => {
+            const anchoredPosition = positionCache.get(neighbor.id());
+            sumX += anchoredPosition.x;
+            sumY += anchoredPosition.y;
+          });
+
+          const centerX = sumX / anchoredNeighbors.length;
+          const centerY = sumY / anchoredNeighbors.length;
+          const angle = ((index % 12) / 12) * Math.PI * 2;
+          const ring = Math.floor(index / 12);
+          const radius = 72 + ring * 24;
+          position = {
+            x: centerX + Math.cos(angle) * radius,
+            y: centerY + Math.sin(angle) * radius,
+          };
+        } else {
+          const columns = 10;
+          const column = freeNodeIndex % columns;
+          const row = Math.floor(freeNodeIndex / columns);
+          position = {
+            x: column * 150,
+            y: row * 96,
+          };
+          freeNodeIndex += 1;
+        }
+
+        node.position(position);
+        positionCache.set(node.id(), position);
+      });
+    });
+
+    return newNodes.map((node) => node.id());
   }
 
   function buildClassBadgeTooltipPayload(event) {
@@ -2066,11 +2127,6 @@ export default function App() {
   }, [focusedNodeId, focusedNodeIds]);
 
   useEffect(() => {
-    hasAppliedInitialLayoutRef.current = false;
-    layoutPositionCacheRef.current.clear();
-  }, [graphData]);
-
-  useEffect(() => {
     groupDragStateRef.current = null;
     groupDragArmRef.current = null;
     setMultiClassBadgeTooltip(null);
@@ -2126,6 +2182,8 @@ export default function App() {
       });
     });
     const isInitialLayout = !hasAppliedInitialLayoutRef.current;
+    const isProgressiveStreaming = progressiveGraphLoadRef.current;
+    const shouldRunFinalRefinement = pendingFinalLayoutRef.current;
 
     cy.batch(() => {
       cy.elements().remove();
@@ -2139,15 +2197,20 @@ export default function App() {
     }
 
     if (isInitialLayout) {
-      cy.layout({
-        name: 'cose',
-        animate: false,
-        fit: true,
-        padding: 42,
-        idealEdgeLength: 110,
-        edgeElasticity: 80,
-        nodeRepulsion: 20000,
-      }).run();
+      if (isProgressiveStreaming) {
+        placeIncrementalNodes(cy, positionCache);
+        fitCurrentGraphViewport(cy, 140);
+      } else {
+        cy.layout({
+          name: 'cose',
+          animate: false,
+          fit: true,
+          padding: 42,
+          idealEdgeLength: 110,
+          edgeElasticity: 80,
+          nodeRepulsion: 20000,
+        }).run();
+      }
       if (isLightOntologyViewActive) {
         nudgeNodesTowardLandscape(cy, 1.5);
       }
@@ -2162,21 +2225,33 @@ export default function App() {
     }
 
     const nodes = cy.nodes();
-    let hasUnpositionedNodes = false;
-    cy.batch(() => {
-      nodes.forEach((node) => {
-        const position = positionCache.get(node.id());
-        if (position) {
-          node.position(position);
-        } else {
-          hasUnpositionedNodes = true;
-        }
-      });
-    });
+    const newNodeIds = placeIncrementalNodes(cy, positionCache);
+    const hasUnpositionedNodes = newNodeIds.length > 0;
 
     if (hasUnpositionedNodes) {
-      const lockedNodes = nodes.filter((node) => positionCache.has(node.id()));
-      lockedNodes.lock();
+      if (!isProgressiveStreaming) {
+        const newNodeIdSet = new Set(newNodeIds);
+        const lockedNodes = nodes.filter((node) => !newNodeIdSet.has(node.id()));
+        lockedNodes.lock();
+        cy.layout({
+          name: 'cose',
+          animate: false,
+          fit: false,
+          randomize: false,
+          idealEdgeLength: 110,
+          edgeElasticity: 80,
+          nodeRepulsion: 20000,
+        }).run();
+        lockedNodes.unlock();
+      }
+    }
+
+    if (isLightOntologyViewActive) {
+      nudgeNodesTowardLandscape(cy, 1.5);
+    }
+
+    if (shouldRunFinalRefinement) {
+      pendingFinalLayoutRef.current = false;
       cy.layout({
         name: 'cose',
         animate: false,
@@ -2186,11 +2261,9 @@ export default function App() {
         edgeElasticity: 80,
         nodeRepulsion: 20000,
       }).run();
-      lockedNodes.unlock();
-    }
-
-    if (isLightOntologyViewActive) {
-      nudgeNodesTowardLandscape(cy, 1.5);
+      if (isLightOntologyViewActive) {
+        nudgeNodesTowardLandscape(cy, 1.5);
+      }
     }
 
     cy.nodes().forEach((node) => {
@@ -2200,8 +2273,12 @@ export default function App() {
       });
     });
 
-    cy.zoom(previousViewport.zoom);
-    cy.pan(previousViewport.pan);
+    if (shouldRunFinalRefinement) {
+      fitCurrentGraphViewport(cy, 220);
+    } else {
+      cy.zoom(previousViewport.zoom);
+      cy.pan(previousViewport.pan);
+    }
   }, [visibleElements, isLightOntologyViewActive]);
 
   useEffect(() => {
@@ -2333,7 +2410,7 @@ export default function App() {
 
         if (!classFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
-            setVisibleElements(graphData.elements?.length ? graphData.elements : buildFocusedSubset(graphData, null, viewOptions));
+            setVisibleElements(buildFocusedSubset(graphData, null, viewOptions));
           }
           return;
         }
@@ -2452,6 +2529,11 @@ export default function App() {
 
   useEffect(() => {
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
+      progressiveGraphLoadRef.current = false;
+      pendingFinalLayoutRef.current = false;
+      hasProgressiveSnapshotsRef.current = false;
+      hasAppliedInitialLayoutRef.current = false;
+      layoutPositionCacheRef.current.clear();
       setGraphData(null);
       setVisibleElements([]);
       setSelectedClassIris([]);
@@ -2472,6 +2554,11 @@ export default function App() {
 
     let cancelled = false;
     const worker = new Worker(new URL('./lib/graphLoad.worker.js', import.meta.url), { type: 'module' });
+    progressiveGraphLoadRef.current = false;
+    pendingFinalLayoutRef.current = false;
+    hasProgressiveSnapshotsRef.current = false;
+    hasAppliedInitialLayoutRef.current = false;
+    layoutPositionCacheRef.current.clear();
 
     setIsLoading(true);
     setLoadingMessage('Preparing graph files...');
@@ -2490,7 +2577,33 @@ export default function App() {
         return;
       }
 
+      if (message.type === 'partial') {
+        progressiveGraphLoadRef.current = true;
+        hasProgressiveSnapshotsRef.current = true;
+        const { graphData: partialGraphData, kgQuadCount = 0 } = message.payload ?? {};
+        setGraphData(partialGraphData);
+        setVisibleElements(partialGraphData.elements ?? []);
+        setSelectedClassIris(partialGraphData.classes.map((entry) => entry.id));
+        setSelectedBaseIris(partialGraphData.baseIris.map((entry) => entry.id));
+        setNodeNameQuery('');
+        setSparqlDraft('');
+        setSparqlQuery('');
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        setFocusedNodeId(null);
+        setFocusedNodeIds([]);
+        setOntologyMetadataRows([]);
+        setStatus(
+          `Loading ${partialGraphData.nodes.length} nodes and ${partialGraphData.edges.length} edges so far${
+            kgQuadCount > 0 ? ` from ${kgQuadCount} parsed triples` : ''
+          }`,
+        );
+        return;
+      }
+
       if (message.type === 'error') {
+        progressiveGraphLoadRef.current = false;
+        pendingFinalLayoutRef.current = false;
         setLoadError(message.error || 'Unable to parse one of the uploaded files.');
         setOntologyMetadataRows([]);
         setIsLoading(false);
@@ -2511,6 +2624,8 @@ export default function App() {
         kgFileCount,
       } = message.payload;
 
+      progressiveGraphLoadRef.current = false;
+      pendingFinalLayoutRef.current = hasProgressiveSnapshotsRef.current;
       setGraphData(nextGraphData);
       setVisibleElements(nextGraphData.elements ?? []);
       setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
@@ -2542,6 +2657,8 @@ export default function App() {
       if (cancelled) {
         return;
       }
+      progressiveGraphLoadRef.current = false;
+      pendingFinalLayoutRef.current = false;
       setLoadError(event.message || 'Unable to prepare the graph in the background worker.');
       setOntologyMetadataRows([]);
       setIsLoading(false);
@@ -2998,6 +3115,7 @@ export default function App() {
                           type="radio"
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
+                          disabled={isLoading}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
                         />
                         <span>Class hierarchy</span>
@@ -3008,6 +3126,7 @@ export default function App() {
                           type="radio"
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
+                          disabled={isLoading}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
                         />
                         <span>Classes with object properties</span>
@@ -3018,6 +3137,7 @@ export default function App() {
                           type="radio"
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
+                          disabled={isLoading}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
                         />
                         <span>Classes + object properties + data properties</span>
@@ -3028,6 +3148,7 @@ export default function App() {
                           type="radio"
                           name="ontology-view-mode"
                           checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
+                          disabled={isLoading}
                           onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
                         />
                         <span>All</span>
@@ -3037,13 +3158,13 @@ export default function App() {
                       <>
                         <h3 className="filter-group-title">Class type</h3>
                         <div className="mini-actions">
-                          <button type="button" onClick={selectAllClasses} disabled={!graphData || isAllClassesSelected}>
+                          <button type="button" onClick={selectAllClasses} disabled={isLoading || !graphData || isAllClassesSelected}>
                             Select all
                           </button>
                           <button
                             type="button"
                             onClick={clearClassSelection}
-                            disabled={!graphData || selectedClassIris.length === 0}
+                            disabled={isLoading || !graphData || selectedClassIris.length === 0}
                           >
                             Clear
                           </button>
@@ -3060,6 +3181,7 @@ export default function App() {
                                 <input
                                   type="checkbox"
                                   checked={selectedClassIris.includes(entry.id)}
+                                  disabled={isLoading}
                                   onChange={() => toggleClass(entry.id)}
                                 />
                                 <span className="class-label" title={entry.id}>
@@ -3076,24 +3198,25 @@ export default function App() {
                       <input
                         type="text"
                         value={nodeNameQuery}
+                        disabled={isLoading}
                         onChange={(event) => setNodeNameQuery(event.target.value)}
                         placeholder="Search visible node labels..."
                         aria-label="Search by node name"
                       />
-                      <button type="button" onClick={() => setNodeNameQuery('')} disabled={!nodeNameQuery.trim()}>
+                      <button type="button" onClick={() => setNodeNameQuery('')} disabled={isLoading || !nodeNameQuery.trim()}>
                         Clear
                       </button>
                     </div>
 
                     <h3 className="filter-group-title">Base IRI (ontology)</h3>
                     <div className="mini-actions">
-                      <button type="button" onClick={selectAllBaseIris} disabled={!graphData || isAllBaseIrisSelected}>
+                      <button type="button" onClick={selectAllBaseIris} disabled={isLoading || !graphData || isAllBaseIrisSelected}>
                         Select all
                       </button>
                       <button
                         type="button"
                         onClick={clearBaseIris}
-                        disabled={!graphData || selectedBaseIris.length === 0}
+                        disabled={isLoading || !graphData || selectedBaseIris.length === 0}
                       >
                         Clear
                       </button>
@@ -3110,6 +3233,7 @@ export default function App() {
                             <input
                               type="checkbox"
                               checked={selectedBaseIris.includes(entry.id)}
+                              disabled={isLoading}
                               onChange={() => toggleBaseIri(entry.id)}
                             />
                             <span className="class-label" title={entry.id}>
@@ -3181,6 +3305,7 @@ export default function App() {
                             type="button"
                             className="prefix-add-button"
                             onClick={addSparqlPrefixRow}
+                            disabled={isLoading}
                             aria-label="Add custom prefix row"
                             title="Add prefix"
                           >
@@ -3199,6 +3324,7 @@ export default function App() {
                                     <input
                                       type="text"
                                       value={row.prefix}
+                                      disabled={isLoading}
                                       onChange={(event) => updateSparqlPrefixName(row.id, event.target.value)}
                                       aria-label="SPARQL prefix name"
                                       className="sparql-prefix-name"
@@ -3206,6 +3332,7 @@ export default function App() {
                                     <input
                                       type="text"
                                       value={row.iri}
+                                      disabled={isLoading}
                                       onChange={(event) => updateSparqlPrefixIri(row.id, event.target.value)}
                                       aria-label="SPARQL prefix IRI"
                                       className="sparql-prefix-iri"
@@ -3213,6 +3340,7 @@ export default function App() {
                                     <button
                                       type="button"
                                       className="prefix-remove-button"
+                                      disabled={isLoading}
                                       onClick={() => removeSparqlPrefixRow(row.id)}
                                       aria-label={`Remove custom prefix ${row.prefix || row.id}`}
                                       title="Remove prefix"
@@ -3238,16 +3366,17 @@ export default function App() {
 
                     <textarea
                       value={sparqlDraft}
+                      disabled={isLoading}
                       onChange={(event) => setSparqlDraft(event.target.value)}
                       placeholder={'SELECT DISTINCT ?entity WHERE { ?entity a ns1:Argument . }'}
                       rows={5}
                     />
 
                     <div className="mini-actions">
-                      <button type="button" onClick={applySparqlFilter} disabled={!graphData || !sparqlDraft.trim()}>
+                      <button type="button" onClick={applySparqlFilter} disabled={isLoading || !graphData || !sparqlDraft.trim()}>
                         Apply
                       </button>
-                      <button type="button" onClick={clearSparqlFilter} disabled={!sparqlQuery && !sparqlDraft}>
+                      <button type="button" onClick={clearSparqlFilter} disabled={isLoading || (!sparqlQuery && !sparqlDraft)}>
                         Clear
                       </button>
                     </div>

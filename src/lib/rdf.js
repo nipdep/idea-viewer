@@ -1997,6 +1997,7 @@ export function buildGraphData(quads, options = {}) {
             ? getStatementEdgeKey(quad.object.subject, quad.object.predicate, quad.object.object)
             : '',
         syntheticViewEdge: 0,
+        reificationAnchor: 0,
       };
       objectEdges.push(edge);
       edgeMap.set(edgeId, edge);
@@ -2023,6 +2024,7 @@ export function buildGraphData(quads, options = {}) {
         statementKey: getStatementEdgeKey(quad.subject, quad.predicate, quad.object),
         reifiedStatementKey: '',
         syntheticViewEdge: 0,
+        reificationAnchor: 0,
       };
       literalEdges.push(literalEdge);
       edgeMap.set(edgeId, literalEdge);
@@ -2111,6 +2113,7 @@ export function buildGraphData(quads, options = {}) {
         reifiedStatementKey: '',
         syntheticViewEdge: 1,
         reifiedOnly: 1,
+        reificationAnchor: 0,
       };
       objectEdges.push(edge);
       edgeMap.set(edgeId, edge);
@@ -2135,6 +2138,7 @@ export function buildGraphData(quads, options = {}) {
         reifiedStatementKey: '',
         syntheticViewEdge: 1,
         reifiedOnly: 1,
+        reificationAnchor: 0,
       };
       literalEdges.push(edge);
       edgeMap.set(edgeId, edge);
@@ -2150,6 +2154,9 @@ export function buildGraphData(quads, options = {}) {
   for (const statementRecord of reificationIndex.recordsByStatementKey.values()) {
     const statementNode = ensureNode(statementRecord.statementTerm);
     const supportingEdge = ensureStatementEdge(statementRecord);
+    if (supportingEdge) {
+      supportingEdge.reificationAnchor = 1;
+    }
     statementNode.reifiedStatement = 1;
     statementNode.statementSourceId = supportingEdge?.source ?? getTermId(statementRecord.subjectTerm);
     statementNode.statementTargetId = supportingEdge?.target ?? getTermId(statementRecord.objectTerm);
@@ -2479,6 +2486,7 @@ export function toElements(nodes, edges) {
         restrictionKind: edge.restrictionKind ?? '',
         syntheticViewEdge: edge.syntheticViewEdge ?? 0,
         reifiedOnly: edge.reifiedOnly ?? 0,
+        reificationAnchor: edge.reificationAnchor ?? 0,
         lightRestrictionEdge: edge.lightRestrictionEdge ?? 0,
         lightOntologyView: edge.lightOntologyView ?? 0,
       },

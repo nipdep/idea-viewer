@@ -575,18 +575,18 @@ function runNodeNameFilter(graphData, queryText) {
   return matchedNodeIds;
 }
 
-function buildNeighborRows(selectedNodeId, visibleElements, graphData) {
+function buildNeighborRows(selectedNodeId, graphData) {
   if (!selectedNodeId || !graphData) {
     return [];
   }
 
   const rows = [];
-  for (const element of visibleElements) {
-    if (!element.data.source) {
+  for (const edge of graphData.objectEdges ?? []) {
+    if (edge.category === 'type') {
       continue;
     }
 
-    const { source, target, predicateLabel } = element.data;
+    const { source, target, predicateLabel } = edge;
     if (source !== selectedNodeId && target !== selectedNodeId) {
       continue;
     }
@@ -594,7 +594,7 @@ function buildNeighborRows(selectedNodeId, visibleElements, graphData) {
     const neighborId = source === selectedNodeId ? target : source;
     const neighborNode = graphData.nodeMap.get(neighborId);
     rows.push({
-      edgeId: element.data.id,
+      edgeId: edge.id,
       direction: source === selectedNodeId ? 'outgoing' : 'incoming',
       predicateLabel,
       neighborId,
@@ -1335,9 +1335,40 @@ export default function App() {
     };
   }
 
-  const selectedNodeDataProperties = useMemo(
+  const selectedNodeAllLiteralProperties = useMemo(
     () => (selectedNodeId && graphData ? graphData.dataProperties.get(selectedNodeId) ?? [] : []),
     [selectedNodeId, graphData],
+  );
+  const selectedNodeMetadataRows = useMemo(() => {
+    if (!selectedNodeId || !graphData) {
+      return [];
+    }
+
+    const baseRows = graphData.nodeMetadata.get(selectedNodeId) ?? [];
+    const annotationRows = selectedNodeAllLiteralProperties
+      .filter((row) => row.category === 'annotation')
+      .map((row) => ({
+        predicate: row.predicate,
+        predicateLabel: row.predicateLabel,
+        value: row.value,
+      }));
+
+    const mergedRows = [...baseRows, ...annotationRows];
+    const dedupedRows = [];
+    const seen = new Set();
+    for (const row of mergedRows) {
+      const key = `${row.predicate}||${row.value}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      dedupedRows.push(row);
+    }
+    return dedupedRows;
+  }, [selectedNodeId, graphData, selectedNodeAllLiteralProperties]);
+  const selectedNodeDataProperties = useMemo(
+    () => selectedNodeAllLiteralProperties.filter((row) => row.category !== 'annotation'),
+    [selectedNodeAllLiteralProperties],
   );
   const selectedNodeClasses = useMemo(() => {
     if (!selectedNode || !graphData || selectedNode.classes.length === 0) {
@@ -1359,10 +1390,6 @@ export default function App() {
       iri: selectedNode.baseIri,
     };
   }, [selectedNode]);
-  const selectedNodeMetadataRows = useMemo(
-    () => (selectedNodeId && graphData ? graphData.nodeMetadata.get(selectedNodeId) ?? [] : []),
-    [selectedNodeId, graphData],
-  );
   const selectedEdgeMetadataRows = useMemo(() => {
     if (!selectedEdgeId || !graphData) {
       return [];
@@ -1384,8 +1411,8 @@ export default function App() {
   }, [selectedEdgeId, graphData, selectedEdge]);
 
   const neighborRows = useMemo(
-    () => buildNeighborRows(selectedNodeId, visibleElements, graphData),
-    [selectedNodeId, visibleElements, graphData],
+    () => buildNeighborRows(selectedNodeId, graphData),
+    [selectedNodeId, graphData],
   );
 
   const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
@@ -3815,7 +3842,7 @@ export default function App() {
 
                     <h4>Object connections ({neighborRows.length})</h4>
                     <div className="neighbors">
-                      {neighborRows.length === 0 && <p className="muted">No visible edges for this node.</p>}
+                      {neighborRows.length === 0 && <p className="muted">No object connections available for this node.</p>}
                       {neighborRows.map((row) => (
                         <button
                           key={row.edgeId}

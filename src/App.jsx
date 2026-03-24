@@ -484,22 +484,25 @@ async function collectEntityIds(bindingsStream) {
   return entityIds;
 }
 
-async function runClassFilter(engine, store, classIris) {
-  if (classIris.length === 0) {
-    return new Set();
+function runClassFilter(graphData, classIris) {
+  const matchedEntityIds = new Set();
+  if (!graphData || classIris.length === 0) {
+    return matchedEntityIds;
   }
 
-  const values = classIris.map((classIri) => `<${classIri}>`).join(' ');
-  const query = `
-    SELECT DISTINCT ?entity
-    WHERE {
-      VALUES ?class { ${values} }
-      ?entity a ?class .
+  const selectedClassSet = new Set(classIris);
+  for (const node of graphData.nodes) {
+    if (node.entityCategory !== 'individual') {
+      continue;
     }
-  `;
 
-  const bindingsStream = await engine.queryBindings(query, { sources: [store] });
-  return collectEntityIds(bindingsStream);
+    const nodeClasses = Array.isArray(node.classes) ? node.classes : [];
+    if (nodeClasses.some((classIri) => selectedClassSet.has(classIri))) {
+      matchedEntityIds.add(node.id);
+    }
+  }
+
+  return matchedEntityIds;
 }
 
 function expandClassFilterMatches(graphData, matchedInstanceIds) {
@@ -2322,7 +2325,7 @@ export default function App() {
         if (classFilterActive) {
           const classMatches = expandClassFilterMatches(
             graphData,
-            await runClassFilter(engine, graphData.store, selectedClassIris),
+            runClassFilter(graphData, selectedClassIris),
           );
           selectedEntities = selectedEntities ? intersectSets(selectedEntities, classMatches) : classMatches;
         }

@@ -804,6 +804,101 @@ function addUniqueDatasetQuad(quads, seenKeys, datasetQuad) {
   quads.push(datasetQuad);
 }
 
+function normalizeStatementTerm(term) {
+  if (!term || term.termType !== 'Quad') {
+    return null;
+  }
+
+  return quad(term.subject, term.predicate, term.object);
+}
+
+function matchesStatementTerm(leftTerm, rightTerm) {
+  const leftStatement = normalizeStatementTerm(leftTerm);
+  const rightStatement = normalizeStatementTerm(rightTerm);
+  if (!leftStatement || !rightStatement) {
+    return false;
+  }
+
+  return getDatasetQuadKey(leftStatement) === getDatasetQuadKey(rightStatement);
+}
+
+function addInlineReifierRelation(quads, seenKeys, reifierTerm, statementTerm) {
+  if (!isEntityTerm(reifierTerm) || !statementTerm) {
+    return;
+  }
+
+  addUniqueDatasetQuad(quads, seenKeys, quad(reifierTerm, namedNode(RDF_REIFIES), statementTerm));
+}
+
+function normalizeGraphlessParsedQuad(parsedQuad, normalizedQuads, seenKeys) {
+  if (!parsedQuad) {
+    return;
+  }
+
+  const baseStatement =
+    parsedQuad.predicate.value === RDF_REIFIES && parsedQuad.object.termType === 'Quad'
+      ? normalizeStatementTerm(parsedQuad.object)
+      : quad(parsedQuad.subject, parsedQuad.predicate, parsedQuad.object);
+
+  if (!baseStatement) {
+    addUniqueDatasetQuad(normalizedQuads, seenKeys, parsedQuad);
+    return;
+  }
+
+  addUniqueDatasetQuad(normalizedQuads, seenKeys, baseStatement);
+
+  const addReifiersFromCarrier = (carrierTerm) => {
+    if (!carrierTerm || carrierTerm.termType === 'DefaultGraph') {
+      return false;
+    }
+
+    if (carrierTerm.termType === 'NamedNode' || carrierTerm.termType === 'BlankNode') {
+      addInlineReifierRelation(normalizedQuads, seenKeys, carrierTerm, baseStatement);
+      return true;
+    }
+
+    if (carrierTerm.termType !== 'Quad') {
+      return false;
+    }
+
+    const carrierStatement = normalizeStatementTerm(carrierTerm);
+    const carrierObjectMatchesBase = matchesStatementTerm(carrierTerm.object, baseStatement);
+
+    if (
+      carrierTerm.predicate.termType === 'NamedNode' &&
+      carrierTerm.predicate.value === RDF_REIFIES &&
+      carrierObjectMatchesBase &&
+      isEntityTerm(carrierTerm.subject)
+    ) {
+      addInlineReifierRelation(normalizedQuads, seenKeys, carrierTerm.subject, baseStatement);
+      addReifiersFromCarrier(carrierTerm.graph);
+      return true;
+    }
+
+    if (carrierStatement && matchesStatementTerm(carrierStatement, baseStatement)) {
+      addReifiersFromCarrier(carrierTerm.graph);
+      return true;
+    }
+
+    normalizeGraphlessParsedQuad(carrierTerm, normalizedQuads, seenKeys);
+    return true;
+  };
+
+  if (
+    parsedQuad.predicate.value === RDF_REIFIES &&
+    parsedQuad.object.termType === 'Quad' &&
+    isEntityTerm(parsedQuad.subject)
+  ) {
+    addInlineReifierRelation(normalizedQuads, seenKeys, parsedQuad.subject, baseStatement);
+    addReifiersFromCarrier(parsedQuad.graph);
+    return;
+  }
+
+  if (!addReifiersFromCarrier(parsedQuad.graph)) {
+    addUniqueDatasetQuad(normalizedQuads, seenKeys, parsedQuad);
+  }
+}
+
 function normalizeParsedQuads(quads, format) {
   const normalizedQuads = [];
   const seenKeys = new Set();
@@ -814,17 +909,10 @@ function normalizeParsedQuads(quads, format) {
     const usesInlineReifierGraph =
       graphlessFormats.has(format) &&
       graphTerm &&
-      graphTerm.termType !== 'DefaultGraph' &&
-      (graphTerm.termType === 'NamedNode' || graphTerm.termType === 'BlankNode');
+      graphTerm.termType !== 'DefaultGraph';
 
     if (usesInlineReifierGraph) {
-      const statementTerm = quad(parsedQuad.subject, parsedQuad.predicate, parsedQuad.object);
-      addUniqueDatasetQuad(normalizedQuads, seenKeys, statementTerm);
-      addUniqueDatasetQuad(
-        normalizedQuads,
-        seenKeys,
-        quad(graphTerm, namedNode(RDF_REIFIES), statementTerm),
-      );
+      normalizeGraphlessParsedQuad(parsedQuad, normalizedQuads, seenKeys);
       continue;
     }
 
@@ -832,6 +920,29 @@ function normalizeParsedQuads(quads, format) {
   }
 
   return normalizedQuads;
+}
+
+function createPatchedParser(options) {
+  const parser = new Parser(options);
+  const originalReadPunctuation = parser?._readPunctuation;
+
+  if (typeof originalReadPunctuation !== 'function') {
+    return parser;
+  }
+
+  // n3@2.0.3 drops explicit `~ <reifier>` relations in annotation syntax unless
+  // they are immediately followed by a `{| ... |}` block. Flush the pending
+  // reifier before the next punctuation token so chained `~` segments materialize
+  // as explicit `rdf:reifies` quads.
+  parser._readPunctuation = function patchedReadPunctuation(token) {
+    if (this._annotation && this._reifier && token?.type !== '{|') {
+      this._readTripleTerm();
+    }
+
+    return originalReadPunctuation.call(this, token);
+  };
+
+  return parser;
 }
 
 function parseRdfXml(text, fileName) {
@@ -1037,7 +1148,7 @@ export function parseRdfText(text, fileName) {
     return normalizeParsedQuads(parseRdfXml(text, fileName), format);
   }
 
-  const parser = new Parser({ format });
+  const parser = createPatchedParser({ format });
   return normalizeParsedQuads(parser.parse(text), format);
 }
 

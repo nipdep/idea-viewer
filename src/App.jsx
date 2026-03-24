@@ -54,7 +54,48 @@ const VIEW_EXPORT_NS = 'https://idea-viewer.local/view#';
 const CYTOSCAPE_CDN_URL = 'https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js';
 const GITHUB_ISSUES_URL = 'https://github.com/nipdep/idea-viewer/issues';
 
-const { blankNode, literal, namedNode, quad } = DataFactory;
+const { blankNode, defaultGraph, literal, namedNode, quad } = DataFactory;
+
+function restoreSnapshotTerm(termShape) {
+  if (!termShape || typeof termShape !== 'object') {
+    return null;
+  }
+
+  if (termShape.termType === 'NamedNode') {
+    return namedNode(termShape.value || '');
+  }
+
+  if (termShape.termType === 'BlankNode') {
+    return blankNode(termShape.value || '');
+  }
+
+  if (termShape.termType === 'Literal') {
+    if (termShape.language) {
+      return literal(termShape.value || '', termShape.language);
+    }
+    if (termShape.datatype) {
+      return literal(termShape.value || '', namedNode(termShape.datatype));
+    }
+    return literal(termShape.value || '');
+  }
+
+  if (termShape.termType === 'DefaultGraph') {
+    return defaultGraph();
+  }
+
+  if (termShape.termType === 'Quad') {
+    const subject = restoreSnapshotTerm(termShape.subject);
+    const predicate = restoreSnapshotTerm(termShape.predicate);
+    const object = restoreSnapshotTerm(termShape.object);
+    const graph = termShape.graph ? restoreSnapshotTerm(termShape.graph) : null;
+    if (!subject || !predicate || !object) {
+      return null;
+    }
+    return graph ? quad(subject, predicate, object, graph) : quad(subject, predicate, object);
+  }
+
+  return null;
+}
 
 function sanitizeFilenameSegment(value) {
   const normalized = String(value ?? '')
@@ -150,6 +191,10 @@ function collectFocusRoots(cy, nodeIds) {
 function snapshotNodeToTerm(nodeData) {
   if (!nodeData) {
     return null;
+  }
+
+  if (nodeData.statementTerm) {
+    return restoreSnapshotTerm(nodeData.statementTerm);
   }
 
   if (nodeData.termType === 'NamedNode') {
@@ -401,7 +446,7 @@ async function buildTurtleExport(snapshot) {
 
   for (const node of snapshot.nodes) {
     const subject = snapshotNodeToTerm(node.data);
-    if (!subject || subject.termType === 'Literal') {
+    if (!subject || subject.termType === 'Literal' || subject.termType === 'Quad') {
       continue;
     }
 
@@ -442,7 +487,7 @@ async function buildTurtleExport(snapshot) {
 }
 
 function isEntityTerm(term) {
-  return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
+  return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode' || term.termType === 'Quad');
 }
 
 function intersectSets(left, right) {
@@ -824,7 +869,22 @@ function formatTermForInspector(term) {
   }
 
   if (term.termType === 'Literal') {
+    if (term.language) {
+      return `"${term.value}"@${term.language}`;
+    }
+    const datatypeIri = term.datatype?.value ?? '';
+    if (datatypeIri && datatypeIri !== 'http://www.w3.org/2001/XMLSchema#string') {
+      return `"${term.value}"^^${toPrefixedName(datatypeIri)}`;
+    }
     return term.value;
+  }
+
+  if (term.termType === 'Quad') {
+    const graphSegment =
+      term.graph && term.graph.termType !== 'DefaultGraph' ? ` ${formatTermForInspector(term.graph)}` : '';
+    return `<<( ${formatTermForInspector(term.subject)} ${formatTermForInspector(
+      term.predicate,
+    )} ${formatTermForInspector(term.object)}${graphSegment} )>>`;
   }
 
   return term.value || '';
@@ -1113,6 +1173,7 @@ export default function App() {
         literalValue: modelNode?.literalValue ?? node.data('literalValue') ?? '',
         literalDatatype: modelNode?.literalDatatype ?? node.data('literalDatatype') ?? '',
         literalLanguage: modelNode?.literalLanguage ?? node.data('literalLanguage') ?? '',
+        statementTerm: modelNode?.statementTerm ?? node.data('statementTerm') ?? null,
       };
       return {
         data: nodeData,

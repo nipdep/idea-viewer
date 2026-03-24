@@ -4,6 +4,7 @@ export const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 export const RDFS_SUBCLASS_OF = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
 export const RDFS_SUBPROPERTY_OF = 'http://www.w3.org/2000/01/rdf-schema#subPropertyOf';
 const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const RDF_REIFIES = `${RDF_NS}reifies`;
 const RDFS_NS = 'http://www.w3.org/2000/01/rdf-schema#';
 const OWL_NS = 'http://www.w3.org/2002/07/owl#';
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
@@ -137,6 +138,7 @@ const AXIOM_KIND_BY_PREDICATE = new Map([
   [OWL_EQUIVALENT_CLASS, 'EquivalentClasses'],
   [OWL_DISJOINT_WITH, 'DisjointClasses'],
   [RDF_TYPE, 'ClassAssertion'],
+  [RDF_REIFIES, 'Reification'],
   [RDFS_DOMAIN, 'Domain'],
   [RDFS_RANGE, 'Range'],
   [RDFS_SUBPROPERTY_OF, 'SubPropertyOf'],
@@ -188,6 +190,121 @@ function hashText(value) {
 
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
+}
+
+function isRenderableTerm(term) {
+  return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode' || term.termType === 'Quad');
+}
+
+function isDefaultGraphTerm(term) {
+  return !term || term.termType === 'DefaultGraph';
+}
+
+function escapeLiteralLexicalForm(value) {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+    .replace(/"/g, '\\"');
+}
+
+function formatLiteralTerm(term, compactNamedNodes = false) {
+  const lexicalForm = `"${escapeLiteralLexicalForm(term.value)}"`;
+  if (term.language) {
+    return `${lexicalForm}@${term.language}`;
+  }
+
+  const datatypeIri = term.datatype?.value ?? '';
+  if (!datatypeIri || datatypeIri === 'http://www.w3.org/2001/XMLSchema#string') {
+    return lexicalForm;
+  }
+
+  return `${lexicalForm}^^${
+    compactNamedNodes ? compactIri(datatypeIri) : datatypeIri
+  }`;
+}
+
+function formatQuadTerm(term, compactNamedNodes = false) {
+  const graphSegment = isDefaultGraphTerm(term.graph)
+    ? ''
+    : ` ${formatTermValue(term.graph, { compactNamedNodes })}`;
+  return `<<( ${formatTermValue(term.subject, { compactNamedNodes })} ${formatTermValue(
+    term.predicate,
+    { compactNamedNodes },
+  )} ${formatTermValue(term.object, { compactNamedNodes })}${graphSegment} )>>`;
+}
+
+function serializeTermShape(term) {
+  if (!term) {
+    return null;
+  }
+
+  if (term.termType === 'NamedNode') {
+    return { termType: 'NamedNode', value: term.value };
+  }
+
+  if (term.termType === 'BlankNode') {
+    return { termType: 'BlankNode', value: term.value };
+  }
+
+  if (term.termType === 'Literal') {
+    return {
+      termType: 'Literal',
+      value: term.value,
+      language: term.language ?? '',
+      datatype: term.datatype?.value ?? '',
+    };
+  }
+
+  if (term.termType === 'Quad') {
+    return {
+      termType: 'Quad',
+      subject: serializeTermShape(term.subject),
+      predicate: serializeTermShape(term.predicate),
+      object: serializeTermShape(term.object),
+      graph: isDefaultGraphTerm(term.graph) ? null : serializeTermShape(term.graph),
+    };
+  }
+
+  if (term.termType === 'DefaultGraph') {
+    return { termType: 'DefaultGraph' };
+  }
+
+  return {
+    termType: term.termType ?? '',
+    value: term.value ?? '',
+  };
+}
+
+export function formatTermValue(term, options = {}) {
+  if (!term) {
+    return '';
+  }
+
+  const compactNamedNodes = Boolean(options.compactNamedNodes);
+
+  if (term.termType === 'NamedNode') {
+    return compactNamedNodes ? compactIri(term.value) : term.value;
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `_:${term.value}`;
+  }
+
+  if (term.termType === 'Literal') {
+    return formatLiteralTerm(term, compactNamedNodes);
+  }
+
+  if (term.termType === 'Quad') {
+    return formatQuadTerm(term, compactNamedNodes);
+  }
+
+  if (term.termType === 'DefaultGraph') {
+    return '';
+  }
+
+  return term.value ?? '';
 }
 
 function getBaseIri(iri) {
@@ -290,6 +407,10 @@ export function getTermId(term) {
 
   if (term.termType === 'Literal') {
     return `lit:${hashText(`${term.value}|${term.datatype?.value ?? ''}|${term.language ?? ''}`)}`;
+  }
+
+  if (term.termType === 'Quad') {
+    return `stmt:${hashText(formatTermValue(term))}`;
   }
 
   return `term:${hashText(term.value ?? '')}`;
@@ -793,10 +914,13 @@ function makeNodeData(term, labelIndex, options = {}) {
   const id = getTermId(term);
   const termType = term.termType;
   const blankLabel = options.blankLabelById?.get(id) ?? '';
+  const statementTerm = termType === 'Quad' ? serializeTermShape(term) : null;
 
   let fullLabel = '';
   if (termType === 'Literal') {
     fullLabel = term.value;
+  } else if (termType === 'Quad') {
+    fullLabel = formatTermValue(term, { compactNamedNodes: true });
   } else if (labelIndex.has(id)) {
     fullLabel = labelIndex.get(id);
   } else if (termType === 'NamedNode') {
@@ -812,15 +936,30 @@ function makeNodeData(term, labelIndex, options = {}) {
 
   return {
     id,
-    iri: term.value,
+    iri: termType === 'Quad' ? formatTermValue(term) : term.value,
     baseIri: termType === 'NamedNode' ? getBaseIri(term.value) : '',
     termType,
     literalValue: termType === 'Literal' ? term.value : '',
     literalDatatype: termType === 'Literal' ? term.datatype?.value ?? '' : '',
     literalLanguage: termType === 'Literal' ? term.language ?? '' : '',
-    kind: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
+    statementTerm,
+    kind:
+      termType === 'Literal'
+        ? 'literal'
+        : termType === 'BlankNode'
+          ? 'blank'
+          : termType === 'Quad'
+            ? 'statement'
+            : 'entity',
     ontologyKind: '',
-    entityCategory: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
+    entityCategory:
+      termType === 'Literal'
+        ? 'literal'
+        : termType === 'BlankNode'
+          ? 'blank'
+          : termType === 'Quad'
+            ? 'statement'
+            : 'entity',
     blankExpressionType: '',
     restrictionKind: '',
     restrictionTooltip: '',
@@ -861,7 +1000,7 @@ function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIri
     return 'data';
   }
 
-  if (objectTermType === 'NamedNode' || objectTermType === 'BlankNode') {
+  if (objectTermType === 'NamedNode' || objectTermType === 'BlankNode' || objectTermType === 'Quad') {
     if (objectPropertyIris.has(predicateIri)) {
       return 'object';
     }
@@ -937,6 +1076,10 @@ function termToMetadataValue(term) {
     return `_:${term.value}`;
   }
 
+  if (term.termType === 'Quad') {
+    return formatTermValue(term);
+  }
+
   return term.value ?? '';
 }
 
@@ -958,6 +1101,10 @@ function compactTermForRestriction(term) {
       return `"${term.value}"@${term.language}`;
     }
     return `"${term.value}"`;
+  }
+
+  if (term.termType === 'Quad') {
+    return formatTermValue(term, { compactNamedNodes: true });
   }
 
   return term.value ?? '';
@@ -1148,6 +1295,10 @@ function annotationObjectToLiteralValue(term) {
 
   if (term.termType === 'BlankNode') {
     return `_:${term.value}`;
+  }
+
+  if (term.termType === 'Quad') {
+    return formatTermValue(term);
   }
 
   return term.value ?? '';
@@ -1502,7 +1653,7 @@ export function buildGraphData(quads, options = {}) {
       continue;
     }
 
-    if (isEntityTerm(quad.object)) {
+    if (isRenderableTerm(quad.object)) {
       if (quad.object.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.object.value)) {
         continue;
       }
@@ -1821,6 +1972,7 @@ export function toElements(nodes, edges) {
         literalValue: node.literalValue ?? '',
         literalDatatype: node.literalDatatype ?? '',
         literalLanguage: node.literalLanguage ?? '',
+        statementTerm: node.statementTerm ?? null,
         labelLength: node.labelLength,
         nodeWidth: node.nodeWidth ?? 96,
         nodeHeight: node.nodeHeight ?? 52,

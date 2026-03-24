@@ -1806,6 +1806,8 @@ export default function App() {
             'border-width': 1.4,
             color: '#f7f0e8',
             events: 'no',
+            'z-index-compare': 'manual',
+            'z-index': 1,
           },
         },
         {
@@ -1835,7 +1837,10 @@ export default function App() {
         {
           selector: 'edge[reificationAnchor = 1]',
           style: {
-            'text-margin-y': -12,
+            'text-margin-y': 0,
+            'text-background-padding': 4,
+            'z-index-compare': 'manual',
+            'z-index': 10,
           },
         },
         {

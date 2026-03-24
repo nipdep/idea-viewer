@@ -1373,6 +1373,12 @@ export default function App() {
   const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
   const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
+  const hasOntologyUploads = ontologyFiles.length > 0 || Boolean(graphData?.hasOntology);
+  const hasNamedIndividuals = Boolean(
+    graphData?.nodes?.some((node) => node.entityCategory === 'individual'),
+  );
+  const showViewFiltering = hasOntologyUploads;
+  const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
   const isLightOntologyViewActive =
     isLightOntologyView && isOntologyOnlyDataset && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
 
@@ -2276,7 +2282,7 @@ export default function App() {
       try {
         const viewOptions = toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive);
         const classFilterActive =
-          !isOntologyOnlyDataset &&
+          showClassTypeFilter &&
           graphData.classes.length > 0 &&
           selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
@@ -2345,6 +2351,7 @@ export default function App() {
     ontologyViewMode,
     isOntologyOnlyDataset,
     isLightOntologyViewActive,
+    showClassTypeFilter,
   ]);
 
   useEffect(() => {
@@ -2970,49 +2977,53 @@ export default function App() {
                         : 'KG view'}
                     </p>
 
-                    <h3 className="filter-group-title">View filtering</h3>
-                    <div className="option-list">
-                      <label className="option-item">
-                        <input
-                          type="radio"
-                          name="ontology-view-mode"
-                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
-                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
-                        />
-                        <span>Class hierarchy</span>
-                      </label>
+                    {showViewFiltering && (
+                      <>
+                        <h3 className="filter-group-title">View filtering</h3>
+                        <div className="option-list">
+                          <label className="option-item">
+                            <input
+                              type="radio"
+                              name="ontology-view-mode"
+                              checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
+                              onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
+                            />
+                            <span>Class hierarchy</span>
+                          </label>
 
-                      <label className="option-item">
-                        <input
-                          type="radio"
-                          name="ontology-view-mode"
-                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
-                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
-                        />
-                        <span>Classes with object properties</span>
-                      </label>
+                          <label className="option-item">
+                            <input
+                              type="radio"
+                              name="ontology-view-mode"
+                              checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
+                              onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
+                            />
+                            <span>Classes with object properties</span>
+                          </label>
 
-                      <label className="option-item">
-                        <input
-                          type="radio"
-                          name="ontology-view-mode"
-                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
-                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
-                        />
-                        <span>Classes + object properties + data properties</span>
-                      </label>
+                          <label className="option-item">
+                            <input
+                              type="radio"
+                              name="ontology-view-mode"
+                              checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
+                              onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
+                            />
+                            <span>Classes + object properties + data properties</span>
+                          </label>
 
-                      <label className="option-item">
-                        <input
-                          type="radio"
-                          name="ontology-view-mode"
-                          checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
-                          onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
-                        />
-                        <span>All</span>
-                      </label>
-                    </div>
-                    {!isOntologyOnlyDataset && (
+                          <label className="option-item">
+                            <input
+                              type="radio"
+                              name="ontology-view-mode"
+                              checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
+                              onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
+                            />
+                            <span>All</span>
+                          </label>
+                        </div>
+                      </>
+                    )}
+                    {showClassTypeFilter && (
                       <>
                         <h3 className="filter-group-title">Class type</h3>
                         <div className="mini-actions">

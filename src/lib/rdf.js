@@ -1603,7 +1603,7 @@ export function buildGraphData(quads, options = {}) {
       ? labelIndex.get(primaryClass) ?? compactIri(primaryClass)
       : '';
     const hasMultipleClasses = node.classes.length > 1;
-    const shouldUseClassBadges = !(hasOntology && hasKg);
+    const shouldUseClassBadges = !hasOntology;
     const classLabelList = node.classes
       .map((classIri) => labelIndex.get(classIri) ?? compactIri(classIri))
       .filter(Boolean)
@@ -2041,6 +2041,8 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
     return false;
   }
 
+  const isBadgeOnlyClassNode = graphData.badgeClassNodeIds?.has(node.id) && !options.showTypeLinks;
+
   // Literal nodes should only appear through visible literal edges, never as standalone nodes.
   if (node.termType === 'Literal') {
     return false;
@@ -2052,7 +2054,7 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
 
   // Do not duplicate class representation: if a class is already rendered as a badge on
   // instance nodes, hide the standalone class node in all projections.
-  if (graphData.badgeClassNodeIds?.has(node.id)) {
+  if (isBadgeOnlyClassNode) {
     return false;
   }
 
@@ -2125,7 +2127,7 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       return false;
     }
 
-    if (graphData.badgeClassNodeIds?.has(node.id)) {
+    if (graphData.badgeClassNodeIds?.has(node.id) && !options.showTypeLinks) {
       return false;
     }
 
@@ -2280,7 +2282,10 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
   };
 
   for (const edge of graphData.objectEdges) {
-    if (graphData.badgeClassNodeIds?.has(edge.source) || graphData.badgeClassNodeIds?.has(edge.target)) {
+    if (
+      !options.showTypeLinks &&
+      (graphData.badgeClassNodeIds?.has(edge.source) || graphData.badgeClassNodeIds?.has(edge.target))
+    ) {
       continue;
     }
 
@@ -2335,7 +2340,10 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
   }
 
   for (const edge of graphData.literalEdges) {
-    if (graphData.badgeClassNodeIds?.has(edge.source) || graphData.badgeClassNodeIds?.has(edge.target)) {
+    if (
+      !options.showTypeLinks &&
+      (graphData.badgeClassNodeIds?.has(edge.source) || graphData.badgeClassNodeIds?.has(edge.target))
+    ) {
       continue;
     }
 
@@ -2367,7 +2375,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
 
   if (graphData.hasOntology && (!effectiveFocusedNodeIds || classStructureOnly)) {
     for (const classNodeId of graphData.classNodeIds) {
-      if (graphData.badgeClassNodeIds?.has(classNodeId)) {
+      if (graphData.badgeClassNodeIds?.has(classNodeId) && !options.showTypeLinks) {
         continue;
       }
       if (isOntologyStructuralNodeHidden(classNodeId)) {

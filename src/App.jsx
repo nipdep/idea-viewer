@@ -905,7 +905,7 @@ function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode 
     return {
       projectionMode: GRAPH_PROJECTION_MODES.KG,
       ...flags,
-      showTypeLinks: Boolean(graphData?.hasOntology && graphData?.hasKg),
+      showTypeLinks: Boolean(graphData?.hasOntology),
       lightOntologyMode: false,
     };
   }
@@ -913,7 +913,7 @@ function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode 
   return {
     projectionMode: GRAPH_PROJECTION_MODES.ONTOLOGY,
     ...flags,
-    showTypeLinks: Boolean(graphData?.hasOntology && graphData?.hasKg),
+    showTypeLinks: Boolean(graphData?.hasOntology),
     lightOntologyMode: Boolean(lightOntologyMode),
   };
 }
@@ -2409,6 +2409,30 @@ export default function App() {
     setStatus(DEFAULT_STATUS);
   }
 
+  function handleKgFileSelection(files) {
+    if (!Array.isArray(files) || files.length === 0) {
+      return;
+    }
+
+    if (kgFiles.length === 0 && ontologyFiles.length === 0) {
+      setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG);
+    }
+
+    setKgFiles((current) => mergeSelectedFiles(current, files));
+  }
+
+  function handleOntologyFileSelection(files) {
+    if (!Array.isArray(files) || files.length === 0) {
+      return;
+    }
+
+    if (kgFiles.length === 0 && ontologyFiles.length === 0) {
+      setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+    }
+
+    setOntologyFiles((current) => mergeSelectedFiles(current, files));
+  }
+
   useEffect(() => {
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
       setGraphData(null);
@@ -2925,7 +2949,7 @@ export default function App() {
                         multiple
                         onChange={(event) => {
                           const files = Array.from(event.target.files ?? []);
-                          setKgFiles((current) => mergeSelectedFiles(current, files));
+                          handleKgFileSelection(files);
                           event.target.value = '';
                         }}
                       />
@@ -2940,7 +2964,7 @@ export default function App() {
                         multiple
                         onChange={(event) => {
                           const files = Array.from(event.target.files ?? []);
-                          setOntologyFiles((current) => mergeSelectedFiles(current, files));
+                          handleOntologyFileSelection(files);
                           event.target.value = '';
                         }}
                       />

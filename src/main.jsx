@@ -6,8 +6,13 @@ import App from './App';
 
 const baseUrl = import.meta.env.BASE_URL || '/';
 const routerBasename = baseUrl === '/' ? undefined : baseUrl.replace(/\/$/, '');
+const analyticsEnabledByEnv = ['1', 'true', 'yes', 'on'].includes(
+  String(import.meta.env.VITE_ENABLE_VERCEL_ANALYTICS ?? '')
+    .trim()
+    .toLowerCase(),
+);
 const enableVercelAnalytics =
-  import.meta.env.PROD && import.meta.env.VITE_ENABLE_VERCEL_ANALYTICS === 'true';
+  import.meta.env.PROD && __VERCEL_DEPLOYMENT__ && analyticsEnabledByEnv;
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -16,7 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/" element={<App />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {enableVercelAnalytics ? <Analytics /> : null}
+      {enableVercelAnalytics ? <Analytics mode="production" /> : null}
     </BrowserRouter>
   </React.StrictMode>,
 );

@@ -365,6 +365,7 @@ npm run preview
 Behavior:
 - Disabled by default
 - Only rendered in production builds
+- Only rendered for builds created on Vercel
 - Intended to be enabled in Vercel project environment variables
 
 ### Local behavior
@@ -389,20 +390,23 @@ VITE_ENABLE_VERCEL_ANALYTICS=false
 npm install
 ```
 
-2. In your Vercel project, open:
+2. In your Vercel project, enable Analytics in the dashboard:
+   `Project -> Analytics`
+
+3. Then open:
    `Project -> Settings -> Environment Variables`
 
-3. Add this variable:
+4. Add this variable:
 
 ```dotenv
 VITE_ENABLE_VERCEL_ANALYTICS=true
 ```
 
-4. Scope it to the environments where you want analytics enabled:
+5. Scope it to the environments where you want analytics enabled:
    - `Production` only, if you only want production traffic tracked
    - `Preview` too, if you also want preview deployments tracked
 
-5. Redeploy the project.
+6. Redeploy the project.
 
 ### What the app checks
 
@@ -410,13 +414,15 @@ Analytics renders only when both conditions are true:
 
 ```text
 import.meta.env.PROD
-VITE_ENABLE_VERCEL_ANALYTICS === "true"
+__VERCEL_DEPLOYMENT__ === true
+VITE_ENABLE_VERCEL_ANALYTICS is truthy ("true", "1", "yes", or "on")
 ```
 
 That means:
 - local `npm run dev` stays off
 - builds without the env flag stay off
-- Vercel deployments with the env flag turned on will send analytics
+- non-Vercel production builds stay off
+- Vercel deployments with Analytics enabled in the dashboard and the env flag turned on will send analytics
 
 ## Notes
 

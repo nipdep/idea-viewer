@@ -15,9 +15,14 @@ function toNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function isTruthy(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').trim().toLowerCase());
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const base = normalizeBasePath(env.VITE_BASE_PATH || '/');
+  const isVercelDeployment = isTruthy(env.VERCEL) || isTruthy(process.env.VERCEL);
 
   const hmr = {};
   if (env.VITE_HMR_PROTOCOL) {
@@ -38,6 +43,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
+    define: {
+      __VERCEL_DEPLOYMENT__: JSON.stringify(isVercelDeployment),
+    },
     plugins: [react()],
     server: {
       host: env.VITE_DEV_HOST || '0.0.0.0',

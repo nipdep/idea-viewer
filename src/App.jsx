@@ -502,6 +502,21 @@ async function runClassFilter(engine, store, classIris) {
   return collectEntityIds(bindingsStream);
 }
 
+function expandClassFilterMatches(graphData, matchedInstanceIds) {
+  const expandedIds = new Set(matchedInstanceIds);
+  if (!graphData) {
+    return expandedIds;
+  }
+
+  for (const node of graphData.nodes) {
+    if (node.entityCategory !== 'individual') {
+      expandedIds.add(node.id);
+    }
+  }
+
+  return expandedIds;
+}
+
 async function runSparqlFilter(engine, store, query) {
   const bindingsStream = await engine.queryBindings(query, { sources: [store] });
   return collectEntityIds(bindingsStream);
@@ -2305,7 +2320,10 @@ export default function App() {
         }
 
         if (classFilterActive) {
-          const classMatches = await runClassFilter(engine, graphData.store, selectedClassIris);
+          const classMatches = expandClassFilterMatches(
+            graphData,
+            await runClassFilter(engine, graphData.store, selectedClassIris),
+          );
           selectedEntities = selectedEntities ? intersectSets(selectedEntities, classMatches) : classMatches;
         }
 

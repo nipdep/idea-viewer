@@ -785,6 +785,55 @@ function literalFromText(text, datatypeIri, lang) {
   return literal(text);
 }
 
+function getDatasetQuadKey(datasetQuad) {
+  return [
+    formatTermValue(datasetQuad.subject),
+    formatTermValue(datasetQuad.predicate),
+    formatTermValue(datasetQuad.object),
+    formatTermValue(datasetQuad.graph),
+  ].join('|');
+}
+
+function addUniqueDatasetQuad(quads, seenKeys, datasetQuad) {
+  const key = getDatasetQuadKey(datasetQuad);
+  if (seenKeys.has(key)) {
+    return;
+  }
+
+  seenKeys.add(key);
+  quads.push(datasetQuad);
+}
+
+function normalizeParsedQuads(quads, format) {
+  const normalizedQuads = [];
+  const seenKeys = new Set();
+  const graphlessFormats = new Set(['Turtle', 'N-Triples']);
+
+  for (const parsedQuad of quads) {
+    const graphTerm = parsedQuad.graph;
+    const usesInlineReifierGraph =
+      graphlessFormats.has(format) &&
+      graphTerm &&
+      graphTerm.termType !== 'DefaultGraph' &&
+      (graphTerm.termType === 'NamedNode' || graphTerm.termType === 'BlankNode');
+
+    if (usesInlineReifierGraph) {
+      const statementTerm = quad(parsedQuad.subject, parsedQuad.predicate, parsedQuad.object);
+      addUniqueDatasetQuad(normalizedQuads, seenKeys, statementTerm);
+      addUniqueDatasetQuad(
+        normalizedQuads,
+        seenKeys,
+        quad(graphTerm, namedNode(RDF_REIFIES), statementTerm),
+      );
+      continue;
+    }
+
+    addUniqueDatasetQuad(normalizedQuads, seenKeys, parsedQuad);
+  }
+
+  return normalizedQuads;
+}
+
 function parseRdfXml(text, fileName) {
   if (typeof DOMParser === 'undefined') {
     throw new Error(`File ${fileName} is RDF/XML but no XML parser is available in this runtime.`);
@@ -985,11 +1034,11 @@ function parseRdfXml(text, fileName) {
 export function parseRdfText(text, fileName) {
   const format = detectFormat(fileName, text);
   if (format === 'RDFXML') {
-    return parseRdfXml(text, fileName);
+    return normalizeParsedQuads(parseRdfXml(text, fileName), format);
   }
 
   const parser = new Parser({ format });
-  return parser.parse(text);
+  return normalizeParsedQuads(parser.parse(text), format);
 }
 
 function buildLabelIndex(quads) {

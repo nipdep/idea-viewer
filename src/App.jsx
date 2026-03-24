@@ -3761,41 +3761,61 @@ export default function App() {
                   <>
                     <h3 className="entity-title">{selectedNode.fullLabel}</h3>
 
-                    <dl className="entity-meta">
-                      <dt>Type</dt>
-                      <dd>{selectedNode.termType}</dd>
+                    <div className="entity-meta-stacked">
+                      <div className="entity-meta-block">
+                        <div className="entity-meta-label">Category</div>
+                        <div className="entity-meta-value">
+                          {selectedNode.entityCategory || selectedNode.ontologyKind || selectedNode.kind}
+                        </div>
+                      </div>
 
-                      <dt>Category</dt>
-                      <dd>{selectedNode.entityCategory || selectedNode.ontologyKind || selectedNode.kind}</dd>
-
-                      <dt>ID</dt>
-                      <dd>
-                        <div className="copy-row">
-                          <textarea className="copy-field mono" rows={3} readOnly value={selectedNode.id} />
+                      <div className="entity-meta-block">
+                        <div className="entity-meta-label">ID</div>
+                        <div className="copy-panel">
                           <button
                             type="button"
-                            className="copy-action"
+                            className="copy-icon-action"
+                            aria-label="Copy node ID"
+                            title="Copy ID"
                             onClick={() => navigator.clipboard?.writeText(selectedNode.id)}
                           >
-                            Copy
+                            <svg viewBox="0 0 16 16" aria-hidden="true">
+                              <path
+                                d="M6 2.5H3.75A1.25 1.25 0 0 0 2.5 3.75v7.5A1.25 1.25 0 0 0 3.75 12.5h7.5a1.25 1.25 0 0 0 1.25-1.25V9"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M6.75 3.5h5.5A1.25 1.25 0 0 1 13.5 4.75v5.5a1.25 1.25 0 0 1-1.25 1.25h-5.5A1.25 1.25 0 0 1 5.5 10.25v-5.5A1.25 1.25 0 0 1 6.75 3.5Z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
                           </button>
+                          <div className="copy-code-block mono breakable">{selectedNode.id}</div>
                         </div>
-                      </dd>
+                      </div>
 
                       {selectedNodeBaseOntology && (
-                        <>
-                          <dt>Base ontology</dt>
-                          <dd className="breakable base-ontology-row">
+                        <div className="entity-meta-block">
+                          <div className="entity-meta-label">Base ontology</div>
+                          <div className="entity-meta-value breakable base-ontology-row">
                             <span className="prefix-chip mono">{selectedNodeBaseOntology.prefix}</span>
                             <span>{selectedNodeBaseOntology.iri}</span>
-                          </dd>
-                        </>
+                          </div>
+                        </div>
                       )}
 
                       {selectedNodeClasses.length > 0 && (
-                        <>
-                          <dt>Classes</dt>
-                          <dd>
+                        <div className="entity-meta-block">
+                          <div className="entity-meta-label">Classes</div>
+                          <div className="entity-meta-value">
                             <ol className="class-chain">
                               {selectedNodeClasses.map((entry) => (
                                 <li key={entry.iri} title={entry.iri}>
@@ -3803,10 +3823,10 @@ export default function App() {
                                 </li>
                               ))}
                             </ol>
-                          </dd>
-                        </>
+                          </div>
+                        </div>
                       )}
-                    </dl>
+                    </div>
 
                     <h4>Metadata / provenance ({selectedNodeMetadataRows.length})</h4>
                     <div className="property-list">

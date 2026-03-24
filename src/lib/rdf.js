@@ -1603,21 +1603,20 @@ export function buildGraphData(quads, options = {}) {
       ? labelIndex.get(primaryClass) ?? compactIri(primaryClass)
       : '';
     const hasMultipleClasses = node.classes.length > 1;
-    const hasOntologyMappedClass =
-      hasOntology && node.classes.some((classIri) => ontologyClassIds.has(classIri));
+    const shouldUseClassBadges = !(hasOntology && hasKg);
     const classLabelList = node.classes
       .map((classIri) => labelIndex.get(classIri) ?? compactIri(classIri))
       .filter(Boolean)
       .sort((left, right) => left.localeCompare(right));
 
     node.primaryClassLabel = primaryClassLabel;
-    node.classBadge = hasOntologyMappedClass ? '' : toClassBadge(primaryClassLabel, !hasOntology && hasMultipleClasses);
+    node.classBadge = shouldUseClassBadges ? toClassBadge(primaryClassLabel, !hasOntology && hasMultipleClasses) : '';
     const badge = makeBadgeDataUri(node.classBadge);
     node.badgeSvg = badge.uri;
     node.badgeWidth = badge.width;
-    node.hasClass = hasOntologyMappedClass ? 0 : node.classes.length;
+    node.hasClass = shouldUseClassBadges ? node.classes.length : 0;
     node.classCount = node.classes.length;
-    node.classTooltip = !hasOntology && hasMultipleClasses ? classLabelList.join('\n') : '';
+    node.classTooltip = shouldUseClassBadges && !hasOntology && hasMultipleClasses ? classLabelList.join('\n') : '';
 
     if (node.hasClass > 0 && node.termType === 'NamedNode') {
       for (const classIri of classes) {

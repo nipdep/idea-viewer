@@ -913,7 +913,7 @@ function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode 
   return {
     projectionMode: GRAPH_PROJECTION_MODES.ONTOLOGY,
     ...flags,
-    showTypeLinks: Boolean(graphData?.hasOntology),
+    showTypeLinks: Boolean(graphData?.hasOntology && graphData?.hasKg),
     lightOntologyMode: Boolean(lightOntologyMode),
   };
 }

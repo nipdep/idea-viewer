@@ -188,6 +188,52 @@ function collectFocusRoots(cy, nodeIds) {
   return roots;
 }
 
+function collectExpandedFocusState(cy, nodeIds) {
+  const focusRoots = collectFocusRoots(cy, nodeIds);
+  if (focusRoots.empty()) {
+    return { focusRoots, neighborhood: focusRoots };
+  }
+
+  let neighborhood = focusRoots.closedNeighborhood();
+  const statementNodes = cy.nodes().filter((node) => Number(node.data('reifiedStatement')) === 1);
+
+  statementNodes.forEach((statementNode) => {
+    const statementSourceId = statementNode.data('statementSourceId');
+    const statementTargetId = statementNode.data('statementTargetId');
+    const statementPredicate = statementNode.data('statementPredicate');
+    if (!statementSourceId || !statementTargetId || !statementPredicate) {
+      return;
+    }
+
+    const sourceNode = cy.$id(statementSourceId);
+    const targetNode = cy.$id(statementTargetId);
+    const baseEdgeNeighborhood = cy.edges().filter(
+      (edge) =>
+        edge.data('category') !== 'reification' &&
+        edge.data('source') === statementSourceId &&
+        edge.data('target') === statementTargetId &&
+        edge.data('predicate') === statementPredicate,
+    );
+    const reificationNeighborhood = statementNode.closedNeighborhood();
+
+    const touchesFocusedNodes =
+      !focusRoots.intersection(sourceNode.union(targetNode)).empty() ||
+      !focusRoots.intersection(reificationNeighborhood.nodes()).empty();
+    const touchesFocusedEdges = !neighborhood.intersection(baseEdgeNeighborhood).empty();
+    if (!touchesFocusedNodes && !touchesFocusedEdges) {
+      return;
+    }
+
+    neighborhood = neighborhood
+      .union(sourceNode)
+      .union(targetNode)
+      .union(baseEdgeNeighborhood)
+      .union(reificationNeighborhood);
+  });
+
+  return { focusRoots, neighborhood };
+}
+
 function snapshotNodeToTerm(nodeData) {
   if (!nodeData) {
     return null;
@@ -1934,13 +1980,13 @@ export default function App() {
         return;
       }
 
-      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, activeFocusedNodeIds);
       if (focusRoots.empty()) {
         groupDragArmRef.current = null;
         return;
       }
 
-      const groupNodes = focusRoots.closedNeighborhood().nodes();
+      const groupNodes = neighborhood.nodes();
       if (!groupNodes.has(downNode)) {
         groupDragArmRef.current = null;
         return;
@@ -1986,14 +2032,14 @@ export default function App() {
         return;
       }
 
-      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, activeFocusedNodeIds);
       if (focusRoots.empty()) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
         return;
       }
 
-      const groupNodes = focusRoots.closedNeighborhood().nodes();
+      const groupNodes = neighborhood.nodes();
       if (!groupNodes.has(grabbedNode)) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
@@ -2362,24 +2408,23 @@ export default function App() {
         return;
       }
 
-      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, focusedNodeIds);
       if (focusRoots.empty()) {
         return;
       }
 
-      const neighborhood = focusRoots.closedNeighborhood();
       cy.elements().difference(neighborhood).addClass('faded');
       focusRoots.addClass('focus-node');
       neighborhood.nodes().difference(focusRoots).addClass('focus-neighbor');
-      focusRoots.connectedEdges().addClass('focus-edge');
+      neighborhood.edges().addClass('focus-edge');
     });
 
     if (focusedNodeIds.length > 0) {
-      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, focusedNodeIds);
       if (!focusRoots.empty()) {
         cy.animate({
           fit: {
-            eles: focusRoots.closedNeighborhood(),
+            eles: neighborhood,
             padding: 76,
           },
           duration: 250,

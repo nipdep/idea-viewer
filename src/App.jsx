@@ -998,9 +998,6 @@ export default function App() {
   const detachedPanModeRef = useRef(false);
   const detachedPanLastMouseRef = useRef(null);
   const suppressNextTapRef = useRef(false);
-  const progressiveGraphLoadRef = useRef(false);
-  const pendingFinalLayoutRef = useRef(false);
-  const hasProgressiveSnapshotsRef = useRef(false);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -1279,64 +1276,6 @@ export default function App() {
         });
       });
     });
-  }
-
-  function placeIncrementalNodes(cy, positionCache) {
-    const nodes = cy.nodes();
-    const newNodes = [];
-    let freeNodeIndex = 0;
-
-    cy.batch(() => {
-      nodes.forEach((node) => {
-        const cachedPosition = positionCache.get(node.id());
-        if (cachedPosition) {
-          node.position(cachedPosition);
-          return;
-        }
-        newNodes.push(node);
-      });
-
-      newNodes.forEach((node, index) => {
-        const anchoredNeighbors = node
-          .neighborhood('node')
-          .filter((neighbor) => positionCache.has(neighbor.id()));
-
-        let position;
-        if (anchoredNeighbors.length > 0) {
-          let sumX = 0;
-          let sumY = 0;
-          anchoredNeighbors.forEach((neighbor) => {
-            const anchoredPosition = positionCache.get(neighbor.id());
-            sumX += anchoredPosition.x;
-            sumY += anchoredPosition.y;
-          });
-
-          const centerX = sumX / anchoredNeighbors.length;
-          const centerY = sumY / anchoredNeighbors.length;
-          const angle = ((index % 12) / 12) * Math.PI * 2;
-          const ring = Math.floor(index / 12);
-          const radius = 72 + ring * 24;
-          position = {
-            x: centerX + Math.cos(angle) * radius,
-            y: centerY + Math.sin(angle) * radius,
-          };
-        } else {
-          const columns = 10;
-          const column = freeNodeIndex % columns;
-          const row = Math.floor(freeNodeIndex / columns);
-          position = {
-            x: column * 150,
-            y: row * 96,
-          };
-          freeNodeIndex += 1;
-        }
-
-        node.position(position);
-        positionCache.set(node.id(), position);
-      });
-    });
-
-    return newNodes.map((node) => node.id());
   }
 
   function buildClassBadgeTooltipPayload(event) {
@@ -2182,8 +2121,6 @@ export default function App() {
       });
     });
     const isInitialLayout = !hasAppliedInitialLayoutRef.current;
-    const isProgressiveStreaming = progressiveGraphLoadRef.current;
-    const shouldRunFinalRefinement = pendingFinalLayoutRef.current;
 
     cy.batch(() => {
       cy.elements().remove();
@@ -2197,20 +2134,15 @@ export default function App() {
     }
 
     if (isInitialLayout) {
-      if (isProgressiveStreaming) {
-        placeIncrementalNodes(cy, positionCache);
-        fitCurrentGraphViewport(cy, 140);
-      } else {
-        cy.layout({
-          name: 'cose',
-          animate: false,
-          fit: true,
-          padding: 42,
-          idealEdgeLength: 110,
-          edgeElasticity: 80,
-          nodeRepulsion: 20000,
-        }).run();
-      }
+      cy.layout({
+        name: 'cose',
+        animate: false,
+        fit: true,
+        padding: 42,
+        idealEdgeLength: 110,
+        edgeElasticity: 80,
+        nodeRepulsion: 20000,
+      }).run();
       if (isLightOntologyViewActive) {
         nudgeNodesTowardLandscape(cy, 1.5);
       }
@@ -2225,33 +2157,22 @@ export default function App() {
     }
 
     const nodes = cy.nodes();
-    const newNodeIds = placeIncrementalNodes(cy, positionCache);
-    const hasUnpositionedNodes = newNodeIds.length > 0;
+    let hasUnpositionedNodes = false;
+
+    cy.batch(() => {
+      nodes.forEach((node) => {
+        const cachedPosition = positionCache.get(node.id());
+        if (cachedPosition) {
+          node.position(cachedPosition);
+        } else {
+          hasUnpositionedNodes = true;
+        }
+      });
+    });
 
     if (hasUnpositionedNodes) {
-      if (!isProgressiveStreaming) {
-        const newNodeIdSet = new Set(newNodeIds);
-        const lockedNodes = nodes.filter((node) => !newNodeIdSet.has(node.id()));
-        lockedNodes.lock();
-        cy.layout({
-          name: 'cose',
-          animate: false,
-          fit: false,
-          randomize: false,
-          idealEdgeLength: 110,
-          edgeElasticity: 80,
-          nodeRepulsion: 20000,
-        }).run();
-        lockedNodes.unlock();
-      }
-    }
-
-    if (isLightOntologyViewActive) {
-      nudgeNodesTowardLandscape(cy, 1.5);
-    }
-
-    if (shouldRunFinalRefinement) {
-      pendingFinalLayoutRef.current = false;
+      const lockedNodes = nodes.filter((node) => positionCache.has(node.id()));
+      lockedNodes.lock();
       cy.layout({
         name: 'cose',
         animate: false,
@@ -2261,9 +2182,11 @@ export default function App() {
         edgeElasticity: 80,
         nodeRepulsion: 20000,
       }).run();
-      if (isLightOntologyViewActive) {
-        nudgeNodesTowardLandscape(cy, 1.5);
-      }
+      lockedNodes.unlock();
+    }
+
+    if (isLightOntologyViewActive) {
+      nudgeNodesTowardLandscape(cy, 1.5);
     }
 
     cy.nodes().forEach((node) => {
@@ -2273,12 +2196,8 @@ export default function App() {
       });
     });
 
-    if (shouldRunFinalRefinement) {
-      fitCurrentGraphViewport(cy, 220);
-    } else {
-      cy.zoom(previousViewport.zoom);
-      cy.pan(previousViewport.pan);
-    }
+    cy.zoom(previousViewport.zoom);
+    cy.pan(previousViewport.pan);
   }, [visibleElements, isLightOntologyViewActive]);
 
   useEffect(() => {
@@ -2529,9 +2448,6 @@ export default function App() {
 
   useEffect(() => {
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
-      progressiveGraphLoadRef.current = false;
-      pendingFinalLayoutRef.current = false;
-      hasProgressiveSnapshotsRef.current = false;
       hasAppliedInitialLayoutRef.current = false;
       layoutPositionCacheRef.current.clear();
       setGraphData(null);
@@ -2554,9 +2470,6 @@ export default function App() {
 
     let cancelled = false;
     const worker = new Worker(new URL('./lib/graphLoad.worker.js', import.meta.url), { type: 'module' });
-    progressiveGraphLoadRef.current = false;
-    pendingFinalLayoutRef.current = false;
-    hasProgressiveSnapshotsRef.current = false;
     hasAppliedInitialLayoutRef.current = false;
     layoutPositionCacheRef.current.clear();
 
@@ -2577,33 +2490,7 @@ export default function App() {
         return;
       }
 
-      if (message.type === 'partial') {
-        progressiveGraphLoadRef.current = true;
-        hasProgressiveSnapshotsRef.current = true;
-        const { graphData: partialGraphData, kgQuadCount = 0 } = message.payload ?? {};
-        setGraphData(partialGraphData);
-        setVisibleElements(partialGraphData.elements ?? []);
-        setSelectedClassIris(partialGraphData.classes.map((entry) => entry.id));
-        setSelectedBaseIris(partialGraphData.baseIris.map((entry) => entry.id));
-        setNodeNameQuery('');
-        setSparqlDraft('');
-        setSparqlQuery('');
-        setSelectedNodeId(null);
-        setSelectedEdgeId(null);
-        setFocusedNodeId(null);
-        setFocusedNodeIds([]);
-        setOntologyMetadataRows([]);
-        setStatus(
-          `Loading ${partialGraphData.nodes.length} nodes and ${partialGraphData.edges.length} edges so far${
-            kgQuadCount > 0 ? ` from ${kgQuadCount} parsed triples` : ''
-          }`,
-        );
-        return;
-      }
-
       if (message.type === 'error') {
-        progressiveGraphLoadRef.current = false;
-        pendingFinalLayoutRef.current = false;
         setLoadError(message.error || 'Unable to parse one of the uploaded files.');
         setOntologyMetadataRows([]);
         setIsLoading(false);
@@ -2624,8 +2511,6 @@ export default function App() {
         kgFileCount,
       } = message.payload;
 
-      progressiveGraphLoadRef.current = false;
-      pendingFinalLayoutRef.current = hasProgressiveSnapshotsRef.current;
       setGraphData(nextGraphData);
       setVisibleElements(nextGraphData.elements ?? []);
       setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
@@ -2657,8 +2542,6 @@ export default function App() {
       if (cancelled) {
         return;
       }
-      progressiveGraphLoadRef.current = false;
-      pendingFinalLayoutRef.current = false;
       setLoadError(event.message || 'Unable to prepare the graph in the background worker.');
       setOntologyMetadataRows([]);
       setIsLoading(false);

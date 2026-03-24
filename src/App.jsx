@@ -872,14 +872,14 @@ function toViewFlags(filterMode) {
         showDataProperties: false,
         showAnnotationProperties: false,
         showObjectProperties: false,
-        showNamedIndividuals: false,
+        showNamedIndividuals: true,
       };
     case ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA:
       return {
         showDataProperties: true,
         showAnnotationProperties: false,
         showObjectProperties: true,
-        showNamedIndividuals: false,
+        showNamedIndividuals: true,
       };
     case ONTOLOGY_VIEW_MODES.FULL:
       return {
@@ -894,7 +894,7 @@ function toViewFlags(filterMode) {
         showDataProperties: false,
         showAnnotationProperties: false,
         showObjectProperties: true,
-        showNamedIndividuals: false,
+        showNamedIndividuals: true,
       };
   }
 }

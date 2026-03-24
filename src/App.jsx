@@ -998,6 +998,8 @@ export default function App() {
   const detachedPanModeRef = useRef(false);
   const detachedPanLastMouseRef = useRef(null);
   const suppressNextTapRef = useRef(false);
+  const progressiveGraphLoadRef = useRef(false);
+  const pendingFinalLayoutRef = useRef(false);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -2108,19 +2110,23 @@ export default function App() {
       return;
     }
 
+    const isInitialLayout = !hasAppliedInitialLayoutRef.current;
+    const isProgressiveStreaming = progressiveGraphLoadRef.current;
+    const shouldRunFinalRefinement = pendingFinalLayoutRef.current;
     const positionCache = layoutPositionCacheRef.current;
     const previousPan = cy.pan();
     const previousViewport = {
       zoom: cy.zoom(),
       pan: { x: previousPan.x, y: previousPan.y },
     };
-    cy.nodes().forEach((node) => {
-      positionCache.set(node.id(), {
-        x: node.position('x'),
-        y: node.position('y'),
+    if (!isProgressiveStreaming) {
+      cy.nodes().forEach((node) => {
+        positionCache.set(node.id(), {
+          x: node.position('x'),
+          y: node.position('y'),
+        });
       });
-    });
-    const isInitialLayout = !hasAppliedInitialLayoutRef.current;
+    }
 
     cy.batch(() => {
       cy.elements().remove();
@@ -2133,7 +2139,23 @@ export default function App() {
       return;
     }
 
-    if (isInitialLayout) {
+    if (isProgressiveStreaming) {
+      cy.layout({
+        name: 'grid',
+        animate: false,
+        fit: true,
+        padding: 42,
+        avoidOverlap: true,
+        condense: true,
+        spacingFactor: 1.05,
+      }).run();
+      if (isLightOntologyViewActive) {
+        nudgeNodesTowardLandscape(cy, 1.5);
+      }
+      return;
+    }
+
+    if (shouldRunFinalRefinement || isInitialLayout) {
       cy.layout({
         name: 'cose',
         animate: false,
@@ -2152,6 +2174,7 @@ export default function App() {
           y: node.position('y'),
         });
       });
+      pendingFinalLayoutRef.current = false;
       hasAppliedInitialLayoutRef.current = true;
       return;
     }
@@ -2448,6 +2471,8 @@ export default function App() {
 
   useEffect(() => {
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
+      progressiveGraphLoadRef.current = false;
+      pendingFinalLayoutRef.current = false;
       hasAppliedInitialLayoutRef.current = false;
       layoutPositionCacheRef.current.clear();
       setGraphData(null);
@@ -2470,6 +2495,8 @@ export default function App() {
 
     let cancelled = false;
     const worker = new Worker(new URL('./lib/graphLoad.worker.js', import.meta.url), { type: 'module' });
+    progressiveGraphLoadRef.current = false;
+    pendingFinalLayoutRef.current = false;
     hasAppliedInitialLayoutRef.current = false;
     layoutPositionCacheRef.current.clear();
 
@@ -2490,7 +2517,33 @@ export default function App() {
         return;
       }
 
+      if (message.type === 'partial') {
+        progressiveGraphLoadRef.current = true;
+        pendingFinalLayoutRef.current = false;
+        const { graphData: partialGraphData, kgQuadCount = 0 } = message.payload ?? {};
+        setGraphData(partialGraphData);
+        setVisibleElements(partialGraphData.elements ?? []);
+        setSelectedClassIris(partialGraphData.classes.map((entry) => entry.id));
+        setSelectedBaseIris(partialGraphData.baseIris.map((entry) => entry.id));
+        setNodeNameQuery('');
+        setSparqlDraft('');
+        setSparqlQuery('');
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        setFocusedNodeId(null);
+        setFocusedNodeIds([]);
+        setOntologyMetadataRows([]);
+        setStatus(
+          `Loading ${partialGraphData.nodes.length} nodes and ${partialGraphData.edges.length} edges so far${
+            kgQuadCount > 0 ? ` from ${kgQuadCount} parsed triples` : ''
+          }`,
+        );
+        return;
+      }
+
       if (message.type === 'error') {
+        progressiveGraphLoadRef.current = false;
+        pendingFinalLayoutRef.current = false;
         setLoadError(message.error || 'Unable to parse one of the uploaded files.');
         setOntologyMetadataRows([]);
         setIsLoading(false);
@@ -2511,6 +2564,9 @@ export default function App() {
         kgFileCount,
       } = message.payload;
 
+      progressiveGraphLoadRef.current = false;
+      pendingFinalLayoutRef.current = true;
+      layoutPositionCacheRef.current.clear();
       setGraphData(nextGraphData);
       setVisibleElements(nextGraphData.elements ?? []);
       setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
@@ -2542,6 +2598,8 @@ export default function App() {
       if (cancelled) {
         return;
       }
+      progressiveGraphLoadRef.current = false;
+      pendingFinalLayoutRef.current = false;
       setLoadError(event.message || 'Unable to prepare the graph in the background worker.');
       setOntologyMetadataRows([]);
       setIsLoading(false);

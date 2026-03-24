@@ -1,7 +1,10 @@
+import { Parser } from 'n3';
 import { buildGraphData, extractOntologyModel, getTermId, parseRdfText } from './rdf';
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const OWL_ONTOLOGY = 'http://www.w3.org/2002/07/owl#Ontology';
+const PROGRESSIVE_BATCH_SIZE = 4000;
+const PROGRESSIVE_SNAPSHOT_INTERVAL_MS = 500;
 
 function serializeTerm(term) {
   if (!term) {
@@ -79,6 +82,111 @@ function modelHasOntologySchema(model) {
   );
 }
 
+function detectFormat(fileName, text) {
+  const sample = text.slice(0, 4000);
+
+  if (
+    /<\?xml[\s>]/i.test(sample) ||
+    /<rdf:RDF[\s>]/i.test(sample) ||
+    /xmlns:rdf\s*=\s*["']http:\/\/www\.w3\.org\/1999\/02\/22-rdf-syntax-ns#["']/i.test(sample)
+  ) {
+    return 'RDFXML';
+  }
+
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.rdf') && /^\s*</.test(sample)) {
+    return 'RDFXML';
+  }
+
+  if (lower.endsWith('.nt')) {
+    return 'N-Triples';
+  }
+
+  if (lower.endsWith('.nq')) {
+    return 'N-Quads';
+  }
+
+  if (lower.endsWith('.trig')) {
+    return 'TriG';
+  }
+
+  return 'Turtle';
+}
+
+function canProgressivelyParseFormat(format) {
+  return format !== 'RDFXML';
+}
+
+function buildSnapshotGraphData(effectiveKgQuads, schemaOntologyQuads) {
+  const mergedQuads = [...effectiveKgQuads, ...schemaOntologyQuads];
+  const ontologyModel = extractOntologyModel(schemaOntologyQuads);
+  const hasOntology = modelHasOntologySchema(ontologyModel) && schemaOntologyQuads.length > 0;
+  const hasKg = effectiveKgQuads.length > 0;
+
+  return buildGraphData(mergedQuads, {
+    hasKg,
+    hasOntology,
+    ontologyModel,
+    createStore: false,
+  });
+}
+
+function postPartialGraph(effectiveKgQuads, schemaOntologyQuads, extra = {}) {
+  const graphData = {
+    ...buildSnapshotGraphData(effectiveKgQuads, schemaOntologyQuads),
+    store: null,
+    serializedQuads: [],
+  };
+
+  self.postMessage({
+    type: 'partial',
+    payload: {
+      graphData,
+      ...extra,
+    },
+  });
+}
+
+function parseTextProgressively(text, fileName, onBatch) {
+  const format = detectFormat(fileName, text);
+  if (!canProgressivelyParseFormat(format)) {
+    return parseRdfText(text, fileName);
+  }
+
+  return new Promise((resolve, reject) => {
+    const parser = new Parser({ format });
+    const quads = [];
+    let batch = [];
+    let lastSnapshotAt = Date.now();
+
+    parser.parse(text, (error, quad) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      if (!quad) {
+        if (batch.length > 0) {
+          onBatch(batch);
+        }
+        resolve(quads);
+        return;
+      }
+
+      quads.push(quad);
+      batch.push(quad);
+
+      const now = Date.now();
+      if (batch.length >= PROGRESSIVE_BATCH_SIZE || now - lastSnapshotAt >= PROGRESSIVE_SNAPSHOT_INTERVAL_MS) {
+        const nextBatch = batch;
+        batch = [];
+        lastSnapshotAt = now;
+        onBatch(nextBatch);
+      }
+    });
+  });
+}
+
 function postProgress(message) {
   self.postMessage({
     type: 'progress',
@@ -100,10 +208,22 @@ self.onmessage = async (event) => {
 
     for (let index = 0; index < kgFiles.length; index += 1) {
       const file = kgFiles[index];
+      const kgCountBeforeFile = effectiveKgQuads.length;
       postProgress(`Parsing KG file ${index + 1} of ${kgFiles.length}: ${file.name}`);
       const text = await file.text();
-      const quads = await parseRdfText(text, file.name);
-      effectiveKgQuads.push(...quads);
+      const quads = await parseTextProgressively(text, file.name, (batch) => {
+        if (!Array.isArray(batch) || batch.length === 0) {
+          return;
+        }
+        effectiveKgQuads.push(...batch);
+        postPartialGraph(effectiveKgQuads, schemaOntologyQuads, {
+          kgQuadCount: effectiveKgQuads.length,
+        });
+      });
+      const parsedFromThisFile = effectiveKgQuads.length - kgCountBeforeFile;
+      if (parsedFromThisFile < quads.length) {
+        effectiveKgQuads.push(...quads.slice(parsedFromThisFile));
+      }
     }
 
     postProgress('Reading ontology files...');
@@ -127,6 +247,10 @@ self.onmessage = async (event) => {
         instanceOntologyQuads.push(...contentQuads);
         instanceOntologyFileCount += 1;
       }
+
+      postPartialGraph([...effectiveKgQuads, ...instanceOntologyQuads], schemaOntologyQuads, {
+        kgQuadCount: effectiveKgQuads.length + instanceOntologyQuads.length,
+      });
     }
 
     postProgress('Merging parsed graph data...');

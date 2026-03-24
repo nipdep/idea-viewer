@@ -434,6 +434,10 @@ async function buildTurtleExport(snapshot) {
   const booleanDatatype = namedNode(XSD_BOOLEAN_IRI);
 
   for (const edge of snapshot.edges) {
+    if (edge.data.syntheticViewEdge) {
+      continue;
+    }
+
     const sourceNode = nodeById.get(edge.data.source);
     const targetNode = nodeById.get(edge.data.target);
     const sourceTerm = snapshotNodeToTerm(sourceNode?.data);
@@ -648,6 +652,35 @@ function buildNeighborRows(selectedNodeId, graphData) {
   }
 
   return rows;
+}
+
+function positionReifiedStatementNodes(cy) {
+  if (!cy) {
+    return;
+  }
+
+  cy.batch(() => {
+    cy.nodes('[reifiedStatement = 1]').forEach((statementNode) => {
+      const sourceId = String(statementNode.data('statementSourceId') ?? '');
+      const targetId = String(statementNode.data('statementTargetId') ?? '');
+      if (!sourceId || !targetId) {
+        return;
+      }
+
+      const sourceNode = cy.$id(sourceId);
+      const targetNode = cy.$id(targetId);
+      if (sourceNode.empty() || targetNode.empty()) {
+        return;
+      }
+
+      const sourcePosition = sourceNode.position();
+      const targetPosition = targetNode.position();
+      statementNode.position({
+        x: (sourcePosition.x + targetPosition.x) / 2,
+        y: (sourcePosition.y + targetPosition.y) / 2,
+      });
+    });
+  });
 }
 
 function formatSelectedFiles(files, emptyLabel) {
@@ -1715,6 +1748,21 @@ export default function App() {
           },
         },
         {
+          selector: 'node[reifiedStatement = 1]',
+          style: {
+            label: '',
+            shape: 'ellipse',
+            width: 12,
+            height: 12,
+            padding: 0,
+            'background-color': '#f8fbfd',
+            'border-color': '#6c8ba6',
+            'border-width': 1.4,
+            color: '#f8fbfd',
+            events: 'no',
+          },
+        },
+        {
           selector: 'edge',
           style: {
             label: 'data(predicateLabel)',
@@ -1736,6 +1784,23 @@ export default function App() {
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             opacity: 0.76,
+          },
+        },
+        {
+          selector: 'edge[category = "reification"]',
+          style: {
+            width: 1.8,
+            'line-color': '#6c8ba6',
+            'target-arrow-color': '#6c8ba6',
+            color: '#4a6278',
+            'curve-style': 'bezier',
+          },
+        },
+        {
+          selector: 'edge[reifiedOnly = 1]',
+          style: {
+            'line-style': 'dashed',
+            opacity: 0.62,
           },
         },
         {
@@ -1993,6 +2058,7 @@ export default function App() {
           });
         }
       });
+      positionReifiedStatementNodes(cy);
     });
 
     cy.on('free', 'node', (event) => {
@@ -2000,11 +2066,13 @@ export default function App() {
         groupDragStateRef.current = null;
       }
 
+      positionReifiedStatementNodes(cy);
       const cache = layoutPositionCacheRef.current;
-      const releasedNode = event.target;
-      cache.set(releasedNode.id(), {
-        x: releasedNode.position('x'),
-        y: releasedNode.position('y'),
+      cy.nodes().forEach((node) => {
+        cache.set(node.id(), {
+          x: node.position('x'),
+          y: node.position('y'),
+        });
       });
     });
 
@@ -2216,6 +2284,7 @@ export default function App() {
       if (isLightOntologyViewActive) {
         nudgeNodesTowardLandscape(cy, 1.5);
       }
+      positionReifiedStatementNodes(cy);
       cy.nodes().forEach((node) => {
         positionCache.set(node.id(), {
           x: node.position('x'),
@@ -2258,6 +2327,7 @@ export default function App() {
       nudgeNodesTowardLandscape(cy, 1.5);
     }
 
+    positionReifiedStatementNodes(cy);
     cy.nodes().forEach((node) => {
       positionCache.set(node.id(), {
         x: node.position('x'),

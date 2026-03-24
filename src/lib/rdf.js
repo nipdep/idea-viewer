@@ -10,7 +10,11 @@ const OWL_NS = 'http://www.w3.org/2002/07/owl#';
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 const RDF_DESCRIPTION = `${RDF_NS}Description`;
 const RDF_FIRST = `${RDF_NS}first`;
+const RDF_OBJECT = `${RDF_NS}object`;
+const RDF_PREDICATE = `${RDF_NS}predicate`;
 const RDF_REST = `${RDF_NS}rest`;
+const RDF_STATEMENT = `${RDF_NS}Statement`;
+const RDF_SUBJECT = `${RDF_NS}subject`;
 const RDF_NIL = `${RDF_NS}nil`;
 const RDFS_CLASS = `${RDFS_NS}Class`;
 const RDFS_COMMENT = `${RDFS_NS}comment`;
@@ -305,6 +309,120 @@ export function formatTermValue(term, options = {}) {
   }
 
   return term.value ?? '';
+}
+
+function getStatementEdgeKey(subjectTerm, predicateTerm, objectTerm) {
+  if (!subjectTerm || !predicateTerm || !objectTerm || predicateTerm.termType !== 'NamedNode') {
+    return '';
+  }
+
+  return `${getTermId(subjectTerm)}|${predicateTerm.value}|${getTermId(objectTerm)}`;
+}
+
+function buildReificationIndex(quads) {
+  const partialRecordsByReifierId = new Map();
+
+  const ensurePartialRecord = (reifierTerm) => {
+    const reifierId = getTermId(reifierTerm);
+    let record = partialRecordsByReifierId.get(reifierId);
+    if (!record) {
+      record = {
+        reifierId,
+        reifierTerm,
+        hasExplicitReifies: false,
+      };
+      partialRecordsByReifierId.set(reifierId, record);
+    }
+    return record;
+  };
+
+  for (const quad of quads) {
+    if (!isEntityTerm(quad.subject)) {
+      continue;
+    }
+
+    if (quad.predicate.value === RDF_REIFIES && quad.object.termType === 'Quad') {
+      const record = ensurePartialRecord(quad.subject);
+      record.statementTerm = quad.object;
+      record.hasExplicitReifies = true;
+      continue;
+    }
+
+    if (quad.predicate.value === RDF_SUBJECT && isEntityTerm(quad.object)) {
+      ensurePartialRecord(quad.subject).subjectTerm = quad.object;
+      continue;
+    }
+
+    if (quad.predicate.value === RDF_PREDICATE && quad.object.termType === 'NamedNode') {
+      ensurePartialRecord(quad.subject).predicateTerm = quad.object;
+      continue;
+    }
+
+    if (quad.predicate.value === RDF_OBJECT) {
+      ensurePartialRecord(quad.subject).objectTerm = quad.object;
+    }
+  }
+
+  const recordsByReifierId = new Map();
+  const recordsByStatementKey = new Map();
+
+  for (const partialRecord of partialRecordsByReifierId.values()) {
+    let statementTerm = partialRecord.statementTerm ?? null;
+    let subjectTerm = partialRecord.subjectTerm ?? null;
+    let predicateTerm = partialRecord.predicateTerm ?? null;
+    let objectTerm = partialRecord.objectTerm ?? null;
+
+    if (statementTerm?.termType === 'Quad') {
+      subjectTerm ??= statementTerm.subject;
+      predicateTerm ??= statementTerm.predicate;
+      objectTerm ??= statementTerm.object;
+    } else if (subjectTerm && predicateTerm && objectTerm) {
+      statementTerm = quad(subjectTerm, predicateTerm, objectTerm);
+    }
+
+    if (!statementTerm || !subjectTerm || !predicateTerm || !objectTerm) {
+      continue;
+    }
+
+    if (!isEntityTerm(subjectTerm) || predicateTerm.termType !== 'NamedNode') {
+      continue;
+    }
+
+    const statementKey = getStatementEdgeKey(subjectTerm, predicateTerm, objectTerm);
+    if (!statementKey) {
+      continue;
+    }
+
+    const normalizedRecord = {
+      reifierId: partialRecord.reifierId,
+      reifierTerm: partialRecord.reifierTerm,
+      statementKey,
+      statementTerm,
+      subjectTerm,
+      predicateTerm,
+      objectTerm,
+      hasExplicitReifies: partialRecord.hasExplicitReifies,
+    };
+
+    recordsByReifierId.set(partialRecord.reifierId, normalizedRecord);
+
+    const statementRecord = recordsByStatementKey.get(statementKey) ?? {
+      statementKey,
+      statementTerm,
+      subjectTerm,
+      predicateTerm,
+      objectTerm,
+      reifierIds: [],
+    };
+    statementRecord.reifierIds.push(partialRecord.reifierId);
+    recordsByStatementKey.set(statementKey, statementRecord);
+  }
+
+  return {
+    recordsByReifierId,
+    recordsByStatementKey,
+    reifierNodeIds: new Set(recordsByReifierId.keys()),
+  };
 }
 
 function getBaseIri(iri) {
@@ -976,6 +1094,10 @@ function makeNodeData(term, labelIndex, options = {}) {
 }
 
 function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIris, dataPropertyIris, annotationPropertyIris) {
+  if (predicateIri === RDF_REIFIES) {
+    return 'reification';
+  }
+
   if (predicateIri === RDFS_SUBCLASS_OF) {
     return 'subclass';
   }
@@ -1460,6 +1582,7 @@ export function buildGraphData(quads, options = {}) {
   const ontologyNamedIndividualNodeIds =
     ontologyModel.namedIndividualIds instanceof Set ? ontologyModel.namedIndividualIds : new Set();
   const { blankRoles, blankLabelById, restrictionKindById, restrictionTooltipById } = buildBlankExpressionIndex(quads);
+  const reificationIndex = buildReificationIndex(quads);
 
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -1475,9 +1598,11 @@ export function buildGraphData(quads, options = {}) {
   const badgeClassNodeIds = new Set();
   const namedIndividualNodeIds = new Set();
   const datatypeNodeIds = new Set();
+  const reifiedStatementNodeIds = new Set();
   const objectPropertyIris = new Set(ontologyObjectPropertyNodeIds);
   const dataPropertyIris = new Set(ontologyDataPropertyNodeIds);
   const annotationPropertyIris = new Set([...BUILTIN_ANNOTATION_PREDICATES, ...ontologyAnnotationPropertyNodeIds]);
+  const statementEdgeByKey = new Map();
 
   const ensureNode = (term) => {
     const nodeId = getTermId(term);
@@ -1573,6 +1698,13 @@ export function buildGraphData(quads, options = {}) {
 
   let objectEdgeCounter = 0;
   let literalEdgeCounter = 0;
+  const registerStatementEdge = (edge) => {
+    if (!edge?.statementKey || edge.category === 'reification' || statementEdgeByKey.has(edge.statementKey)) {
+      return;
+    }
+    statementEdgeByKey.set(edge.statementKey, edge);
+  };
+
   for (const quad of quads) {
     if (!isEntityTerm(quad.subject)) {
       continue;
@@ -1582,6 +1714,25 @@ export function buildGraphData(quads, options = {}) {
     }
 
     const sourceId = getTermId(quad.subject);
+    const isStructuralReificationQuad =
+      reificationIndex.reifierNodeIds.has(sourceId) &&
+      (
+        quad.predicate.value === RDF_SUBJECT ||
+        quad.predicate.value === RDF_PREDICATE ||
+        quad.predicate.value === RDF_OBJECT ||
+        (
+          quad.predicate.value === RDF_TYPE &&
+          quad.object.termType === 'NamedNode' &&
+          quad.object.value === RDF_STATEMENT
+        )
+      );
+    if (isStructuralReificationQuad) {
+      if (!nodeMap.has(sourceId)) {
+        ensureNode(quad.subject);
+      }
+      continue;
+    }
+
     if (!nodeMap.has(sourceId)) {
       ensureNode(quad.subject);
     }
@@ -1668,7 +1819,7 @@ export function buildGraphData(quads, options = {}) {
         classNodeIds.add(targetId);
       }
 
-      const predicateLabel = compactIri(quad.predicate.value);
+      const predicateLabel = quad.predicate.value === RDF_REIFIES ? 'rdf:reifies' : compactIri(quad.predicate.value);
       const edgeId = `e${objectEdgeCounter}`;
       const edge = {
         id: edgeId,
@@ -1679,9 +1830,17 @@ export function buildGraphData(quads, options = {}) {
         category,
         axiomKind,
         restrictionKind,
+        statementKey:
+          category === 'reification' ? '' : getStatementEdgeKey(quad.subject, quad.predicate, quad.object),
+        reifiedStatementKey:
+          quad.predicate.value === RDF_REIFIES && quad.object.termType === 'Quad'
+            ? getStatementEdgeKey(quad.object.subject, quad.object.predicate, quad.object.object)
+            : '',
+        syntheticViewEdge: 0,
       };
       objectEdges.push(edge);
       edgeMap.set(edgeId, edge);
+      registerStatementEdge(edge);
       registerEdgeMetadata(edgeId, edge, quad, category, axiomKind, restrictionKind);
       objectEdgeCounter += 1;
     } else if (quad.object.termType === 'Literal') {
@@ -1701,9 +1860,13 @@ export function buildGraphData(quads, options = {}) {
         category: literalCategory,
         axiomKind,
         restrictionKind,
+        statementKey: getStatementEdgeKey(quad.subject, quad.predicate, quad.object),
+        reifiedStatementKey: '',
+        syntheticViewEdge: 0,
       };
       literalEdges.push(literalEdge);
       edgeMap.set(edgeId, literalEdge);
+      registerStatementEdge(literalEdge);
       registerEdgeMetadata(edgeId, literalEdge, quad, literalCategory, axiomKind, restrictionKind);
       literalEdgeCounter += 1;
 
@@ -1741,6 +1904,140 @@ export function buildGraphData(quads, options = {}) {
         classNodeIds.add(sourceId);
       }
     }
+  }
+
+  const ensureStatementEdge = (statementRecord) => {
+    const existingEdge = statementEdgeByKey.get(statementRecord.statementKey);
+    if (existingEdge) {
+      return existingEdge;
+    }
+
+    if (!nodeMap.has(getTermId(statementRecord.subjectTerm))) {
+      ensureNode(statementRecord.subjectTerm);
+    }
+    if (!nodeMap.has(getTermId(statementRecord.objectTerm))) {
+      ensureNode(statementRecord.objectTerm);
+    }
+
+    const statementQuad = quad(statementRecord.subjectTerm, statementRecord.predicateTerm, statementRecord.objectTerm);
+    const category = detectPredicateCategory(
+      statementRecord.predicateTerm.value,
+      statementRecord.objectTerm.termType,
+      objectPropertyIris,
+      dataPropertyIris,
+      annotationPropertyIris,
+    );
+    const axiomKind = getAxiomKind(
+      statementQuad,
+      category,
+      objectPropertyIris,
+      dataPropertyIris,
+      annotationPropertyIris,
+    );
+    const restrictionKind = getRestrictionKind(statementRecord.predicateTerm.value);
+
+    if (isRenderableTerm(statementRecord.objectTerm)) {
+      const edgeId = `e${objectEdgeCounter}`;
+      const edge = {
+        id: edgeId,
+        source: getTermId(statementRecord.subjectTerm),
+        target: getTermId(statementRecord.objectTerm),
+        predicate: statementRecord.predicateTerm.value,
+        predicateLabel: compactIri(statementRecord.predicateTerm.value),
+        category,
+        axiomKind,
+        restrictionKind,
+        statementKey: statementRecord.statementKey,
+        reifiedStatementKey: '',
+        syntheticViewEdge: 1,
+        reifiedOnly: 1,
+      };
+      objectEdges.push(edge);
+      edgeMap.set(edgeId, edge);
+      registerStatementEdge(edge);
+      registerEdgeMetadata(edgeId, edge, statementQuad, category, axiomKind, restrictionKind);
+      objectEdgeCounter += 1;
+      return edge;
+    }
+
+    if (statementRecord.objectTerm.termType === 'Literal') {
+      const edgeId = `l${literalEdgeCounter}`;
+      const edge = {
+        id: edgeId,
+        source: getTermId(statementRecord.subjectTerm),
+        target: getTermId(statementRecord.objectTerm),
+        predicate: statementRecord.predicateTerm.value,
+        predicateLabel: compactIri(statementRecord.predicateTerm.value),
+        category: category === 'annotation' ? 'annotation' : 'data',
+        axiomKind,
+        restrictionKind,
+        statementKey: statementRecord.statementKey,
+        reifiedStatementKey: '',
+        syntheticViewEdge: 1,
+        reifiedOnly: 1,
+      };
+      literalEdges.push(edge);
+      edgeMap.set(edgeId, edge);
+      registerStatementEdge(edge);
+      registerEdgeMetadata(edgeId, edge, statementQuad, edge.category, axiomKind, restrictionKind);
+      literalEdgeCounter += 1;
+      return edge;
+    }
+
+    return null;
+  };
+
+  for (const statementRecord of reificationIndex.recordsByStatementKey.values()) {
+    const statementNode = ensureNode(statementRecord.statementTerm);
+    const supportingEdge = ensureStatementEdge(statementRecord);
+    statementNode.reifiedStatement = 1;
+    statementNode.statementSourceId = supportingEdge?.source ?? getTermId(statementRecord.subjectTerm);
+    statementNode.statementTargetId = supportingEdge?.target ?? getTermId(statementRecord.objectTerm);
+    statementNode.statementPredicate = statementRecord.predicateTerm.value;
+    reifiedStatementNodeIds.add(statementNode.id);
+  }
+
+  for (const reifierRecord of reificationIndex.recordsByReifierId.values()) {
+    const sourceId = reifierRecord.reifierId;
+    if (!nodeMap.has(sourceId)) {
+      ensureNode(reifierRecord.reifierTerm);
+    }
+
+    addNodeMetadataRow(sourceId, {
+      predicate: RDF_REIFIES,
+      predicateLabel: 'rdf:reifies',
+      value: formatTermValue(reifierRecord.statementTerm, { compactNamedNodes: true }),
+    });
+
+    if (reifierRecord.hasExplicitReifies) {
+      continue;
+    }
+
+    const edgeId = `e${objectEdgeCounter}`;
+    const edge = {
+      id: edgeId,
+      source: sourceId,
+      target: getTermId(reifierRecord.statementTerm),
+      predicate: RDF_REIFIES,
+      predicateLabel: 'rdf:reifies',
+      category: 'reification',
+      axiomKind: 'Reification',
+      restrictionKind: '',
+      statementKey: '',
+      reifiedStatementKey: reifierRecord.statementKey,
+      syntheticViewEdge: 1,
+    };
+    objectEdges.push(edge);
+    edgeMap.set(edgeId, edge);
+    registerEdgeMetadata(
+      edgeId,
+      edge,
+      quad(reifierRecord.reifierTerm, namedNode(RDF_REIFIES), reifierRecord.statementTerm),
+      'reification',
+      'Reification',
+      '',
+    );
+    objectEdgeCounter += 1;
   }
 
   for (const [nodeId, classes] of classAssignments.entries()) {
@@ -1811,6 +2108,24 @@ export function buildGraphData(quads, options = {}) {
   ]);
 
   for (const node of nodeMap.values()) {
+    if (reifiedStatementNodeIds.has(node.id)) {
+      node.kind = 'statement';
+      node.entityCategory = 'reified-statement';
+      node.reifiedStatement = 1;
+      node.displayLabel = '';
+      node.labelLength = 0;
+      node.nodeWidth = 12;
+      node.nodeHeight = 12;
+      node.textMaxWidth = 0;
+      node.hasClass = 0;
+      node.classBadge = '';
+      node.badgeSvg = '';
+      node.badgeWidth = 0;
+      node.classCount = 0;
+      node.classTooltip = '';
+      continue;
+    }
+
     if (node.termType === 'BlankNode') {
       const role = blankRoles.get(node.id)?.role ?? '';
       if (role) {
@@ -1925,6 +2240,7 @@ export function buildGraphData(quads, options = {}) {
     badgeClassNodeIds,
     namedIndividualNodeIds,
     datatypeNodeIds,
+    reifiedStatementNodeIds,
     hasOntology,
     hasKg,
     ontologyClassIds,
@@ -1940,6 +2256,7 @@ export function buildGraphData(quads, options = {}) {
     dataProperties,
     nodeMetadata,
     edgeMetadata,
+    statementEdgeByKey,
     nodeMap,
     edgeMap,
     elements: [],
@@ -1968,6 +2285,10 @@ export function toElements(nodes, edges) {
         isInstanceNode: node.isInstanceNode ?? 0,
         isOntologyNode: node.isOntologyNode ?? 0,
         mixedMode: node.mixedMode ?? 0,
+        reifiedStatement: node.reifiedStatement ?? 0,
+        statementSourceId: node.statementSourceId ?? '',
+        statementTargetId: node.statementTargetId ?? '',
+        statementPredicate: node.statementPredicate ?? '',
         termType: node.termType,
         literalValue: node.literalValue ?? '',
         literalDatatype: node.literalDatatype ?? '',
@@ -1996,6 +2317,8 @@ export function toElements(nodes, edges) {
         category: edge.category ?? 'object',
         axiomKind: edge.axiomKind ?? '',
         restrictionKind: edge.restrictionKind ?? '',
+        syntheticViewEdge: edge.syntheticViewEdge ?? 0,
+        reifiedOnly: edge.reifiedOnly ?? 0,
         lightRestrictionEdge: edge.lightRestrictionEdge ?? 0,
         lightOntologyView: edge.lightOntologyView ?? 0,
       },
@@ -2131,6 +2454,10 @@ function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibl
 }
 
 function shouldIncludeObjectEdge(edge, options) {
+  if (edge.category === 'reification') {
+    return true;
+  }
+
   if (edge.category === 'subclass') {
     return true;
   }
@@ -2193,6 +2520,10 @@ function shouldIncludeOntologyObjectEdgeByNodeKinds(graphData, edge, options) {
 
 function shouldIncludeStandaloneNode(node, graphData, options) {
   if (!node) {
+    return false;
+  }
+
+  if (node.reifiedStatement) {
     return false;
   }
 
@@ -2266,6 +2597,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       return false;
     }
 
+    if (node.reifiedStatement) {
+      return false;
+    }
+
     if (node.termType === 'BlankNode') {
       return false;
     }
@@ -2315,7 +2650,11 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       continue;
     }
 
-    if (!isVisibleKgEntityNode(edge.source) || !isVisibleKgEntityNode(edge.target)) {
+    const sourceNode = graphData.nodeMap.get(edge.source);
+    const targetNode = graphData.nodeMap.get(edge.target);
+    const sourceAllowed = sourceNode?.reifiedStatement ? true : isVisibleKgEntityNode(edge.source);
+    const targetAllowed = targetNode?.reifiedStatement ? true : isVisibleKgEntityNode(edge.target);
+    if (!sourceAllowed || !targetAllowed) {
       continue;
     }
 

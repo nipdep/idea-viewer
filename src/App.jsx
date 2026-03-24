@@ -492,7 +492,7 @@ function runClassFilter(graphData, classIris) {
 
   const selectedClassSet = new Set(classIris);
   for (const node of graphData.nodes) {
-    if (node.entityCategory !== 'individual') {
+    if (!node.isInstanceNode) {
       continue;
     }
 
@@ -512,7 +512,7 @@ function expandClassFilterMatches(graphData, matchedInstanceIds) {
   }
 
   for (const node of graphData.nodes) {
-    if (node.entityCategory !== 'individual') {
+    if (!node.isInstanceNode) {
       expandedIds.add(node.id);
     }
   }
@@ -1393,7 +1393,7 @@ export default function App() {
   const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
   const hasOntologyUploads = ontologyFiles.length > 0 || Boolean(graphData?.hasOntology);
   const hasNamedIndividuals = Boolean(
-    graphData?.nodes?.some((node) => node.entityCategory === 'individual'),
+    graphData?.nodes?.some((node) => node.isInstanceNode),
   );
   const showViewFiltering = hasOntologyUploads;
   const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;

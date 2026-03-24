@@ -825,6 +825,7 @@ function makeNodeData(term, labelIndex, options = {}) {
     restrictionKind: '',
     restrictionTooltip: '',
     graphRole: '',
+    isInstanceNode: 0,
     fullLabel,
     displayLabel,
     labelLength: Math.min(Math.max(metrics.maxLineLength * metrics.lineCount, 4), 120),
@@ -1733,6 +1734,7 @@ export function buildGraphData(quads, options = {}) {
       }
     }
 
+    node.isInstanceNode = isInstanceNode ? 1 : 0;
     node.isOntologyNode = node.ontologyKind ? 1 : 0;
     node.mixedMode = hasOntology && hasKg ? 1 : 0;
   }
@@ -1812,6 +1814,7 @@ export function toElements(nodes, edges) {
         restrictionKind: node.restrictionKind ?? '',
         restrictionTooltip: node.restrictionTooltip ?? '',
         graphRole: node.graphRole ?? '',
+        isInstanceNode: node.isInstanceNode ?? 0,
         isOntologyNode: node.isOntologyNode ?? 0,
         mixedMode: node.mixedMode ?? 0,
         termType: node.termType,

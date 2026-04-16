@@ -112,10 +112,12 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 10px;
   flex-shrink: 0;
 }
 
-.header-icon-link {
+.header-icon-link,
+.header-icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -129,17 +131,132 @@ textarea {
   transition: transform 140ms ease, box-shadow 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 
+.header-icon-button {
+  cursor: pointer;
+  padding: 0;
+  appearance: none;
+}
+
 .header-icon-link:hover,
-.header-icon-link:focus-visible {
+.header-icon-link:focus-visible,
+.header-icon-button:hover,
+.header-icon-button:focus-visible {
   color: var(--accent-2);
   border-color: rgba(42, 111, 110, 0.28);
   transform: translateY(-1px);
 }
 
-.header-icon-link svg {
+.header-icon-link svg,
+.header-icon-button svg {
   width: 18px;
   height: 18px;
   fill: currentColor;
+}
+
+.header-icon-button.active {
+  color: #1f5f5e;
+  border-color: rgba(42, 111, 110, 0.36);
+  background: rgba(42, 111, 110, 0.16);
+}
+
+.header-settings-menu {
+  position: relative;
+}
+
+.header-settings-popover {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  width: 260px;
+  border: 1px solid rgba(30, 27, 22, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 250, 242, 0.94);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 22px rgba(30, 27, 22, 0.14);
+  padding: 10px;
+  z-index: 15;
+}
+
+.header-settings-title {
+  color: #3e352e;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.header-setting-row {
+  padding: 8px 0;
+  border-top: 1px solid rgba(30, 27, 22, 0.09);
+}
+
+.header-setting-row:first-of-type {
+  border-top: none;
+  padding-top: 2px;
+}
+
+.header-setting-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #51473e;
+  margin-bottom: 7px;
+}
+
+.header-setting-slider {
+  width: 100%;
+  accent-color: #2a6f6e;
+}
+
+.header-setting-stepper {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-stepper-button {
+  width: 36px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid rgba(30, 27, 22, 0.16);
+  background: rgba(255, 255, 255, 0.9);
+  color: #413930;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+}
+
+.header-stepper-button:hover:not(:disabled) {
+  border-color: rgba(42, 111, 110, 0.34);
+  color: #1f5f5e;
+}
+
+.header-stepper-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.header-stepper-value {
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid rgba(30, 27, 22, 0.14);
+  background: rgba(255, 255, 255, 0.84);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #403830;
 }
 
 .app-shell {
@@ -1498,7 +1615,8 @@ textarea {
     gap: 12px;
   }
 
-  .header-icon-link {
+  .header-icon-link,
+  .header-icon-button {
     width: 36px;
     height: 36px;
     border-radius: 10px;

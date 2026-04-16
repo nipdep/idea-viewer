@@ -53,6 +53,12 @@ const XSD_DECIMAL_IRI = 'http://www.w3.org/2001/XMLSchema#decimal';
 const VIEW_EXPORT_NS = 'https://idea-viewer.local/view#';
 const CYTOSCAPE_CDN_URL = 'https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js';
 const GITHUB_ISSUES_URL = 'https://github.com/nipdep/idea-viewer/issues';
+const DEFAULT_GRAPH_ZOOM_SPEED = 0.2;
+const MIN_GRAPH_ZOOM_SPEED = 0.05;
+const MAX_GRAPH_ZOOM_SPEED = 0.8;
+const DEFAULT_GRAPH_FONT_SIZE = 10;
+const MIN_GRAPH_FONT_SIZE = 8;
+const MAX_GRAPH_FONT_SIZE = 18;
 
 const { blankNode, defaultGraph, literal, namedNode, quad } = DataFactory;
 
@@ -1149,7 +1155,10 @@ export default function App() {
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLightOntologyView, setIsLightOntologyView] = useState(false);
+  const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
+  const [graphFontSize, setGraphFontSize] = useState(DEFAULT_GRAPH_FONT_SIZE);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
@@ -1605,7 +1614,7 @@ export default function App() {
     const cy = cytoscape({
       container: graphContainerRef.current,
       elements: [],
-      wheelSensitivity: 0.2,
+      wheelSensitivity: DEFAULT_GRAPH_ZOOM_SPEED,
       style: [
         {
           selector: 'node',
@@ -1614,7 +1623,7 @@ export default function App() {
             shape: 'round-rectangle',
             'background-color': '#f6f0e8',
             color: '#1e1b16',
-            'font-size': 10,
+            'font-size': DEFAULT_GRAPH_FONT_SIZE,
             'font-weight': 600,
             'text-wrap': 'wrap',
             'text-max-width': 'data(textMaxWidth)',
@@ -1815,7 +1824,7 @@ export default function App() {
           style: {
             label: 'data(predicateLabel)',
             color: '#5a524a',
-            'font-size': 10,
+            'font-size': DEFAULT_GRAPH_FONT_SIZE,
             'font-family': 'Avenir Next, Nunito Sans, Segoe UI, sans-serif',
             'text-wrap': 'wrap',
             'text-max-width': 110,
@@ -2296,6 +2305,56 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isExportMenuOpen]);
+
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (!target.closest('.header-settings-menu')) {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSettingsOpen]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+
+    const clampedZoomSpeed = Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, graphZoomSpeed));
+    const clampedFontSize = Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, graphFontSize));
+
+    if (cy._private?.options) {
+      cy._private.options.wheelSensitivity = clampedZoomSpeed;
+    }
+
+    cy.style()
+      .selector('node')
+      .style('font-size', clampedFontSize)
+      .selector('edge')
+      .style('font-size', clampedFontSize)
+      .update();
+  }, [graphZoomSpeed, graphFontSize]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -2911,6 +2970,21 @@ export default function App() {
     setSparqlQuery('');
   }
 
+  function handleGraphZoomSpeedChange(nextValue) {
+    const parsed = Number(nextValue);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    setGraphZoomSpeed(Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, parsed)));
+  }
+
+  function stepGraphFontSize(direction) {
+    setGraphFontSize((current) => {
+      const nextValue = current + direction;
+      return Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, nextValue));
+    });
+  }
+
   function toggleLeftSection(sectionKey) {
     setLeftSectionOpen((current) => ({
       ...current,
@@ -3081,6 +3155,7 @@ export default function App() {
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
   const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
+  const settingsButtonLabel = isSettingsOpen ? 'Hide graph settings' : 'Show graph settings';
   const showLightOntologyLegend = isLightOntologyViewActive;
   const hasExportableGraph = visibleElements.length > 0;
 
@@ -3115,6 +3190,79 @@ export default function App() {
               <path d="M12 .5C5.65.5.5 5.66.5 12.02c0 5.08 3.29 9.39 7.86 10.91.57.11.78-.25.78-.55 0-.27-.01-1.16-.02-2.1-3.2.7-3.87-1.35-3.87-1.35-.52-1.33-1.28-1.68-1.28-1.68-1.04-.72.08-.71.08-.71 1.15.08 1.75 1.18 1.75 1.18 1.02 1.76 2.68 1.25 3.33.96.1-.74.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.47.11-3.06 0 0 .96-.31 3.14 1.18a10.9 10.9 0 0 1 5.72 0c2.17-1.49 3.13-1.18 3.13-1.18.63 1.59.24 2.77.12 3.06.74.8 1.18 1.83 1.18 3.09 0 4.43-2.68 5.41-5.24 5.69.41.35.77 1.03.77 2.08 0 1.5-.01 2.71-.01 3.08 0 .3.21.67.79.55A11.52 11.52 0 0 0 23.5 12C23.5 5.66 18.35.5 12 .5Z" />
             </svg>
           </a>
+
+          <div className="header-settings-menu">
+            <button
+              type="button"
+              className={`header-icon-button ${isSettingsOpen ? 'active' : ''}`}
+              onClick={() => setIsSettingsOpen((value) => !value)}
+              aria-label={settingsButtonLabel}
+              title={settingsButtonLabel}
+              aria-pressed={isSettingsOpen}
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path
+                  d="M12 2.8V5M12 19V21.2M21.2 12H19M5 12H2.8M18.5 5.5L16.9 7.1M7.1 16.9L5.5 18.5M18.5 18.5L16.9 16.9M7.1 7.1L5.5 5.5"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle cx="12" cy="12" r="2.8" fill="currentColor" />
+              </svg>
+            </button>
+
+            {isSettingsOpen && (
+              <div className="header-settings-popover" role="dialog" aria-label="Graph settings">
+                <div className="header-settings-title">Graph settings</div>
+
+                <div className="header-setting-row">
+                  <div className="header-setting-label-row">
+                    <span>Zoom speed</span>
+                    <span>{graphZoomSpeed.toFixed(2)}</span>
+                  </div>
+                  <input
+                    className="header-setting-slider"
+                    type="range"
+                    min={MIN_GRAPH_ZOOM_SPEED}
+                    max={MAX_GRAPH_ZOOM_SPEED}
+                    step={0.01}
+                    value={graphZoomSpeed}
+                    onChange={(event) => handleGraphZoomSpeedChange(event.target.value)}
+                  />
+                </div>
+
+                <div className="header-setting-row">
+                  <div className="header-setting-label-row">
+                    <span>Font size</span>
+                    <span>{graphFontSize}px</span>
+                  </div>
+                  <div className="header-setting-stepper">
+                    <button
+                      type="button"
+                      className="header-stepper-button"
+                      onClick={() => stepGraphFontSize(-1)}
+                      disabled={graphFontSize <= MIN_GRAPH_FONT_SIZE}
+                      aria-label="Decrease graph font size"
+                    >
+                      -
+                    </button>
+                    <div className="header-stepper-value">{graphFontSize}</div>
+                    <button
+                      type="button"
+                      className="header-stepper-button"
+                      onClick={() => stepGraphFontSize(1)}
+                      disabled={graphFontSize >= MAX_GRAPH_FONT_SIZE}
+                      aria-label="Increase graph font size"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

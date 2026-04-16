@@ -1819,7 +1819,15 @@ export default function App() {
     [selectedNodeId, graphData],
   );
 
-  const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
+  const classFilterEntries = useMemo(() => {
+    const entries = graphData?.classes ?? [];
+    return [...entries].sort((left, right) =>
+      String(left.label || '')
+        .toLocaleLowerCase()
+        .localeCompare(String(right.label || '').toLocaleLowerCase()),
+    );
+  }, [graphData]);
+  const allClassIris = useMemo(() => classFilterEntries.map((entry) => entry.id), [classFilterEntries]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
   const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
   const hasOntologyUploads = ontologyFiles.length > 0 || Boolean(graphData?.hasOntology);
@@ -3648,13 +3656,15 @@ export default function App() {
                     {leftSectionOpen.source ? '-' : '+'}
                   </button>
                   <h2>Source File</h2>
-                  <span
+                  <button
+                    type="button"
                     className="section-help"
                     aria-label="Remote file size guidance"
+                    data-tooltip={REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
                     title={REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
                   >
                     i
-                  </span>
+                  </button>
                   <button
                     type="button"
                     className="section-clear"
@@ -3853,7 +3863,7 @@ export default function App() {
                             <p className="muted">No explicit `rdf:type` triples detected.</p>
                           )}
                           {graphData &&
-                            graphData.classes.map((entry) => (
+                            classFilterEntries.map((entry) => (
                               <label key={entry.id} className="class-item">
                                 <input
                                   type="checkbox"

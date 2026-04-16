@@ -462,7 +462,55 @@ textarea {
   font-weight: 700;
   line-height: 1;
   cursor: help;
+  padding: 0;
+  box-shadow: none;
+  position: relative;
   user-select: none;
+}
+
+.section-help:hover {
+  transform: none;
+  box-shadow: none;
+  background: #efe6db;
+  border-color: rgba(30, 27, 22, 0.24);
+}
+
+.section-help:focus-visible {
+  outline: 2px solid rgba(42, 111, 110, 0.35);
+  outline-offset: 1px;
+}
+
+.section-help::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(288px, calc(100vw - 48px));
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(30, 27, 22, 0.2);
+  background: rgba(255, 250, 242, 0.97);
+  color: #4f463d;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.73rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  white-space: pre-line;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+  z-index: 22;
+}
+
+.section-help:hover::after,
+.section-help:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .section-toggle {

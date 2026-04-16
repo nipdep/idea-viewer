@@ -4,12 +4,17 @@ export const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 export const RDFS_SUBCLASS_OF = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
 export const RDFS_SUBPROPERTY_OF = 'http://www.w3.org/2000/01/rdf-schema#subPropertyOf';
 const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const RDF_REIFIES = `${RDF_NS}reifies`;
 const RDFS_NS = 'http://www.w3.org/2000/01/rdf-schema#';
 const OWL_NS = 'http://www.w3.org/2002/07/owl#';
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 const RDF_DESCRIPTION = `${RDF_NS}Description`;
 const RDF_FIRST = `${RDF_NS}first`;
+const RDF_OBJECT = `${RDF_NS}object`;
+const RDF_PREDICATE = `${RDF_NS}predicate`;
 const RDF_REST = `${RDF_NS}rest`;
+const RDF_STATEMENT = `${RDF_NS}Statement`;
+const RDF_SUBJECT = `${RDF_NS}subject`;
 const RDF_NIL = `${RDF_NS}nil`;
 const RDFS_CLASS = `${RDFS_NS}Class`;
 const RDFS_COMMENT = `${RDFS_NS}comment`;
@@ -137,6 +142,7 @@ const AXIOM_KIND_BY_PREDICATE = new Map([
   [OWL_EQUIVALENT_CLASS, 'EquivalentClasses'],
   [OWL_DISJOINT_WITH, 'DisjointClasses'],
   [RDF_TYPE, 'ClassAssertion'],
+  [RDF_REIFIES, 'Reification'],
   [RDFS_DOMAIN, 'Domain'],
   [RDFS_RANGE, 'Range'],
   [RDFS_SUBPROPERTY_OF, 'SubPropertyOf'],
@@ -188,6 +194,235 @@ function hashText(value) {
 
 function isEntityTerm(term) {
   return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
+}
+
+function isRenderableTerm(term) {
+  return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode' || term.termType === 'Quad');
+}
+
+function isDefaultGraphTerm(term) {
+  return !term || term.termType === 'DefaultGraph';
+}
+
+function escapeLiteralLexicalForm(value) {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+    .replace(/"/g, '\\"');
+}
+
+function formatLiteralTerm(term, compactNamedNodes = false) {
+  const lexicalForm = `"${escapeLiteralLexicalForm(term.value)}"`;
+  if (term.language) {
+    return `${lexicalForm}@${term.language}`;
+  }
+
+  const datatypeIri = term.datatype?.value ?? '';
+  if (!datatypeIri || datatypeIri === 'http://www.w3.org/2001/XMLSchema#string') {
+    return lexicalForm;
+  }
+
+  return `${lexicalForm}^^${
+    compactNamedNodes ? compactIri(datatypeIri) : datatypeIri
+  }`;
+}
+
+function formatQuadTerm(term, compactNamedNodes = false) {
+  const graphSegment = isDefaultGraphTerm(term.graph)
+    ? ''
+    : ` ${formatTermValue(term.graph, { compactNamedNodes })}`;
+  return `<<( ${formatTermValue(term.subject, { compactNamedNodes })} ${formatTermValue(
+    term.predicate,
+    { compactNamedNodes },
+  )} ${formatTermValue(term.object, { compactNamedNodes })}${graphSegment} )>>`;
+}
+
+function serializeTermShape(term) {
+  if (!term) {
+    return null;
+  }
+
+  if (term.termType === 'NamedNode') {
+    return { termType: 'NamedNode', value: term.value };
+  }
+
+  if (term.termType === 'BlankNode') {
+    return { termType: 'BlankNode', value: term.value };
+  }
+
+  if (term.termType === 'Literal') {
+    return {
+      termType: 'Literal',
+      value: term.value,
+      language: term.language ?? '',
+      datatype: term.datatype?.value ?? '',
+    };
+  }
+
+  if (term.termType === 'Quad') {
+    return {
+      termType: 'Quad',
+      subject: serializeTermShape(term.subject),
+      predicate: serializeTermShape(term.predicate),
+      object: serializeTermShape(term.object),
+      graph: isDefaultGraphTerm(term.graph) ? null : serializeTermShape(term.graph),
+    };
+  }
+
+  if (term.termType === 'DefaultGraph') {
+    return { termType: 'DefaultGraph' };
+  }
+
+  return {
+    termType: term.termType ?? '',
+    value: term.value ?? '',
+  };
+}
+
+export function formatTermValue(term, options = {}) {
+  if (!term) {
+    return '';
+  }
+
+  const compactNamedNodes = Boolean(options.compactNamedNodes);
+
+  if (term.termType === 'NamedNode') {
+    return compactNamedNodes ? compactIri(term.value) : term.value;
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `_:${term.value}`;
+  }
+
+  if (term.termType === 'Literal') {
+    return formatLiteralTerm(term, compactNamedNodes);
+  }
+
+  if (term.termType === 'Quad') {
+    return formatQuadTerm(term, compactNamedNodes);
+  }
+
+  if (term.termType === 'DefaultGraph') {
+    return '';
+  }
+
+  return term.value ?? '';
+}
+
+function getStatementEdgeKey(subjectTerm, predicateTerm, objectTerm) {
+  if (!subjectTerm || !predicateTerm || !objectTerm || predicateTerm.termType !== 'NamedNode') {
+    return '';
+  }
+
+  return `${getTermId(subjectTerm)}|${predicateTerm.value}|${getTermId(objectTerm)}`;
+}
+
+function buildReificationIndex(quads) {
+  const partialRecordsByReifierId = new Map();
+
+  const ensurePartialRecord = (reifierTerm) => {
+    const reifierId = getTermId(reifierTerm);
+    let record = partialRecordsByReifierId.get(reifierId);
+    if (!record) {
+      record = {
+        reifierId,
+        reifierTerm,
+        hasExplicitReifies: false,
+      };
+      partialRecordsByReifierId.set(reifierId, record);
+    }
+    return record;
+  };
+
+  for (const quad of quads) {
+    if (!isEntityTerm(quad.subject)) {
+      continue;
+    }
+
+    if (quad.predicate.value === RDF_REIFIES && quad.object.termType === 'Quad') {
+      const record = ensurePartialRecord(quad.subject);
+      record.statementTerm = quad.object;
+      record.hasExplicitReifies = true;
+      continue;
+    }
+
+    if (quad.predicate.value === RDF_SUBJECT && isEntityTerm(quad.object)) {
+      ensurePartialRecord(quad.subject).subjectTerm = quad.object;
+      continue;
+    }
+
+    if (quad.predicate.value === RDF_PREDICATE && quad.object.termType === 'NamedNode') {
+      ensurePartialRecord(quad.subject).predicateTerm = quad.object;
+      continue;
+    }
+
+    if (quad.predicate.value === RDF_OBJECT) {
+      ensurePartialRecord(quad.subject).objectTerm = quad.object;
+    }
+  }
+
+  const recordsByReifierId = new Map();
+  const recordsByStatementKey = new Map();
+
+  for (const partialRecord of partialRecordsByReifierId.values()) {
+    let statementTerm = partialRecord.statementTerm ?? null;
+    let subjectTerm = partialRecord.subjectTerm ?? null;
+    let predicateTerm = partialRecord.predicateTerm ?? null;
+    let objectTerm = partialRecord.objectTerm ?? null;
+
+    if (statementTerm?.termType === 'Quad') {
+      subjectTerm ??= statementTerm.subject;
+      predicateTerm ??= statementTerm.predicate;
+      objectTerm ??= statementTerm.object;
+    } else if (subjectTerm && predicateTerm && objectTerm) {
+      statementTerm = quad(subjectTerm, predicateTerm, objectTerm);
+    }
+
+    if (!statementTerm || !subjectTerm || !predicateTerm || !objectTerm) {
+      continue;
+    }
+
+    if (!isEntityTerm(subjectTerm) || predicateTerm.termType !== 'NamedNode') {
+      continue;
+    }
+
+    const statementKey = getStatementEdgeKey(subjectTerm, predicateTerm, objectTerm);
+    if (!statementKey) {
+      continue;
+    }
+
+    const normalizedRecord = {
+      reifierId: partialRecord.reifierId,
+      reifierTerm: partialRecord.reifierTerm,
+      statementKey,
+      statementTerm,
+      subjectTerm,
+      predicateTerm,
+      objectTerm,
+      hasExplicitReifies: partialRecord.hasExplicitReifies,
+    };
+
+    recordsByReifierId.set(partialRecord.reifierId, normalizedRecord);
+
+    const statementRecord = recordsByStatementKey.get(statementKey) ?? {
+      statementKey,
+      statementTerm,
+      subjectTerm,
+      predicateTerm,
+      objectTerm,
+      reifierIds: [],
+    };
+    statementRecord.reifierIds.push(partialRecord.reifierId);
+    recordsByStatementKey.set(statementKey, statementRecord);
+  }
+
+  return {
+    recordsByReifierId,
+    recordsByStatementKey,
+    reifierNodeIds: new Set(recordsByReifierId.keys()),
+  };
 }
 
 function getBaseIri(iri) {
@@ -277,22 +512,34 @@ function getBaseIri(iri) {
 
 export function getTermId(term) {
   if (!term) {
-    return '';
+    return 'term:missing';
   }
 
   if (term.termType === 'NamedNode') {
-    return term.value;
+    const value = String(term.value ?? '');
+    if (value) {
+      return value;
+    }
+    return `term:named:${hashText(formatTermValue(term))}`;
   }
 
   if (term.termType === 'BlankNode') {
-    return `_:${term.value}`;
+    const value = String(term.value ?? '');
+    if (value) {
+      return `_:${value}`;
+    }
+    return `_:blank-${hashText(formatTermValue(term))}`;
   }
 
   if (term.termType === 'Literal') {
     return `lit:${hashText(`${term.value}|${term.datatype?.value ?? ''}|${term.language ?? ''}`)}`;
   }
 
-  return `term:${hashText(term.value ?? '')}`;
+  if (term.termType === 'Quad') {
+    return `stmt:${hashText(formatTermValue(term))}`;
+  }
+
+  return `term:${hashText(formatTermValue(term))}`;
 }
 
 export function compactIri(iri) {
@@ -316,6 +563,8 @@ export function compactIri(iri) {
 const NODE_TEXT_LINE_LENGTH = 26;
 const NODE_TEXT_TRUNCATE_AT = 220;
 const NODE_TEXT_MAX_LINES = 12;
+const NODE_BOX_PADDING_X = 6;
+const NODE_BOX_PADDING_Y = 4;
 
 export function makeDisplayLabel(label, maxLineLength = NODE_TEXT_LINE_LENGTH, truncateAt = NODE_TEXT_TRUNCATE_AT) {
   if (!label) {
@@ -393,9 +642,9 @@ function computeNodeMetrics(displayLabel) {
     }
   }
 
-  const nodeWidth = Math.max(64, Math.min(214, Math.round(maxLineLength * 6.2 + 26)));
-  const nodeHeight = Math.max(34, Math.min(176, Math.round(lineCount * 16 + 14)));
-  const textMaxWidth = Math.max(48, nodeWidth - 16);
+  const nodeWidth = Math.max(64, Math.min(214, Math.round(maxLineLength * 6.2 + NODE_BOX_PADDING_X * 2)));
+  const nodeHeight = Math.max(34, Math.min(176, Math.round(lineCount * 16 + NODE_BOX_PADDING_Y * 2)));
+  const textMaxWidth = Math.max(48, nodeWidth - NODE_BOX_PADDING_X * 2);
 
   return {
     nodeWidth,
@@ -544,6 +793,166 @@ function literalFromText(text, datatypeIri, lang) {
   }
 
   return literal(text);
+}
+
+function getDatasetQuadKey(datasetQuad) {
+  return [
+    formatTermValue(datasetQuad.subject),
+    formatTermValue(datasetQuad.predicate),
+    formatTermValue(datasetQuad.object),
+    formatTermValue(datasetQuad.graph),
+  ].join('|');
+}
+
+function addUniqueDatasetQuad(quads, seenKeys, datasetQuad) {
+  const key = getDatasetQuadKey(datasetQuad);
+  if (seenKeys.has(key)) {
+    return;
+  }
+
+  seenKeys.add(key);
+  quads.push(datasetQuad);
+}
+
+function normalizeStatementTerm(term) {
+  if (!term || term.termType !== 'Quad') {
+    return null;
+  }
+
+  return quad(term.subject, term.predicate, term.object);
+}
+
+function matchesStatementTerm(leftTerm, rightTerm) {
+  const leftStatement = normalizeStatementTerm(leftTerm);
+  const rightStatement = normalizeStatementTerm(rightTerm);
+  if (!leftStatement || !rightStatement) {
+    return false;
+  }
+
+  return getDatasetQuadKey(leftStatement) === getDatasetQuadKey(rightStatement);
+}
+
+function addInlineReifierRelation(quads, seenKeys, reifierTerm, statementTerm) {
+  if (!isEntityTerm(reifierTerm) || !statementTerm) {
+    return;
+  }
+
+  addUniqueDatasetQuad(quads, seenKeys, quad(reifierTerm, namedNode(RDF_REIFIES), statementTerm));
+}
+
+function normalizeGraphlessParsedQuad(parsedQuad, normalizedQuads, seenKeys) {
+  if (!parsedQuad) {
+    return;
+  }
+
+  const baseStatement =
+    parsedQuad.predicate.value === RDF_REIFIES && parsedQuad.object.termType === 'Quad'
+      ? normalizeStatementTerm(parsedQuad.object)
+      : quad(parsedQuad.subject, parsedQuad.predicate, parsedQuad.object);
+
+  if (!baseStatement) {
+    addUniqueDatasetQuad(normalizedQuads, seenKeys, parsedQuad);
+    return;
+  }
+
+  addUniqueDatasetQuad(normalizedQuads, seenKeys, baseStatement);
+
+  const addReifiersFromCarrier = (carrierTerm) => {
+    if (!carrierTerm || carrierTerm.termType === 'DefaultGraph') {
+      return false;
+    }
+
+    if (carrierTerm.termType === 'NamedNode' || carrierTerm.termType === 'BlankNode') {
+      addInlineReifierRelation(normalizedQuads, seenKeys, carrierTerm, baseStatement);
+      return true;
+    }
+
+    if (carrierTerm.termType !== 'Quad') {
+      return false;
+    }
+
+    const carrierStatement = normalizeStatementTerm(carrierTerm);
+    const carrierObjectMatchesBase = matchesStatementTerm(carrierTerm.object, baseStatement);
+
+    if (
+      carrierTerm.predicate.termType === 'NamedNode' &&
+      carrierTerm.predicate.value === RDF_REIFIES &&
+      carrierObjectMatchesBase &&
+      isEntityTerm(carrierTerm.subject)
+    ) {
+      addInlineReifierRelation(normalizedQuads, seenKeys, carrierTerm.subject, baseStatement);
+      addReifiersFromCarrier(carrierTerm.graph);
+      return true;
+    }
+
+    if (carrierStatement && matchesStatementTerm(carrierStatement, baseStatement)) {
+      addReifiersFromCarrier(carrierTerm.graph);
+      return true;
+    }
+
+    normalizeGraphlessParsedQuad(carrierTerm, normalizedQuads, seenKeys);
+    return true;
+  };
+
+  if (
+    parsedQuad.predicate.value === RDF_REIFIES &&
+    parsedQuad.object.termType === 'Quad' &&
+    isEntityTerm(parsedQuad.subject)
+  ) {
+    addInlineReifierRelation(normalizedQuads, seenKeys, parsedQuad.subject, baseStatement);
+    addReifiersFromCarrier(parsedQuad.graph);
+    return;
+  }
+
+  if (!addReifiersFromCarrier(parsedQuad.graph)) {
+    addUniqueDatasetQuad(normalizedQuads, seenKeys, parsedQuad);
+  }
+}
+
+function normalizeParsedQuads(quads, format) {
+  const normalizedQuads = [];
+  const seenKeys = new Set();
+  const graphlessFormats = new Set(['Turtle', 'N-Triples']);
+
+  for (const parsedQuad of quads) {
+    const graphTerm = parsedQuad.graph;
+    const usesInlineReifierGraph =
+      graphlessFormats.has(format) &&
+      graphTerm &&
+      graphTerm.termType !== 'DefaultGraph';
+
+    if (usesInlineReifierGraph) {
+      normalizeGraphlessParsedQuad(parsedQuad, normalizedQuads, seenKeys);
+      continue;
+    }
+
+    addUniqueDatasetQuad(normalizedQuads, seenKeys, parsedQuad);
+  }
+
+  return normalizedQuads;
+}
+
+function createPatchedParser(options) {
+  const parser = new Parser(options);
+  const originalReadPunctuation = parser?._readPunctuation;
+
+  if (typeof originalReadPunctuation !== 'function') {
+    return parser;
+  }
+
+  // n3@2.0.3 drops explicit `~ <reifier>` relations in annotation syntax unless
+  // they are immediately followed by a `{| ... |}` block. Flush the pending
+  // reifier before the next punctuation token so chained `~` segments materialize
+  // as explicit `rdf:reifies` quads.
+  parser._readPunctuation = function patchedReadPunctuation(token) {
+    if (this._annotation && this._reifier && token?.type !== '{|') {
+      this._readTripleTerm();
+    }
+
+    return originalReadPunctuation.call(this, token);
+  };
+
+  return parser;
 }
 
 function parseRdfXml(text, fileName) {
@@ -746,11 +1155,15 @@ function parseRdfXml(text, fileName) {
 export function parseRdfText(text, fileName) {
   const format = detectFormat(fileName, text);
   if (format === 'RDFXML') {
-    return parseRdfXml(text, fileName);
+    return normalizeParsedQuads(parseRdfXml(text, fileName), format);
   }
 
-  const parser = new Parser({ format });
-  return parser.parse(text);
+  const safeFileName = encodeURIComponent(fileName || 'uploaded.rdf');
+  const parser = createPatchedParser({
+    format,
+    baseIRI: `https://idea-viewer.local/${safeFileName}`,
+  });
+  return normalizeParsedQuads(parser.parse(text), format);
 }
 
 function buildLabelIndex(quads) {
@@ -793,10 +1206,13 @@ function makeNodeData(term, labelIndex, options = {}) {
   const id = getTermId(term);
   const termType = term.termType;
   const blankLabel = options.blankLabelById?.get(id) ?? '';
+  const statementTerm = termType === 'Quad' ? serializeTermShape(term) : null;
 
   let fullLabel = '';
   if (termType === 'Literal') {
     fullLabel = term.value;
+  } else if (termType === 'Quad') {
+    fullLabel = formatTermValue(term, { compactNamedNodes: true });
   } else if (labelIndex.has(id)) {
     fullLabel = labelIndex.get(id);
   } else if (termType === 'NamedNode') {
@@ -812,15 +1228,30 @@ function makeNodeData(term, labelIndex, options = {}) {
 
   return {
     id,
-    iri: term.value,
+    iri: termType === 'Quad' ? formatTermValue(term) : term.value,
     baseIri: termType === 'NamedNode' ? getBaseIri(term.value) : '',
     termType,
     literalValue: termType === 'Literal' ? term.value : '',
     literalDatatype: termType === 'Literal' ? term.datatype?.value ?? '' : '',
     literalLanguage: termType === 'Literal' ? term.language ?? '' : '',
-    kind: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
+    statementTerm,
+    kind:
+      termType === 'Literal'
+        ? 'literal'
+        : termType === 'BlankNode'
+          ? 'blank'
+          : termType === 'Quad'
+            ? 'statement'
+            : 'entity',
     ontologyKind: '',
-    entityCategory: termType === 'Literal' ? 'literal' : termType === 'BlankNode' ? 'blank' : 'entity',
+    entityCategory:
+      termType === 'Literal'
+        ? 'literal'
+        : termType === 'BlankNode'
+          ? 'blank'
+          : termType === 'Quad'
+            ? 'statement'
+            : 'entity',
     blankExpressionType: '',
     restrictionKind: '',
     restrictionTooltip: '',
@@ -837,6 +1268,10 @@ function makeNodeData(term, labelIndex, options = {}) {
 }
 
 function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIris, dataPropertyIris, annotationPropertyIris) {
+  if (predicateIri === RDF_REIFIES) {
+    return 'reification';
+  }
+
   if (predicateIri === RDFS_SUBCLASS_OF) {
     return 'subclass';
   }
@@ -861,7 +1296,7 @@ function detectPredicateCategory(predicateIri, objectTermType, objectPropertyIri
     return 'data';
   }
 
-  if (objectTermType === 'NamedNode' || objectTermType === 'BlankNode') {
+  if (objectTermType === 'NamedNode' || objectTermType === 'BlankNode' || objectTermType === 'Quad') {
     if (objectPropertyIris.has(predicateIri)) {
       return 'object';
     }
@@ -937,6 +1372,10 @@ function termToMetadataValue(term) {
     return `_:${term.value}`;
   }
 
+  if (term.termType === 'Quad') {
+    return formatTermValue(term);
+  }
+
   return term.value ?? '';
 }
 
@@ -958,6 +1397,10 @@ function compactTermForRestriction(term) {
       return `"${term.value}"@${term.language}`;
     }
     return `"${term.value}"`;
+  }
+
+  if (term.termType === 'Quad') {
+    return formatTermValue(term, { compactNamedNodes: true });
   }
 
   return term.value ?? '';
@@ -1150,6 +1593,10 @@ function annotationObjectToLiteralValue(term) {
     return `_:${term.value}`;
   }
 
+  if (term.termType === 'Quad') {
+    return formatTermValue(term);
+  }
+
   return term.value ?? '';
 }
 
@@ -1309,6 +1756,7 @@ export function buildGraphData(quads, options = {}) {
   const ontologyNamedIndividualNodeIds =
     ontologyModel.namedIndividualIds instanceof Set ? ontologyModel.namedIndividualIds : new Set();
   const { blankRoles, blankLabelById, restrictionKindById, restrictionTooltipById } = buildBlankExpressionIndex(quads);
+  const reificationIndex = buildReificationIndex(quads);
 
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -1324,9 +1772,11 @@ export function buildGraphData(quads, options = {}) {
   const badgeClassNodeIds = new Set();
   const namedIndividualNodeIds = new Set();
   const datatypeNodeIds = new Set();
+  const reifiedStatementNodeIds = new Set();
   const objectPropertyIris = new Set(ontologyObjectPropertyNodeIds);
   const dataPropertyIris = new Set(ontologyDataPropertyNodeIds);
   const annotationPropertyIris = new Set([...BUILTIN_ANNOTATION_PREDICATES, ...ontologyAnnotationPropertyNodeIds]);
+  const statementEdgeByKey = new Map();
 
   const ensureNode = (term) => {
     const nodeId = getTermId(term);
@@ -1422,6 +1872,13 @@ export function buildGraphData(quads, options = {}) {
 
   let objectEdgeCounter = 0;
   let literalEdgeCounter = 0;
+  const registerStatementEdge = (edge) => {
+    if (!edge?.statementKey || edge.category === 'reification' || statementEdgeByKey.has(edge.statementKey)) {
+      return;
+    }
+    statementEdgeByKey.set(edge.statementKey, edge);
+  };
+
   for (const quad of quads) {
     if (!isEntityTerm(quad.subject)) {
       continue;
@@ -1431,6 +1888,25 @@ export function buildGraphData(quads, options = {}) {
     }
 
     const sourceId = getTermId(quad.subject);
+    const isStructuralReificationQuad =
+      reificationIndex.reifierNodeIds.has(sourceId) &&
+      (
+        quad.predicate.value === RDF_SUBJECT ||
+        quad.predicate.value === RDF_PREDICATE ||
+        quad.predicate.value === RDF_OBJECT ||
+        (
+          quad.predicate.value === RDF_TYPE &&
+          quad.object.termType === 'NamedNode' &&
+          quad.object.value === RDF_STATEMENT
+        )
+      );
+    if (isStructuralReificationQuad) {
+      if (!nodeMap.has(sourceId)) {
+        ensureNode(quad.subject);
+      }
+      continue;
+    }
+
     if (!nodeMap.has(sourceId)) {
       ensureNode(quad.subject);
     }
@@ -1502,7 +1978,7 @@ export function buildGraphData(quads, options = {}) {
       continue;
     }
 
-    if (isEntityTerm(quad.object)) {
+    if (isRenderableTerm(quad.object)) {
       if (quad.object.termType === 'NamedNode' && isHiddenBackgroundClassIri(quad.object.value)) {
         continue;
       }
@@ -1517,7 +1993,7 @@ export function buildGraphData(quads, options = {}) {
         classNodeIds.add(targetId);
       }
 
-      const predicateLabel = compactIri(quad.predicate.value);
+      const predicateLabel = quad.predicate.value === RDF_REIFIES ? 'rdf:reifies' : compactIri(quad.predicate.value);
       const edgeId = `e${objectEdgeCounter}`;
       const edge = {
         id: edgeId,
@@ -1528,9 +2004,18 @@ export function buildGraphData(quads, options = {}) {
         category,
         axiomKind,
         restrictionKind,
+        statementKey:
+          category === 'reification' ? '' : getStatementEdgeKey(quad.subject, quad.predicate, quad.object),
+        reifiedStatementKey:
+          quad.predicate.value === RDF_REIFIES && quad.object.termType === 'Quad'
+            ? getStatementEdgeKey(quad.object.subject, quad.object.predicate, quad.object.object)
+            : '',
+        syntheticViewEdge: 0,
+        reificationAnchor: 0,
       };
       objectEdges.push(edge);
       edgeMap.set(edgeId, edge);
+      registerStatementEdge(edge);
       registerEdgeMetadata(edgeId, edge, quad, category, axiomKind, restrictionKind);
       objectEdgeCounter += 1;
     } else if (quad.object.termType === 'Literal') {
@@ -1550,9 +2035,14 @@ export function buildGraphData(quads, options = {}) {
         category: literalCategory,
         axiomKind,
         restrictionKind,
+        statementKey: getStatementEdgeKey(quad.subject, quad.predicate, quad.object),
+        reifiedStatementKey: '',
+        syntheticViewEdge: 0,
+        reificationAnchor: 0,
       };
       literalEdges.push(literalEdge);
       edgeMap.set(edgeId, literalEdge);
+      registerStatementEdge(literalEdge);
       registerEdgeMetadata(edgeId, literalEdge, quad, literalCategory, axiomKind, restrictionKind);
       literalEdgeCounter += 1;
 
@@ -1590,6 +2080,145 @@ export function buildGraphData(quads, options = {}) {
         classNodeIds.add(sourceId);
       }
     }
+  }
+
+  const ensureStatementEdge = (statementRecord) => {
+    const existingEdge = statementEdgeByKey.get(statementRecord.statementKey);
+    if (existingEdge) {
+      return existingEdge;
+    }
+
+    if (!nodeMap.has(getTermId(statementRecord.subjectTerm))) {
+      ensureNode(statementRecord.subjectTerm);
+    }
+    if (!nodeMap.has(getTermId(statementRecord.objectTerm))) {
+      ensureNode(statementRecord.objectTerm);
+    }
+
+    const statementQuad = quad(statementRecord.subjectTerm, statementRecord.predicateTerm, statementRecord.objectTerm);
+    const category = detectPredicateCategory(
+      statementRecord.predicateTerm.value,
+      statementRecord.objectTerm.termType,
+      objectPropertyIris,
+      dataPropertyIris,
+      annotationPropertyIris,
+    );
+    const axiomKind = getAxiomKind(
+      statementQuad,
+      category,
+      objectPropertyIris,
+      dataPropertyIris,
+      annotationPropertyIris,
+    );
+    const restrictionKind = getRestrictionKind(statementRecord.predicateTerm.value);
+
+    if (isRenderableTerm(statementRecord.objectTerm)) {
+      const edgeId = `e${objectEdgeCounter}`;
+      const edge = {
+        id: edgeId,
+        source: getTermId(statementRecord.subjectTerm),
+        target: getTermId(statementRecord.objectTerm),
+        predicate: statementRecord.predicateTerm.value,
+        predicateLabel: compactIri(statementRecord.predicateTerm.value),
+        category,
+        axiomKind,
+        restrictionKind,
+        statementKey: statementRecord.statementKey,
+        reifiedStatementKey: '',
+        syntheticViewEdge: 1,
+        reifiedOnly: 1,
+        reificationAnchor: 0,
+      };
+      objectEdges.push(edge);
+      edgeMap.set(edgeId, edge);
+      registerStatementEdge(edge);
+      registerEdgeMetadata(edgeId, edge, statementQuad, category, axiomKind, restrictionKind);
+      objectEdgeCounter += 1;
+      return edge;
+    }
+
+    if (statementRecord.objectTerm.termType === 'Literal') {
+      const edgeId = `l${literalEdgeCounter}`;
+      const edge = {
+        id: edgeId,
+        source: getTermId(statementRecord.subjectTerm),
+        target: getTermId(statementRecord.objectTerm),
+        predicate: statementRecord.predicateTerm.value,
+        predicateLabel: compactIri(statementRecord.predicateTerm.value),
+        category: category === 'annotation' ? 'annotation' : 'data',
+        axiomKind,
+        restrictionKind,
+        statementKey: statementRecord.statementKey,
+        reifiedStatementKey: '',
+        syntheticViewEdge: 1,
+        reifiedOnly: 1,
+        reificationAnchor: 0,
+      };
+      literalEdges.push(edge);
+      edgeMap.set(edgeId, edge);
+      registerStatementEdge(edge);
+      registerEdgeMetadata(edgeId, edge, statementQuad, edge.category, axiomKind, restrictionKind);
+      literalEdgeCounter += 1;
+      return edge;
+    }
+
+    return null;
+  };
+
+  for (const statementRecord of reificationIndex.recordsByStatementKey.values()) {
+    const statementNode = ensureNode(statementRecord.statementTerm);
+    const supportingEdge = ensureStatementEdge(statementRecord);
+    if (supportingEdge) {
+      supportingEdge.reificationAnchor = 1;
+    }
+    statementNode.reifiedStatement = 1;
+    statementNode.statementSourceId = supportingEdge?.source ?? getTermId(statementRecord.subjectTerm);
+    statementNode.statementTargetId = supportingEdge?.target ?? getTermId(statementRecord.objectTerm);
+    statementNode.statementPredicate = statementRecord.predicateTerm.value;
+    reifiedStatementNodeIds.add(statementNode.id);
+  }
+
+  for (const reifierRecord of reificationIndex.recordsByReifierId.values()) {
+    const sourceId = reifierRecord.reifierId;
+    if (!nodeMap.has(sourceId)) {
+      ensureNode(reifierRecord.reifierTerm);
+    }
+
+    addNodeMetadataRow(sourceId, {
+      predicate: RDF_REIFIES,
+      predicateLabel: 'rdf:reifies',
+      value: formatTermValue(reifierRecord.statementTerm, { compactNamedNodes: true }),
+    });
+
+    if (reifierRecord.hasExplicitReifies) {
+      continue;
+    }
+
+    const edgeId = `e${objectEdgeCounter}`;
+    const edge = {
+      id: edgeId,
+      source: sourceId,
+      target: getTermId(reifierRecord.statementTerm),
+      predicate: RDF_REIFIES,
+      predicateLabel: 'rdf:reifies',
+      category: 'reification',
+      axiomKind: 'Reification',
+      restrictionKind: '',
+      statementKey: '',
+      reifiedStatementKey: reifierRecord.statementKey,
+      syntheticViewEdge: 1,
+    };
+    objectEdges.push(edge);
+    edgeMap.set(edgeId, edge);
+    registerEdgeMetadata(
+      edgeId,
+      edge,
+      quad(reifierRecord.reifierTerm, namedNode(RDF_REIFIES), reifierRecord.statementTerm),
+      'reification',
+      'Reification',
+      '',
+    );
+    objectEdgeCounter += 1;
   }
 
   for (const [nodeId, classes] of classAssignments.entries()) {
@@ -1660,6 +2289,24 @@ export function buildGraphData(quads, options = {}) {
   ]);
 
   for (const node of nodeMap.values()) {
+    if (reifiedStatementNodeIds.has(node.id)) {
+      node.kind = 'statement';
+      node.entityCategory = 'reified-statement';
+      node.reifiedStatement = 1;
+      node.displayLabel = '';
+      node.labelLength = 0;
+      node.nodeWidth = 12;
+      node.nodeHeight = 12;
+      node.textMaxWidth = 0;
+      node.hasClass = 0;
+      node.classBadge = '';
+      node.badgeSvg = '';
+      node.badgeWidth = 0;
+      node.classCount = 0;
+      node.classTooltip = '';
+      continue;
+    }
+
     if (node.termType === 'BlankNode') {
       const role = blankRoles.get(node.id)?.role ?? '';
       if (role) {
@@ -1774,6 +2421,7 @@ export function buildGraphData(quads, options = {}) {
     badgeClassNodeIds,
     namedIndividualNodeIds,
     datatypeNodeIds,
+    reifiedStatementNodeIds,
     hasOntology,
     hasKg,
     ontologyClassIds,
@@ -1789,6 +2437,7 @@ export function buildGraphData(quads, options = {}) {
     dataProperties,
     nodeMetadata,
     edgeMetadata,
+    statementEdgeByKey,
     nodeMap,
     edgeMap,
     elements: [],
@@ -1799,8 +2448,9 @@ export function buildGraphData(quads, options = {}) {
 }
 
 export function toElements(nodes, edges) {
-  return [
-    ...nodes.map((node) => ({
+  const safeNodes = (nodes || [])
+    .filter((node) => typeof node?.id === 'string' && node.id.length > 0)
+    .map((node) => ({
       data: {
         id: node.id,
         label: node.displayLabel,
@@ -1817,10 +2467,15 @@ export function toElements(nodes, edges) {
         isInstanceNode: node.isInstanceNode ?? 0,
         isOntologyNode: node.isOntologyNode ?? 0,
         mixedMode: node.mixedMode ?? 0,
+        reifiedStatement: node.reifiedStatement ?? 0,
+        statementSourceId: node.statementSourceId ?? '',
+        statementTargetId: node.statementTargetId ?? '',
+        statementPredicate: node.statementPredicate ?? '',
         termType: node.termType,
         literalValue: node.literalValue ?? '',
         literalDatatype: node.literalDatatype ?? '',
         literalLanguage: node.literalLanguage ?? '',
+        statementTerm: node.statementTerm ?? null,
         labelLength: node.labelLength,
         nodeWidth: node.nodeWidth ?? 96,
         nodeHeight: node.nodeHeight ?? 52,
@@ -1833,8 +2488,22 @@ export function toElements(nodes, edges) {
         classTooltip: node.classTooltip ?? '',
         lightOntologyView: node.lightOntologyView ?? 0,
       },
-    })),
-    ...edges.map((edge) => ({
+    }));
+
+  const visibleNodeIds = new Set(safeNodes.map((node) => node.data.id));
+  const safeEdges = (edges || [])
+    .filter(
+      (edge) =>
+        typeof edge?.id === 'string' &&
+        edge.id.length > 0 &&
+        typeof edge?.source === 'string' &&
+        edge.source.length > 0 &&
+        typeof edge?.target === 'string' &&
+        edge.target.length > 0 &&
+        visibleNodeIds.has(edge.source) &&
+        visibleNodeIds.has(edge.target),
+    )
+    .map((edge) => ({
       data: {
         id: edge.id,
         source: edge.source,
@@ -1844,11 +2513,15 @@ export function toElements(nodes, edges) {
         category: edge.category ?? 'object',
         axiomKind: edge.axiomKind ?? '',
         restrictionKind: edge.restrictionKind ?? '',
+        syntheticViewEdge: edge.syntheticViewEdge ?? 0,
+        reifiedOnly: edge.reifiedOnly ?? 0,
+        reificationAnchor: edge.reificationAnchor ?? 0,
         lightRestrictionEdge: edge.lightRestrictionEdge ?? 0,
         lightOntologyView: edge.lightOntologyView ?? 0,
       },
-    })),
-  ];
+    }));
+
+  return [...safeNodes, ...safeEdges];
 }
 
 function normalizeViewOptions(viewOptions) {
@@ -1979,6 +2652,10 @@ function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibl
 }
 
 function shouldIncludeObjectEdge(edge, options) {
+  if (edge.category === 'reification') {
+    return true;
+  }
+
   if (edge.category === 'subclass') {
     return true;
   }
@@ -2041,6 +2718,10 @@ function shouldIncludeOntologyObjectEdgeByNodeKinds(graphData, edge, options) {
 
 function shouldIncludeStandaloneNode(node, graphData, options) {
   if (!node) {
+    return false;
+  }
+
+  if (node.reifiedStatement) {
     return false;
   }
 
@@ -2114,6 +2795,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       return false;
     }
 
+    if (node.reifiedStatement) {
+      return false;
+    }
+
     if (node.termType === 'BlankNode') {
       return false;
     }
@@ -2163,7 +2848,11 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       continue;
     }
 
-    if (!isVisibleKgEntityNode(edge.source) || !isVisibleKgEntityNode(edge.target)) {
+    const sourceNode = graphData.nodeMap.get(edge.source);
+    const targetNode = graphData.nodeMap.get(edge.target);
+    const sourceAllowed = sourceNode?.reifiedStatement ? true : isVisibleKgEntityNode(edge.source);
+    const targetAllowed = targetNode?.reifiedStatement ? true : isVisibleKgEntityNode(edge.target);
+    if (!sourceAllowed || !targetAllowed) {
       continue;
     }
 

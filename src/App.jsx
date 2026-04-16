@@ -53,8 +53,63 @@ const XSD_DECIMAL_IRI = 'http://www.w3.org/2001/XMLSchema#decimal';
 const VIEW_EXPORT_NS = 'https://idea-viewer.local/view#';
 const CYTOSCAPE_CDN_URL = 'https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js';
 const GITHUB_ISSUES_URL = 'https://github.com/nipdep/idea-viewer/issues';
+const DEFAULT_GRAPH_ZOOM_SPEED = 0.2;
+const MIN_GRAPH_ZOOM_SPEED = 0.05;
+const MAX_GRAPH_ZOOM_SPEED = 0.8;
+const DEFAULT_GRAPH_FONT_SIZE = 10;
+const MIN_GRAPH_FONT_SIZE = 8;
+const MAX_GRAPH_FONT_SIZE = 18;
+const MAX_REMOTE_FILE_BYTES = 500 * 1024;
+const KG_ALLOWED_EXTENSIONS = new Set(['ttl', 'rdf', 'n3', 'nt', 'nq', 'trig']);
+const ONTOLOGY_ALLOWED_EXTENSIONS = new Set(['ttl', 'owl', 'rdf', 'n3', 'nt', 'nq', 'trig']);
+const REMOTE_LOAD_LIMIT_TOOLTIP_TEXT = [
+  'we only allows to dowload files under 500kb,',
+  'due to rendering limit and mirrorless file download support.',
+  'we estimate the 500kb file would contains roughly 5000 triplets, and since graph rendering completly happens at the client side, larger than 5000 triplet would result in signficant rendering lags',
+].join('\n');
 
-const { blankNode, literal, namedNode, quad } = DataFactory;
+const { blankNode, defaultGraph, literal, namedNode, quad } = DataFactory;
+
+function restoreSnapshotTerm(termShape) {
+  if (!termShape || typeof termShape !== 'object') {
+    return null;
+  }
+
+  if (termShape.termType === 'NamedNode') {
+    return namedNode(termShape.value || '');
+  }
+
+  if (termShape.termType === 'BlankNode') {
+    return blankNode(termShape.value || '');
+  }
+
+  if (termShape.termType === 'Literal') {
+    if (termShape.language) {
+      return literal(termShape.value || '', termShape.language);
+    }
+    if (termShape.datatype) {
+      return literal(termShape.value || '', namedNode(termShape.datatype));
+    }
+    return literal(termShape.value || '');
+  }
+
+  if (termShape.termType === 'DefaultGraph') {
+    return defaultGraph();
+  }
+
+  if (termShape.termType === 'Quad') {
+    const subject = restoreSnapshotTerm(termShape.subject);
+    const predicate = restoreSnapshotTerm(termShape.predicate);
+    const object = restoreSnapshotTerm(termShape.object);
+    const graph = termShape.graph ? restoreSnapshotTerm(termShape.graph) : null;
+    if (!subject || !predicate || !object) {
+      return null;
+    }
+    return graph ? quad(subject, predicate, object, graph) : quad(subject, predicate, object);
+  }
+
+  return null;
+}
 
 function sanitizeFilenameSegment(value) {
   const normalized = String(value ?? '')
@@ -63,6 +118,240 @@ function sanitizeFilenameSegment(value) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return normalized || 'view';
+}
+
+function getFileExtension(fileName) {
+  const normalized = String(fileName || '').trim();
+  const dotIndex = normalized.lastIndexOf('.');
+  if (dotIndex <= 0 || dotIndex >= normalized.length - 1) {
+    return '';
+  }
+  return normalized.slice(dotIndex + 1).toLowerCase();
+}
+
+function parseFilenameFromContentDisposition(contentDisposition) {
+  if (!contentDisposition) {
+    return '';
+  }
+
+  const filenameStarMatch = contentDisposition.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i);
+  if (filenameStarMatch?.[1]) {
+    const rawValue = filenameStarMatch[1].trim().replace(/^"|"$/g, '');
+    try {
+      return decodeURIComponent(rawValue);
+    } catch {
+      return rawValue;
+    }
+  }
+
+  const filenameMatch = contentDisposition.match(/filename\s*=\s*([^;]+)/i);
+  if (filenameMatch?.[1]) {
+    return filenameMatch[1].trim().replace(/^"|"$/g, '');
+  }
+
+  return '';
+}
+
+function inferExtensionFromContentType(contentType) {
+  const normalized = String(contentType || '').split(';')[0].trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized === 'application/rdf+xml') return 'rdf';
+  if (normalized === 'text/turtle') return 'ttl';
+  if (normalized === 'application/n-triples') return 'nt';
+  if (normalized === 'application/n-quads') return 'nq';
+  if (normalized === 'application/trig') return 'trig';
+  if (normalized === 'text/n3' || normalized === 'application/n3') return 'n3';
+  return '';
+}
+
+function toReadableFileSize(byteCount) {
+  if (!Number.isFinite(byteCount) || byteCount <= 0) {
+    return '0 B';
+  }
+  if (byteCount < 1024) {
+    return `${byteCount} B`;
+  }
+  return `${(byteCount / 1024).toFixed(1)} KB`;
+}
+
+function parseAndValidateRemoteUrl(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) {
+    throw new Error('Paste a URL before adding.');
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('Invalid URL. Use a full http(s) URL.');
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only http:// or https:// URLs are supported.');
+  }
+
+  return parsed;
+}
+
+function ensureAllowedRemoteExtension(fileName, allowedExtensions, roleLabel) {
+  const extension = getFileExtension(fileName);
+  if (!extension || !allowedExtensions.has(extension)) {
+    const expected = Array.from(allowedExtensions).map((ext) => `.${ext}`).join(', ');
+    throw new Error(`Unsupported ${roleLabel} URL file type for ${fileName}. Allowed: ${expected}`);
+  }
+}
+
+function deriveFilenameFromUrl(url) {
+  const pathTail = url.pathname.split('/').filter(Boolean).pop() || '';
+  if (!pathTail) {
+    return '';
+  }
+  try {
+    return decodeURIComponent(pathTail);
+  } catch {
+    return pathTail;
+  }
+}
+
+async function readResponseBytesWithLimit(response, maxBytes, abortController) {
+  const contentLengthHeader = response.headers.get('content-length');
+  if (contentLengthHeader) {
+    const declaredBytes = Number.parseInt(contentLengthHeader, 10);
+    if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
+      throw new Error(
+        `Remote file is too large (${toReadableFileSize(declaredBytes)}). Maximum allowed is ${toReadableFileSize(maxBytes)}.`,
+      );
+    }
+  }
+
+  if (!response.body) {
+    const fallbackBuffer = await response.arrayBuffer();
+    if (fallbackBuffer.byteLength > maxBytes) {
+      throw new Error(
+        `Remote file is too large (${toReadableFileSize(fallbackBuffer.byteLength)}). Maximum allowed is ${toReadableFileSize(maxBytes)}.`,
+      );
+    }
+    return new Uint8Array(fallbackBuffer);
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    if (!value || value.length === 0) {
+      continue;
+    }
+
+    totalBytes += value.length;
+    if (totalBytes > maxBytes) {
+      abortController.abort();
+      throw new Error(
+        `Remote file is too large (exceeded ${toReadableFileSize(maxBytes)} limit while downloading).`,
+      );
+    }
+    chunks.push(value);
+  }
+
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return merged;
+}
+
+async function downloadRemoteRdfFile(rawUrl, role = 'kg') {
+  const url = parseAndValidateRemoteUrl(rawUrl);
+  const allowedExtensions = role === 'ontology' ? ONTOLOGY_ALLOWED_EXTENSIONS : KG_ALLOWED_EXTENSIONS;
+  const roleLabel = role === 'ontology' ? 'ontology' : 'KG';
+  const urlString = url.toString();
+
+  let headFilename = '';
+  let headContentType = '';
+  try {
+    const headResponse = await fetch(urlString, { method: 'HEAD', redirect: 'follow', cache: 'no-store' });
+    if (headResponse.ok && headResponse.type !== 'opaque') {
+      const headLength = Number.parseInt(headResponse.headers.get('content-length') || '', 10);
+      if (Number.isFinite(headLength) && headLength > MAX_REMOTE_FILE_BYTES) {
+        throw new Error(
+          `Remote file is too large (${toReadableFileSize(headLength)}). Maximum allowed is ${toReadableFileSize(MAX_REMOTE_FILE_BYTES)}.`,
+        );
+      }
+      headFilename = parseFilenameFromContentDisposition(headResponse.headers.get('content-disposition'));
+      headContentType = headResponse.headers.get('content-type') || '';
+    }
+  } catch (error) {
+    if (error instanceof Error && /too large/i.test(error.message)) {
+      throw error;
+    }
+    // HEAD may be blocked or unsupported on some hosts; validation continues with GET.
+  }
+
+  const abortController = new AbortController();
+  const response = await fetch(urlString, {
+    method: 'GET',
+    redirect: 'follow',
+    cache: 'no-store',
+    signal: abortController.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download URL: HTTP ${response.status} ${response.statusText || ''}`.trim());
+  }
+
+  if (response.type === 'opaque') {
+    throw new Error('URL download blocked by CORS. Host must allow cross-origin GET for this file.');
+  }
+
+  const contentType = response.headers.get('content-type') || headContentType || '';
+  if (/text\/html/i.test(contentType)) {
+    throw new Error('URL points to HTML, not a downloadable RDF/KG file.');
+  }
+
+  let fileName = parseFilenameFromContentDisposition(response.headers.get('content-disposition')) || headFilename;
+  if (!fileName) {
+    fileName = deriveFilenameFromUrl(url) || `remote-${role}.ttl`;
+  }
+
+  let extension = getFileExtension(fileName);
+  if (!extension) {
+    const inferredExtension = inferExtensionFromContentType(contentType) || (role === 'ontology' ? 'owl' : 'ttl');
+    fileName = `${fileName}.${inferredExtension}`;
+    extension = inferredExtension;
+  }
+
+  ensureAllowedRemoteExtension(fileName, allowedExtensions, roleLabel);
+
+  const bytes = await readResponseBytesWithLimit(response, MAX_REMOTE_FILE_BYTES, abortController);
+  if (bytes.length === 0) {
+    throw new Error('Downloaded file is empty.');
+  }
+  const text = new TextDecoder('utf-8').decode(bytes);
+  const remoteFile = new File([text], fileName, {
+    type: contentType.split(';')[0] || 'text/plain',
+    lastModified: Date.now(),
+  });
+
+  Object.defineProperty(remoteFile, '__sourceUrl', {
+    value: urlString,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+
+  return remoteFile;
 }
 
 function formatExportTimestamp(date = new Date()) {
@@ -147,9 +436,59 @@ function collectFocusRoots(cy, nodeIds) {
   return roots;
 }
 
+function collectExpandedFocusState(cy, nodeIds) {
+  const focusRoots = collectFocusRoots(cy, nodeIds);
+  if (focusRoots.empty()) {
+    return { focusRoots, neighborhood: focusRoots };
+  }
+
+  let neighborhood = focusRoots.closedNeighborhood();
+  const statementNodes = cy.nodes().filter((node) => Number(node.data('reifiedStatement')) === 1);
+
+  statementNodes.forEach((statementNode) => {
+    const statementSourceId = statementNode.data('statementSourceId');
+    const statementTargetId = statementNode.data('statementTargetId');
+    const statementPredicate = statementNode.data('statementPredicate');
+    if (!statementSourceId || !statementTargetId || !statementPredicate) {
+      return;
+    }
+
+    const sourceNode = cy.$id(statementSourceId);
+    const targetNode = cy.$id(statementTargetId);
+    const baseEdgeNeighborhood = cy.edges().filter(
+      (edge) =>
+        edge.data('category') !== 'reification' &&
+        edge.data('source') === statementSourceId &&
+        edge.data('target') === statementTargetId &&
+        edge.data('predicate') === statementPredicate,
+    );
+    const reificationNeighborhood = statementNode.closedNeighborhood();
+
+    const touchesFocusedNodes =
+      !focusRoots.intersection(sourceNode.union(targetNode)).empty() ||
+      !focusRoots.intersection(reificationNeighborhood.nodes()).empty();
+    const touchesFocusedEdges = !neighborhood.intersection(baseEdgeNeighborhood).empty();
+    if (!touchesFocusedNodes && !touchesFocusedEdges) {
+      return;
+    }
+
+    neighborhood = neighborhood
+      .union(sourceNode)
+      .union(targetNode)
+      .union(baseEdgeNeighborhood)
+      .union(reificationNeighborhood);
+  });
+
+  return { focusRoots, neighborhood };
+}
+
 function snapshotNodeToTerm(nodeData) {
   if (!nodeData) {
     return null;
+  }
+
+  if (nodeData.statementTerm) {
+    return restoreSnapshotTerm(nodeData.statementTerm);
   }
 
   if (nodeData.termType === 'NamedNode') {
@@ -389,6 +728,10 @@ async function buildTurtleExport(snapshot) {
   const booleanDatatype = namedNode(XSD_BOOLEAN_IRI);
 
   for (const edge of snapshot.edges) {
+    if (edge.data.syntheticViewEdge) {
+      continue;
+    }
+
     const sourceNode = nodeById.get(edge.data.source);
     const targetNode = nodeById.get(edge.data.target);
     const sourceTerm = snapshotNodeToTerm(sourceNode?.data);
@@ -401,7 +744,7 @@ async function buildTurtleExport(snapshot) {
 
   for (const node of snapshot.nodes) {
     const subject = snapshotNodeToTerm(node.data);
-    if (!subject || subject.termType === 'Literal') {
+    if (!subject || subject.termType === 'Literal' || subject.termType === 'Quad') {
       continue;
     }
 
@@ -442,7 +785,7 @@ async function buildTurtleExport(snapshot) {
 }
 
 function isEntityTerm(term) {
-  return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
+  return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode' || term.termType === 'Quad');
 }
 
 function intersectSets(left, right) {
@@ -605,6 +948,35 @@ function buildNeighborRows(selectedNodeId, graphData) {
   return rows;
 }
 
+function positionReifiedStatementNodes(cy) {
+  if (!cy) {
+    return;
+  }
+
+  cy.batch(() => {
+    cy.nodes('[reifiedStatement = 1]').forEach((statementNode) => {
+      const sourceId = String(statementNode.data('statementSourceId') ?? '');
+      const targetId = String(statementNode.data('statementTargetId') ?? '');
+      if (!sourceId || !targetId) {
+        return;
+      }
+
+      const sourceNode = cy.$id(sourceId);
+      const targetNode = cy.$id(targetId);
+      if (sourceNode.empty() || targetNode.empty()) {
+        return;
+      }
+
+      const sourcePosition = sourceNode.position();
+      const targetPosition = targetNode.position();
+      statementNode.position({
+        x: (sourcePosition.x + targetPosition.x) / 2,
+        y: (sourcePosition.y + targetPosition.y) / 2,
+      });
+    });
+  });
+}
+
 function formatSelectedFiles(files, emptyLabel) {
   if (files.length === 0) {
     return emptyLabel;
@@ -623,9 +995,17 @@ function mergeSelectedFiles(currentFiles, incomingFiles) {
     return currentFiles;
   }
 
-  const deduped = new Map(currentFiles.map((file) => [`${file.name}-${file.size}-${file.lastModified}`, file]));
+  const getFileKey = (file) => {
+    const sourceUrl = typeof file?.__sourceUrl === 'string' ? file.__sourceUrl : '';
+    if (sourceUrl) {
+      return `url:${sourceUrl}`;
+    }
+    return `${file.name}-${file.size}-${file.lastModified}`;
+  };
+
+  const deduped = new Map(currentFiles.map((file) => [getFileKey(file), file]));
   for (const file of incomingFiles) {
-    deduped.set(`${file.name}-${file.size}-${file.lastModified}`, file);
+    deduped.set(getFileKey(file), file);
   }
 
   return Array.from(deduped.values());
@@ -824,7 +1204,22 @@ function formatTermForInspector(term) {
   }
 
   if (term.termType === 'Literal') {
+    if (term.language) {
+      return `"${term.value}"@${term.language}`;
+    }
+    const datatypeIri = term.datatype?.value ?? '';
+    if (datatypeIri && datatypeIri !== 'http://www.w3.org/2001/XMLSchema#string') {
+      return `"${term.value}"^^${toPrefixedName(datatypeIri)}`;
+    }
     return term.value;
+  }
+
+  if (term.termType === 'Quad') {
+    const graphSegment =
+      term.graph && term.graph.termType !== 'DefaultGraph' ? ` ${formatTermForInspector(term.graph)}` : '';
+    return `<<( ${formatTermForInspector(term.subject)} ${formatTermForInspector(
+      term.predicate,
+    )} ${formatTermForInspector(term.object)}${graphSegment} )>>`;
   }
 
   return term.value || '';
@@ -953,6 +1348,7 @@ function modelHasOntologySchema(model) {
 export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
+  const sourceHelpButtonRef = useRef(null);
   const previousFocusedNodeIdRef = useRef(null);
   const previousFocusedNodeIdsRef = useRef([]);
   const focusedNodeIdRef = useRef(null);
@@ -970,6 +1366,7 @@ export default function App() {
   const detachedPanModeRef = useRef(false);
   const detachedPanLastMouseRef = useRef(null);
   const suppressNextTapRef = useRef(false);
+  const graphZoomSpeedRef = useRef(DEFAULT_GRAPH_ZOOM_SPEED);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -1010,7 +1407,16 @@ export default function App() {
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSourceHelpTooltipOpen, setIsSourceHelpTooltipOpen] = useState(false);
+  const [sourceHelpTooltipPosition, setSourceHelpTooltipPosition] = useState({ left: 8, top: 8, width: 280 });
   const [isLightOntologyView, setIsLightOntologyView] = useState(false);
+  const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
+  const [graphFontSize, setGraphFontSize] = useState(DEFAULT_GRAPH_FONT_SIZE);
+  const [kgUrlInput, setKgUrlInput] = useState('');
+  const [ontologyUrlInput, setOntologyUrlInput] = useState('');
+  const [isKgUrlLoading, setIsKgUrlLoading] = useState(false);
+  const [isOntologyUrlLoading, setIsOntologyUrlLoading] = useState(false);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
@@ -1113,6 +1519,7 @@ export default function App() {
         literalValue: modelNode?.literalValue ?? node.data('literalValue') ?? '',
         literalDatatype: modelNode?.literalDatatype ?? node.data('literalDatatype') ?? '',
         literalLanguage: modelNode?.literalLanguage ?? node.data('literalLanguage') ?? '',
+        statementTerm: modelNode?.statementTerm ?? node.data('statementTerm') ?? null,
       };
       return {
         data: nodeData,
@@ -1415,7 +1822,15 @@ export default function App() {
     [selectedNodeId, graphData],
   );
 
-  const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
+  const classFilterEntries = useMemo(() => {
+    const entries = graphData?.classes ?? [];
+    return [...entries].sort((left, right) =>
+      String(left.label || '')
+        .toLocaleLowerCase()
+        .localeCompare(String(right.label || '').toLocaleLowerCase()),
+    );
+  }, [graphData]);
+  const allClassIris = useMemo(() => classFilterEntries.map((entry) => entry.id), [classFilterEntries]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
   const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
   const hasOntologyUploads = ontologyFiles.length > 0 || Boolean(graphData?.hasOntology);
@@ -1465,7 +1880,8 @@ export default function App() {
     const cy = cytoscape({
       container: graphContainerRef.current,
       elements: [],
-      wheelSensitivity: 0.2,
+      wheelSensitivity: DEFAULT_GRAPH_ZOOM_SPEED,
+      userZoomingEnabled: false,
       style: [
         {
           selector: 'node',
@@ -1474,7 +1890,7 @@ export default function App() {
             shape: 'round-rectangle',
             'background-color': '#f6f0e8',
             color: '#1e1b16',
-            'font-size': 10,
+            'font-size': DEFAULT_GRAPH_FONT_SIZE,
             'font-weight': 600,
             'text-wrap': 'wrap',
             'text-max-width': 'data(textMaxWidth)',
@@ -1484,7 +1900,7 @@ export default function App() {
             'border-color': '#7e6f60',
             width: 'data(nodeWidth)',
             height: 'data(nodeHeight)',
-            padding: '6px',
+            padding: '3px',
           },
         },
         {
@@ -1654,11 +2070,28 @@ export default function App() {
           },
         },
         {
+          selector: 'node[reifiedStatement = 1]',
+          style: {
+            label: '',
+            shape: 'ellipse',
+            width: 12,
+            height: 12,
+            padding: 0,
+            'background-color': '#f7f0e8',
+            'border-color': '#86684f',
+            'border-width': 1.4,
+            color: '#f7f0e8',
+            events: 'no',
+            'z-index-compare': 'manual',
+            'z-index': 1,
+          },
+        },
+        {
           selector: 'edge',
           style: {
             label: 'data(predicateLabel)',
             color: '#5a524a',
-            'font-size': 10,
+            'font-size': DEFAULT_GRAPH_FONT_SIZE,
             'font-family': 'Avenir Next, Nunito Sans, Segoe UI, sans-serif',
             'text-wrap': 'wrap',
             'text-max-width': 110,
@@ -1675,6 +2108,32 @@ export default function App() {
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             opacity: 0.76,
+          },
+        },
+        {
+          selector: 'edge[reificationAnchor = 1]',
+          style: {
+            'text-margin-y': 0,
+            'text-background-padding': 4,
+            'z-index-compare': 'manual',
+            'z-index': 10,
+          },
+        },
+        {
+          selector: 'edge[category = "reification"]',
+          style: {
+            width: 1.8,
+            'line-color': '#86684f',
+            'target-arrow-color': '#86684f',
+            color: '#5e4734',
+            'curve-style': 'bezier',
+          },
+        },
+        {
+          selector: 'edge[reifiedOnly = 1]',
+          style: {
+            'line-style': 'dashed',
+            opacity: 0.62,
           },
         },
         {
@@ -1808,13 +2267,13 @@ export default function App() {
         return;
       }
 
-      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, activeFocusedNodeIds);
       if (focusRoots.empty()) {
         groupDragArmRef.current = null;
         return;
       }
 
-      const groupNodes = focusRoots.closedNeighborhood().nodes();
+      const groupNodes = neighborhood.nodes();
       if (!groupNodes.has(downNode)) {
         groupDragArmRef.current = null;
         return;
@@ -1860,14 +2319,14 @@ export default function App() {
         return;
       }
 
-      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, activeFocusedNodeIds);
       if (focusRoots.empty()) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
         return;
       }
 
-      const groupNodes = focusRoots.closedNeighborhood().nodes();
+      const groupNodes = neighborhood.nodes();
       if (!groupNodes.has(grabbedNode)) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
@@ -1932,6 +2391,7 @@ export default function App() {
           });
         }
       });
+      positionReifiedStatementNodes(cy);
     });
 
     cy.on('free', 'node', (event) => {
@@ -1939,11 +2399,13 @@ export default function App() {
         groupDragStateRef.current = null;
       }
 
+      positionReifiedStatementNodes(cy);
       const cache = layoutPositionCacheRef.current;
-      const releasedNode = event.target;
-      cache.set(releasedNode.id(), {
-        x: releasedNode.position('x'),
-        y: releasedNode.position('y'),
+      cy.nodes().forEach((node) => {
+        cache.set(node.id(), {
+          x: node.position('x'),
+          y: node.position('y'),
+        });
       });
     });
 
@@ -2032,10 +2494,44 @@ export default function App() {
       }
     };
 
+    const wheelOptions = { passive: false };
+    const onWheel = (event) => {
+      if (detachedPanModeRef.current) {
+        event.preventDefault();
+        return;
+      }
+
+      event.preventDefault();
+
+      const deltaMultiplier =
+        event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? Math.max(1, container.clientHeight) : 1;
+      const deltaY = event.deltaY * deltaMultiplier;
+      const speed = Math.max(MIN_GRAPH_ZOOM_SPEED, Math.min(MAX_GRAPH_ZOOM_SPEED, graphZoomSpeedRef.current));
+      const zoomFactor = Math.exp(-deltaY * speed * 0.0045);
+      const currentZoom = cy.zoom();
+      const minZoom = cy.minZoom();
+      const maxZoom = cy.maxZoom();
+      const nextZoom = Math.max(minZoom, Math.min(maxZoom, currentZoom * zoomFactor));
+
+      if (nextZoom === currentZoom) {
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      cy.zoom({
+        level: nextZoom,
+        renderedPosition: {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+        },
+      });
+    };
+
     container.addEventListener('mousedown', onMouseDownCapture, true);
     container.addEventListener('mousemove', onMouseMove);
     container.addEventListener('mouseleave', onMouseLeave);
     container.addEventListener('contextmenu', onContextMenu);
+    container.addEventListener('wheel', onWheel, wheelOptions);
 
     cyRef.current = cy;
 
@@ -2044,6 +2540,7 @@ export default function App() {
       container.removeEventListener('mousemove', onMouseMove);
       container.removeEventListener('mouseleave', onMouseLeave);
       container.removeEventListener('contextmenu', onContextMenu);
+      container.removeEventListener('wheel', onWheel, wheelOptions);
       groupDragStateRef.current = null;
       groupDragArmRef.current = null;
       shouldFitAfterFocusClearRef.current = false;
@@ -2112,6 +2609,77 @@ export default function App() {
   }, [isExportMenuOpen]);
 
   useEffect(() => {
+    if (!isSourceHelpTooltipOpen) {
+      return undefined;
+    }
+
+    const closeTooltip = () => setIsSourceHelpTooltipOpen(false);
+    window.addEventListener('resize', closeTooltip);
+    window.addEventListener('scroll', closeTooltip, true);
+    return () => {
+      window.removeEventListener('resize', closeTooltip);
+      window.removeEventListener('scroll', closeTooltip, true);
+    };
+  }, [isSourceHelpTooltipOpen]);
+
+  useEffect(() => {
+    if (!leftSectionOpen.source || leftCollapsed || (isGraphFullscreen && !leftFlyoutOpen)) {
+      setIsSourceHelpTooltipOpen(false);
+    }
+  }, [leftSectionOpen.source, leftCollapsed, isGraphFullscreen, leftFlyoutOpen]);
+
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (!target.closest('.header-settings-menu')) {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSettingsOpen]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+
+    const clampedZoomSpeed = Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, graphZoomSpeed));
+    const clampedFontSize = Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, graphFontSize));
+    graphZoomSpeedRef.current = clampedZoomSpeed;
+
+    if (cy._private?.options) {
+      cy._private.options.wheelSensitivity = clampedZoomSpeed;
+    }
+
+    cy.style()
+      .selector('node')
+      .style('font-size', clampedFontSize)
+      .selector('edge')
+      .style('font-size', clampedFontSize)
+      .update();
+  }, [graphZoomSpeed, graphFontSize]);
+
+  useEffect(() => {
     const cy = cyRef.current;
     if (!cy) {
       return;
@@ -2155,6 +2723,7 @@ export default function App() {
       if (isLightOntologyViewActive) {
         nudgeNodesTowardLandscape(cy, 1.5);
       }
+      positionReifiedStatementNodes(cy);
       cy.nodes().forEach((node) => {
         positionCache.set(node.id(), {
           x: node.position('x'),
@@ -2197,6 +2766,7 @@ export default function App() {
       nudgeNodesTowardLandscape(cy, 1.5);
     }
 
+    positionReifiedStatementNodes(cy);
     cy.nodes().forEach((node) => {
       positionCache.set(node.id(), {
         x: node.position('x'),
@@ -2231,24 +2801,23 @@ export default function App() {
         return;
       }
 
-      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, focusedNodeIds);
       if (focusRoots.empty()) {
         return;
       }
 
-      const neighborhood = focusRoots.closedNeighborhood();
       cy.elements().difference(neighborhood).addClass('faded');
       focusRoots.addClass('focus-node');
       neighborhood.nodes().difference(focusRoots).addClass('focus-neighbor');
-      focusRoots.connectedEdges().addClass('focus-edge');
+      neighborhood.edges().addClass('focus-edge');
     });
 
     if (focusedNodeIds.length > 0) {
-      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, focusedNodeIds);
       if (!focusRoots.empty()) {
         cy.animate({
           fit: {
-            eles: focusRoots.closedNeighborhood(),
+            eles: neighborhood,
             padding: 76,
           },
           duration: 250,
@@ -2451,7 +3020,12 @@ export default function App() {
     setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
     setIsLightOntologyView(false);
     setIsExportMenuOpen(false);
+    setIsSourceHelpTooltipOpen(false);
     setOntologyMetadataRows([]);
+    setKgUrlInput('');
+    setOntologyUrlInput('');
+    setIsKgUrlLoading(false);
+    setIsOntologyUrlLoading(false);
     setLoadError('');
     setFilterError('');
     setStatus(DEFAULT_STATUS);
@@ -2481,6 +3055,46 @@ export default function App() {
     setOntologyFiles((current) => mergeSelectedFiles(current, files));
   }
 
+  async function handleKgUrlAdd() {
+    const rawUrl = kgUrlInput.trim();
+    if (!rawUrl || isKgUrlLoading) {
+      return;
+    }
+
+    setIsKgUrlLoading(true);
+    setLoadError('');
+    try {
+      const file = await downloadRemoteRdfFile(rawUrl, 'kg');
+      handleKgFileSelection([file]);
+      setKgUrlInput('');
+      setStatus(`Loaded KG URL: ${rawUrl}`);
+    } catch (error) {
+      setLoadError(error.message || 'Failed to download KG URL.');
+    } finally {
+      setIsKgUrlLoading(false);
+    }
+  }
+
+  async function handleOntologyUrlAdd() {
+    const rawUrl = ontologyUrlInput.trim();
+    if (!rawUrl || isOntologyUrlLoading) {
+      return;
+    }
+
+    setIsOntologyUrlLoading(true);
+    setLoadError('');
+    try {
+      const file = await downloadRemoteRdfFile(rawUrl, 'ontology');
+      handleOntologyFileSelection([file]);
+      setOntologyUrlInput('');
+      setStatus(`Loaded ontology URL: ${rawUrl}`);
+    } catch (error) {
+      setLoadError(error.message || 'Failed to download ontology URL.');
+    } finally {
+      setIsOntologyUrlLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
       setGraphData(null);
@@ -2496,6 +3110,8 @@ export default function App() {
       setLoadError('');
       setFilterError('');
       setIsLoading(false);
+      setIsKgUrlLoading(false);
+      setIsOntologyUrlLoading(false);
       setStatus(DEFAULT_STATUS);
       return;
     }
@@ -2724,6 +3340,41 @@ export default function App() {
     setSparqlQuery('');
   }
 
+  function handleGraphZoomSpeedChange(nextValue) {
+    const parsed = Number(nextValue);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    setGraphZoomSpeed(Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, parsed)));
+  }
+
+  function stepGraphFontSize(direction) {
+    setGraphFontSize((current) => {
+      const nextValue = current + direction;
+      return Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, nextValue));
+    });
+  }
+
+  function openSourceHelpTooltip() {
+    const button = sourceHelpButtonRef.current;
+    if (!button) {
+      return;
+    }
+
+    const rect = button.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || 1200;
+    const tooltipWidth = Math.min(320, Math.max(240, viewportWidth - 24));
+    const left = Math.min(Math.max(8, rect.right - tooltipWidth), Math.max(8, viewportWidth - tooltipWidth - 8));
+    const top = rect.bottom + 8;
+
+    setSourceHelpTooltipPosition({ left, top, width: tooltipWidth });
+    setIsSourceHelpTooltipOpen(true);
+  }
+
+  function closeSourceHelpTooltip() {
+    setIsSourceHelpTooltipOpen(false);
+  }
+
   function toggleLeftSection(sectionKey) {
     setLeftSectionOpen((current) => ({
       ...current,
@@ -2894,6 +3545,7 @@ export default function App() {
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
   const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
+  const settingsButtonLabel = isSettingsOpen ? 'Hide graph settings' : 'Show graph settings';
   const showLightOntologyLegend = isLightOntologyViewActive;
   const hasExportableGraph = visibleElements.length > 0;
 
@@ -2928,6 +3580,79 @@ export default function App() {
               <path d="M12 .5C5.65.5.5 5.66.5 12.02c0 5.08 3.29 9.39 7.86 10.91.57.11.78-.25.78-.55 0-.27-.01-1.16-.02-2.1-3.2.7-3.87-1.35-3.87-1.35-.52-1.33-1.28-1.68-1.28-1.68-1.04-.72.08-.71.08-.71 1.15.08 1.75 1.18 1.75 1.18 1.02 1.76 2.68 1.25 3.33.96.1-.74.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.47.11-3.06 0 0 .96-.31 3.14 1.18a10.9 10.9 0 0 1 5.72 0c2.17-1.49 3.13-1.18 3.13-1.18.63 1.59.24 2.77.12 3.06.74.8 1.18 1.83 1.18 3.09 0 4.43-2.68 5.41-5.24 5.69.41.35.77 1.03.77 2.08 0 1.5-.01 2.71-.01 3.08 0 .3.21.67.79.55A11.52 11.52 0 0 0 23.5 12C23.5 5.66 18.35.5 12 .5Z" />
             </svg>
           </a>
+
+          <div className="header-settings-menu">
+            <button
+              type="button"
+              className={`header-icon-button ${isSettingsOpen ? 'active' : ''}`}
+              onClick={() => setIsSettingsOpen((value) => !value)}
+              aria-label={settingsButtonLabel}
+              title={settingsButtonLabel}
+              aria-pressed={isSettingsOpen}
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path
+                  d="M12 2.8V5M12 19V21.2M21.2 12H19M5 12H2.8M18.5 5.5L16.9 7.1M7.1 16.9L5.5 18.5M18.5 18.5L16.9 16.9M7.1 7.1L5.5 5.5"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle cx="12" cy="12" r="2.8" fill="currentColor" />
+              </svg>
+            </button>
+
+            {isSettingsOpen && (
+              <div className="header-settings-popover" role="dialog" aria-label="Graph settings">
+                <div className="header-settings-title">Graph settings</div>
+
+                <div className="header-setting-row">
+                  <div className="header-setting-label-row">
+                    <span>Zoom speed</span>
+                    <span>{graphZoomSpeed.toFixed(2)}</span>
+                  </div>
+                  <input
+                    className="header-setting-slider"
+                    type="range"
+                    min={MIN_GRAPH_ZOOM_SPEED}
+                    max={MAX_GRAPH_ZOOM_SPEED}
+                    step={0.01}
+                    value={graphZoomSpeed}
+                    onChange={(event) => handleGraphZoomSpeedChange(event.target.value)}
+                  />
+                </div>
+
+                <div className="header-setting-row">
+                  <div className="header-setting-label-row">
+                    <span>Font size</span>
+                    <span>{graphFontSize}px</span>
+                  </div>
+                  <div className="header-setting-stepper">
+                    <button
+                      type="button"
+                      className="header-stepper-button"
+                      onClick={() => stepGraphFontSize(-1)}
+                      disabled={graphFontSize <= MIN_GRAPH_FONT_SIZE}
+                      aria-label="Decrease graph font size"
+                    >
+                      -
+                    </button>
+                    <div className="header-stepper-value">{graphFontSize}</div>
+                    <button
+                      type="button"
+                      className="header-stepper-button"
+                      onClick={() => stepGraphFontSize(1)}
+                      disabled={graphFontSize >= MAX_GRAPH_FONT_SIZE}
+                      aria-label="Increase graph font size"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -2977,6 +3702,19 @@ export default function App() {
                   <h2>Source File</h2>
                   <button
                     type="button"
+                    ref={sourceHelpButtonRef}
+                    className="section-help"
+                    aria-label="Remote file size guidance"
+                    title={REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
+                    onMouseEnter={openSourceHelpTooltip}
+                    onMouseLeave={closeSourceHelpTooltip}
+                    onFocus={openSourceHelpTooltip}
+                    onBlur={closeSourceHelpTooltip}
+                  >
+                    i
+                  </button>
+                  <button
+                    type="button"
                     className="section-clear"
                     onClick={clearLoadedGraph}
                     disabled={kgFiles.length === 0 && ontologyFiles.length === 0}
@@ -2991,34 +3729,90 @@ export default function App() {
                   <div className="section-body">
                     <label className="file-control">
                       <span>KG files (optional: .ttl/.rdf/.n3/.nt/.nq/.trig)</span>
-                      <input
-                        type="file"
-                        accept=".ttl,.rdf,.n3,.nt,.nq,.trig"
-                        multiple
-                        onChange={(event) => {
-                          const files = Array.from(event.target.files ?? []);
-                          handleKgFileSelection(files);
-                          event.target.value = '';
-                        }}
-                      />
+                      <div className="file-source-combo">
+                        <input
+                          className="file-source-local-input"
+                          type="file"
+                          accept=".ttl,.rdf,.n3,.nt,.nq,.trig"
+                          multiple
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files ?? []);
+                            handleKgFileSelection(files);
+                            event.target.value = '';
+                          }}
+                        />
+                        <div className="file-url-row">
+                          <input
+                            className="file-url-input"
+                            type="url"
+                            placeholder="or paste KG URL"
+                            value={kgUrlInput}
+                            onChange={(event) => setKgUrlInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                handleKgUrlAdd();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="file-url-add"
+                            onClick={handleKgUrlAdd}
+                            disabled={isKgUrlLoading || isLoading || kgUrlInput.trim().length === 0}
+                          >
+                            {isKgUrlLoading ? 'Loading…' : 'Load URL'}
+                          </button>
+                        </div>
+                      </div>
                       <small>{formatSelectedFiles(kgFiles, 'No KG files selected')}</small>
                     </label>
 
                     <label className="file-control">
                       <span>Ontology files (optional: .owl/.rdf/.ttl)</span>
-                      <input
-                        type="file"
-                        accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
-                        multiple
-                        onChange={(event) => {
-                          const files = Array.from(event.target.files ?? []);
-                          handleOntologyFileSelection(files);
-                          event.target.value = '';
-                        }}
-                      />
+                      <div className="file-source-combo">
+                        <input
+                          className="file-source-local-input"
+                          type="file"
+                          accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
+                          multiple
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files ?? []);
+                            handleOntologyFileSelection(files);
+                            event.target.value = '';
+                          }}
+                        />
+                        <div className="file-url-row">
+                          <input
+                            className="file-url-input"
+                            type="url"
+                            placeholder="or paste ontology URL"
+                            value={ontologyUrlInput}
+                            onChange={(event) => setOntologyUrlInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                handleOntologyUrlAdd();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="file-url-add"
+                            onClick={handleOntologyUrlAdd}
+                            disabled={isOntologyUrlLoading || isLoading || ontologyUrlInput.trim().length === 0}
+                          >
+                            {isOntologyUrlLoading ? 'Loading…' : 'Load URL'}
+                          </button>
+                        </div>
+                      </div>
                       <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
                     </label>
-                    <small className="muted">{isLoading ? 'Parsing and merging graph...' : 'Graph updates automatically when files are added.'}</small>
+                    <small className="muted">
+                      {isLoading
+                        ? 'Parsing and merging graph...'
+                        : 'Graph updates automatically when files are added.'}
+                    </small>
                   </div>
                 )}
               </section>
@@ -3117,7 +3911,7 @@ export default function App() {
                             <p className="muted">No explicit `rdf:type` triples detected.</p>
                           )}
                           {graphData &&
-                            graphData.classes.map((entry) => (
+                            classFilterEntries.map((entry) => (
                               <label key={entry.id} className="class-item">
                                 <input
                                   type="checkbox"
@@ -3902,6 +4696,20 @@ export default function App() {
           </>
         )}
       </div>
+
+      {isSourceHelpTooltipOpen && (
+        <div
+          className="section-help-tooltip-floating"
+          role="tooltip"
+          style={{
+            left: `${sourceHelpTooltipPosition.left}px`,
+            top: `${sourceHelpTooltipPosition.top}px`,
+            width: `${sourceHelpTooltipPosition.width}px`,
+          }}
+        >
+          {REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
+        </div>
+      )}
 
       <footer className="app-footer">
         Copyright © 2026 Rensselaer Polytechnic Institute | Tetherless World Constellation

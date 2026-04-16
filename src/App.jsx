@@ -1360,6 +1360,7 @@ export default function App() {
   const resizeStateRef = useRef(null);
   const hasAppliedInitialLayoutRef = useRef(false);
   const layoutPositionCacheRef = useRef(new Map());
+  const wasLightOntologyViewActiveRef = useRef(false);
   const groupDragStateRef = useRef(null);
   const groupDragArmRef = useRef(null);
   const shouldFitAfterFocusClearRef = useRef(false);
@@ -1871,6 +1872,14 @@ export default function App() {
       });
     });
   }, [graphData]);
+
+  useEffect(() => {
+    if (wasLightOntologyViewActiveRef.current && !isLightOntologyViewActive) {
+      hasAppliedInitialLayoutRef.current = false;
+      layoutPositionCacheRef.current.clear();
+    }
+    wasLightOntologyViewActiveRef.current = isLightOntologyViewActive;
+  }, [isLightOntologyViewActive]);
 
   useEffect(() => {
     if (!graphContainerRef.current) {
@@ -2698,6 +2707,17 @@ export default function App() {
       });
     });
     const isInitialLayout = !hasAppliedInitialLayoutRef.current;
+    const layoutSpacing = isLightOntologyViewActive
+      ? {
+          idealEdgeLength: 135,
+          edgeElasticity: 70,
+          nodeRepulsion: 26000,
+        }
+      : {
+          idealEdgeLength: 110,
+          edgeElasticity: 80,
+          nodeRepulsion: 20000,
+        };
 
     cy.batch(() => {
       cy.elements().remove();
@@ -2716,12 +2736,12 @@ export default function App() {
         animate: false,
         fit: true,
         padding: 42,
-        idealEdgeLength: 110,
-        edgeElasticity: 80,
-        nodeRepulsion: 20000,
+        idealEdgeLength: layoutSpacing.idealEdgeLength,
+        edgeElasticity: layoutSpacing.edgeElasticity,
+        nodeRepulsion: layoutSpacing.nodeRepulsion,
       }).run();
       if (isLightOntologyViewActive) {
-        nudgeNodesTowardLandscape(cy, 1.5);
+        nudgeNodesTowardLandscape(cy, 1.35);
       }
       positionReifiedStatementNodes(cy);
       cy.nodes().forEach((node) => {
@@ -2755,15 +2775,15 @@ export default function App() {
         animate: false,
         fit: false,
         randomize: false,
-        idealEdgeLength: 110,
-        edgeElasticity: 80,
-        nodeRepulsion: 20000,
+        idealEdgeLength: layoutSpacing.idealEdgeLength,
+        edgeElasticity: layoutSpacing.edgeElasticity,
+        nodeRepulsion: layoutSpacing.nodeRepulsion,
       }).run();
       lockedNodes.unlock();
     }
 
     if (isLightOntologyViewActive) {
-      nudgeNodesTowardLandscape(cy, 1.5);
+      nudgeNodesTowardLandscape(cy, 1.35);
     }
 
     positionReifiedStatementNodes(cy);

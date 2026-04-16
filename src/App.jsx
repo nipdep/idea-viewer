@@ -62,6 +62,11 @@ const MAX_GRAPH_FONT_SIZE = 18;
 const MAX_REMOTE_FILE_BYTES = 500 * 1024;
 const KG_ALLOWED_EXTENSIONS = new Set(['ttl', 'rdf', 'n3', 'nt', 'nq', 'trig']);
 const ONTOLOGY_ALLOWED_EXTENSIONS = new Set(['ttl', 'owl', 'rdf', 'n3', 'nt', 'nq', 'trig']);
+const REMOTE_LOAD_LIMIT_TOOLTIP_TEXT = [
+  'we only allows to dowload files under 500kb,',
+  'due to rendering limit and mirrorless file download support.',
+  'we estimate the 500kb file would contains roughly 5000 triplets, and since graph rendering completly happens at the client side, larger than 5000 triplet would result in signficant rendering lags',
+].join('\n');
 
 const { blankNode, defaultGraph, literal, namedNode, quad } = DataFactory;
 
@@ -3643,6 +3648,13 @@ export default function App() {
                     {leftSectionOpen.source ? '-' : '+'}
                   </button>
                   <h2>Source File</h2>
+                  <span
+                    className="section-help"
+                    aria-label="Remote file size guidance"
+                    title={REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
+                  >
+                    i
+                  </span>
                   <button
                     type="button"
                     className="section-clear"
@@ -3659,83 +3671,89 @@ export default function App() {
                   <div className="section-body">
                     <label className="file-control">
                       <span>KG files (optional: .ttl/.rdf/.n3/.nt/.nq/.trig)</span>
-                      <input
-                        type="file"
-                        accept=".ttl,.rdf,.n3,.nt,.nq,.trig"
-                        multiple
-                        onChange={(event) => {
-                          const files = Array.from(event.target.files ?? []);
-                          handleKgFileSelection(files);
-                          event.target.value = '';
-                        }}
-                      />
-                      <div className="file-url-row">
+                      <div className="file-source-combo">
                         <input
-                          className="file-url-input"
-                          type="url"
-                          placeholder="Or paste KG URL (max 500KB)"
-                          value={kgUrlInput}
-                          onChange={(event) => setKgUrlInput(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault();
-                              handleKgUrlAdd();
-                            }
+                          className="file-source-local-input"
+                          type="file"
+                          accept=".ttl,.rdf,.n3,.nt,.nq,.trig"
+                          multiple
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files ?? []);
+                            handleKgFileSelection(files);
+                            event.target.value = '';
                           }}
                         />
-                        <button
-                          type="button"
-                          className="file-url-add"
-                          onClick={handleKgUrlAdd}
-                          disabled={isKgUrlLoading || isLoading || kgUrlInput.trim().length === 0}
-                        >
-                          {isKgUrlLoading ? 'Loading…' : 'Load URL'}
-                        </button>
+                        <div className="file-url-row">
+                          <input
+                            className="file-url-input"
+                            type="url"
+                            placeholder="or paste KG URL"
+                            value={kgUrlInput}
+                            onChange={(event) => setKgUrlInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                handleKgUrlAdd();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="file-url-add"
+                            onClick={handleKgUrlAdd}
+                            disabled={isKgUrlLoading || isLoading || kgUrlInput.trim().length === 0}
+                          >
+                            {isKgUrlLoading ? 'Loading…' : 'Load URL'}
+                          </button>
+                        </div>
                       </div>
                       <small>{formatSelectedFiles(kgFiles, 'No KG files selected')}</small>
                     </label>
 
                     <label className="file-control">
                       <span>Ontology files (optional: .owl/.rdf/.ttl)</span>
-                      <input
-                        type="file"
-                        accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
-                        multiple
-                        onChange={(event) => {
-                          const files = Array.from(event.target.files ?? []);
-                          handleOntologyFileSelection(files);
-                          event.target.value = '';
-                        }}
-                      />
-                      <div className="file-url-row">
+                      <div className="file-source-combo">
                         <input
-                          className="file-url-input"
-                          type="url"
-                          placeholder="Or paste ontology URL (max 500KB)"
-                          value={ontologyUrlInput}
-                          onChange={(event) => setOntologyUrlInput(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault();
-                              handleOntologyUrlAdd();
-                            }
+                          className="file-source-local-input"
+                          type="file"
+                          accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
+                          multiple
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files ?? []);
+                            handleOntologyFileSelection(files);
+                            event.target.value = '';
                           }}
                         />
-                        <button
-                          type="button"
-                          className="file-url-add"
-                          onClick={handleOntologyUrlAdd}
-                          disabled={isOntologyUrlLoading || isLoading || ontologyUrlInput.trim().length === 0}
-                        >
-                          {isOntologyUrlLoading ? 'Loading…' : 'Load URL'}
-                        </button>
+                        <div className="file-url-row">
+                          <input
+                            className="file-url-input"
+                            type="url"
+                            placeholder="or paste ontology URL"
+                            value={ontologyUrlInput}
+                            onChange={(event) => setOntologyUrlInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                handleOntologyUrlAdd();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="file-url-add"
+                            onClick={handleOntologyUrlAdd}
+                            disabled={isOntologyUrlLoading || isLoading || ontologyUrlInput.trim().length === 0}
+                          >
+                            {isOntologyUrlLoading ? 'Loading…' : 'Load URL'}
+                          </button>
+                        </div>
                       </div>
                       <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
                     </label>
                     <small className="muted">
                       {isLoading
                         ? 'Parsing and merging graph...'
-                        : `Graph updates automatically when files are added. URL imports are validated and limited to ${toReadableFileSize(MAX_REMOTE_FILE_BYTES)}.`}
+                        : 'Graph updates automatically when files are added.'}
                     </small>
                   </div>
                 )}

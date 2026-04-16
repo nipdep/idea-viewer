@@ -447,6 +447,24 @@ textarea {
   flex: 1;
 }
 
+.section-help {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #f4efe8;
+  color: #5a524a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+}
+
 .section-toggle {
   width: 18px;
   height: 18px;
@@ -556,6 +574,23 @@ textarea {
   padding: 6px;
   background: #fff;
   width: 100%;
+}
+
+.file-source-combo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 8px;
+}
+
+.file-source-local-input {
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
 }
 
 .file-control small,

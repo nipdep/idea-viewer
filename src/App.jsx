@@ -1115,6 +1115,7 @@ export default function App() {
   const detachedPanModeRef = useRef(false);
   const detachedPanLastMouseRef = useRef(null);
   const suppressNextTapRef = useRef(false);
+  const graphZoomSpeedRef = useRef(DEFAULT_GRAPH_ZOOM_SPEED);
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -1615,6 +1616,7 @@ export default function App() {
       container: graphContainerRef.current,
       elements: [],
       wheelSensitivity: DEFAULT_GRAPH_ZOOM_SPEED,
+      userZoomingEnabled: false,
       style: [
         {
           selector: 'node',
@@ -2227,10 +2229,44 @@ export default function App() {
       }
     };
 
+    const wheelOptions = { passive: false };
+    const onWheel = (event) => {
+      if (detachedPanModeRef.current) {
+        event.preventDefault();
+        return;
+      }
+
+      event.preventDefault();
+
+      const deltaMultiplier =
+        event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? Math.max(1, container.clientHeight) : 1;
+      const deltaY = event.deltaY * deltaMultiplier;
+      const speed = Math.max(MIN_GRAPH_ZOOM_SPEED, Math.min(MAX_GRAPH_ZOOM_SPEED, graphZoomSpeedRef.current));
+      const zoomFactor = Math.exp(-deltaY * speed * 0.0045);
+      const currentZoom = cy.zoom();
+      const minZoom = cy.minZoom();
+      const maxZoom = cy.maxZoom();
+      const nextZoom = Math.max(minZoom, Math.min(maxZoom, currentZoom * zoomFactor));
+
+      if (nextZoom === currentZoom) {
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      cy.zoom({
+        level: nextZoom,
+        renderedPosition: {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+        },
+      });
+    };
+
     container.addEventListener('mousedown', onMouseDownCapture, true);
     container.addEventListener('mousemove', onMouseMove);
     container.addEventListener('mouseleave', onMouseLeave);
     container.addEventListener('contextmenu', onContextMenu);
+    container.addEventListener('wheel', onWheel, wheelOptions);
 
     cyRef.current = cy;
 
@@ -2239,6 +2275,7 @@ export default function App() {
       container.removeEventListener('mousemove', onMouseMove);
       container.removeEventListener('mouseleave', onMouseLeave);
       container.removeEventListener('contextmenu', onContextMenu);
+      container.removeEventListener('wheel', onWheel, wheelOptions);
       groupDragStateRef.current = null;
       groupDragArmRef.current = null;
       shouldFitAfterFocusClearRef.current = false;
@@ -2343,6 +2380,7 @@ export default function App() {
 
     const clampedZoomSpeed = Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, graphZoomSpeed));
     const clampedFontSize = Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, graphFontSize));
+    graphZoomSpeedRef.current = clampedZoomSpeed;
 
     if (cy._private?.options) {
       cy._private.options.wheelSensitivity = clampedZoomSpeed;

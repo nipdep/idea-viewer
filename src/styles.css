@@ -564,6 +564,37 @@ textarea {
   font-size: 0.9rem;
 }
 
+.file-url-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.file-url-input {
+  width: 100%;
+}
+
+.file-url-add {
+  padding: 7px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.file-url-add:hover:not(:disabled) {
+  border-color: rgba(42, 111, 110, 0.34);
+  color: #1f5f5e;
+  box-shadow: 0 8px 16px rgba(30, 27, 22, 0.09);
+}
+
 button {
   border: none;
   background: var(--accent);

@@ -59,6 +59,9 @@ const MAX_GRAPH_ZOOM_SPEED = 0.8;
 const DEFAULT_GRAPH_FONT_SIZE = 10;
 const MIN_GRAPH_FONT_SIZE = 8;
 const MAX_GRAPH_FONT_SIZE = 18;
+const MAX_REMOTE_FILE_BYTES = 500 * 1024;
+const KG_ALLOWED_EXTENSIONS = new Set(['ttl', 'rdf', 'n3', 'nt', 'nq', 'trig']);
+const ONTOLOGY_ALLOWED_EXTENSIONS = new Set(['ttl', 'owl', 'rdf', 'n3', 'nt', 'nq', 'trig']);
 
 const { blankNode, defaultGraph, literal, namedNode, quad } = DataFactory;
 
@@ -110,6 +113,240 @@ function sanitizeFilenameSegment(value) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return normalized || 'view';
+}
+
+function getFileExtension(fileName) {
+  const normalized = String(fileName || '').trim();
+  const dotIndex = normalized.lastIndexOf('.');
+  if (dotIndex <= 0 || dotIndex >= normalized.length - 1) {
+    return '';
+  }
+  return normalized.slice(dotIndex + 1).toLowerCase();
+}
+
+function parseFilenameFromContentDisposition(contentDisposition) {
+  if (!contentDisposition) {
+    return '';
+  }
+
+  const filenameStarMatch = contentDisposition.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i);
+  if (filenameStarMatch?.[1]) {
+    const rawValue = filenameStarMatch[1].trim().replace(/^"|"$/g, '');
+    try {
+      return decodeURIComponent(rawValue);
+    } catch {
+      return rawValue;
+    }
+  }
+
+  const filenameMatch = contentDisposition.match(/filename\s*=\s*([^;]+)/i);
+  if (filenameMatch?.[1]) {
+    return filenameMatch[1].trim().replace(/^"|"$/g, '');
+  }
+
+  return '';
+}
+
+function inferExtensionFromContentType(contentType) {
+  const normalized = String(contentType || '').split(';')[0].trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized === 'application/rdf+xml') return 'rdf';
+  if (normalized === 'text/turtle') return 'ttl';
+  if (normalized === 'application/n-triples') return 'nt';
+  if (normalized === 'application/n-quads') return 'nq';
+  if (normalized === 'application/trig') return 'trig';
+  if (normalized === 'text/n3' || normalized === 'application/n3') return 'n3';
+  return '';
+}
+
+function toReadableFileSize(byteCount) {
+  if (!Number.isFinite(byteCount) || byteCount <= 0) {
+    return '0 B';
+  }
+  if (byteCount < 1024) {
+    return `${byteCount} B`;
+  }
+  return `${(byteCount / 1024).toFixed(1)} KB`;
+}
+
+function parseAndValidateRemoteUrl(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) {
+    throw new Error('Paste a URL before adding.');
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('Invalid URL. Use a full http(s) URL.');
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only http:// or https:// URLs are supported.');
+  }
+
+  return parsed;
+}
+
+function ensureAllowedRemoteExtension(fileName, allowedExtensions, roleLabel) {
+  const extension = getFileExtension(fileName);
+  if (!extension || !allowedExtensions.has(extension)) {
+    const expected = Array.from(allowedExtensions).map((ext) => `.${ext}`).join(', ');
+    throw new Error(`Unsupported ${roleLabel} URL file type for ${fileName}. Allowed: ${expected}`);
+  }
+}
+
+function deriveFilenameFromUrl(url) {
+  const pathTail = url.pathname.split('/').filter(Boolean).pop() || '';
+  if (!pathTail) {
+    return '';
+  }
+  try {
+    return decodeURIComponent(pathTail);
+  } catch {
+    return pathTail;
+  }
+}
+
+async function readResponseBytesWithLimit(response, maxBytes, abortController) {
+  const contentLengthHeader = response.headers.get('content-length');
+  if (contentLengthHeader) {
+    const declaredBytes = Number.parseInt(contentLengthHeader, 10);
+    if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
+      throw new Error(
+        `Remote file is too large (${toReadableFileSize(declaredBytes)}). Maximum allowed is ${toReadableFileSize(maxBytes)}.`,
+      );
+    }
+  }
+
+  if (!response.body) {
+    const fallbackBuffer = await response.arrayBuffer();
+    if (fallbackBuffer.byteLength > maxBytes) {
+      throw new Error(
+        `Remote file is too large (${toReadableFileSize(fallbackBuffer.byteLength)}). Maximum allowed is ${toReadableFileSize(maxBytes)}.`,
+      );
+    }
+    return new Uint8Array(fallbackBuffer);
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    if (!value || value.length === 0) {
+      continue;
+    }
+
+    totalBytes += value.length;
+    if (totalBytes > maxBytes) {
+      abortController.abort();
+      throw new Error(
+        `Remote file is too large (exceeded ${toReadableFileSize(maxBytes)} limit while downloading).`,
+      );
+    }
+    chunks.push(value);
+  }
+
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return merged;
+}
+
+async function downloadRemoteRdfFile(rawUrl, role = 'kg') {
+  const url = parseAndValidateRemoteUrl(rawUrl);
+  const allowedExtensions = role === 'ontology' ? ONTOLOGY_ALLOWED_EXTENSIONS : KG_ALLOWED_EXTENSIONS;
+  const roleLabel = role === 'ontology' ? 'ontology' : 'KG';
+  const urlString = url.toString();
+
+  let headFilename = '';
+  let headContentType = '';
+  try {
+    const headResponse = await fetch(urlString, { method: 'HEAD', redirect: 'follow', cache: 'no-store' });
+    if (headResponse.ok && headResponse.type !== 'opaque') {
+      const headLength = Number.parseInt(headResponse.headers.get('content-length') || '', 10);
+      if (Number.isFinite(headLength) && headLength > MAX_REMOTE_FILE_BYTES) {
+        throw new Error(
+          `Remote file is too large (${toReadableFileSize(headLength)}). Maximum allowed is ${toReadableFileSize(MAX_REMOTE_FILE_BYTES)}.`,
+        );
+      }
+      headFilename = parseFilenameFromContentDisposition(headResponse.headers.get('content-disposition'));
+      headContentType = headResponse.headers.get('content-type') || '';
+    }
+  } catch (error) {
+    if (error instanceof Error && /too large/i.test(error.message)) {
+      throw error;
+    }
+    // HEAD may be blocked or unsupported on some hosts; validation continues with GET.
+  }
+
+  const abortController = new AbortController();
+  const response = await fetch(urlString, {
+    method: 'GET',
+    redirect: 'follow',
+    cache: 'no-store',
+    signal: abortController.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download URL: HTTP ${response.status} ${response.statusText || ''}`.trim());
+  }
+
+  if (response.type === 'opaque') {
+    throw new Error('URL download blocked by CORS. Host must allow cross-origin GET for this file.');
+  }
+
+  const contentType = response.headers.get('content-type') || headContentType || '';
+  if (/text\/html/i.test(contentType)) {
+    throw new Error('URL points to HTML, not a downloadable RDF/KG file.');
+  }
+
+  let fileName = parseFilenameFromContentDisposition(response.headers.get('content-disposition')) || headFilename;
+  if (!fileName) {
+    fileName = deriveFilenameFromUrl(url) || `remote-${role}.ttl`;
+  }
+
+  let extension = getFileExtension(fileName);
+  if (!extension) {
+    const inferredExtension = inferExtensionFromContentType(contentType) || (role === 'ontology' ? 'owl' : 'ttl');
+    fileName = `${fileName}.${inferredExtension}`;
+    extension = inferredExtension;
+  }
+
+  ensureAllowedRemoteExtension(fileName, allowedExtensions, roleLabel);
+
+  const bytes = await readResponseBytesWithLimit(response, MAX_REMOTE_FILE_BYTES, abortController);
+  if (bytes.length === 0) {
+    throw new Error('Downloaded file is empty.');
+  }
+  const text = new TextDecoder('utf-8').decode(bytes);
+  const remoteFile = new File([text], fileName, {
+    type: contentType.split(';')[0] || 'text/plain',
+    lastModified: Date.now(),
+  });
+
+  Object.defineProperty(remoteFile, '__sourceUrl', {
+    value: urlString,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+
+  return remoteFile;
 }
 
 function formatExportTimestamp(date = new Date()) {
@@ -753,9 +990,17 @@ function mergeSelectedFiles(currentFiles, incomingFiles) {
     return currentFiles;
   }
 
-  const deduped = new Map(currentFiles.map((file) => [`${file.name}-${file.size}-${file.lastModified}`, file]));
+  const getFileKey = (file) => {
+    const sourceUrl = typeof file?.__sourceUrl === 'string' ? file.__sourceUrl : '';
+    if (sourceUrl) {
+      return `url:${sourceUrl}`;
+    }
+    return `${file.name}-${file.size}-${file.lastModified}`;
+  };
+
+  const deduped = new Map(currentFiles.map((file) => [getFileKey(file), file]));
   for (const file of incomingFiles) {
-    deduped.set(`${file.name}-${file.size}-${file.lastModified}`, file);
+    deduped.set(getFileKey(file), file);
   }
 
   return Array.from(deduped.values());
@@ -1160,6 +1405,10 @@ export default function App() {
   const [isLightOntologyView, setIsLightOntologyView] = useState(false);
   const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
   const [graphFontSize, setGraphFontSize] = useState(DEFAULT_GRAPH_FONT_SIZE);
+  const [kgUrlInput, setKgUrlInput] = useState('');
+  const [ontologyUrlInput, setOntologyUrlInput] = useState('');
+  const [isKgUrlLoading, setIsKgUrlLoading] = useState(false);
+  const [isOntologyUrlLoading, setIsOntologyUrlLoading] = useState(false);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
@@ -2736,6 +2985,10 @@ export default function App() {
     setIsLightOntologyView(false);
     setIsExportMenuOpen(false);
     setOntologyMetadataRows([]);
+    setKgUrlInput('');
+    setOntologyUrlInput('');
+    setIsKgUrlLoading(false);
+    setIsOntologyUrlLoading(false);
     setLoadError('');
     setFilterError('');
     setStatus(DEFAULT_STATUS);
@@ -2765,6 +3018,46 @@ export default function App() {
     setOntologyFiles((current) => mergeSelectedFiles(current, files));
   }
 
+  async function handleKgUrlAdd() {
+    const rawUrl = kgUrlInput.trim();
+    if (!rawUrl || isKgUrlLoading) {
+      return;
+    }
+
+    setIsKgUrlLoading(true);
+    setLoadError('');
+    try {
+      const file = await downloadRemoteRdfFile(rawUrl, 'kg');
+      handleKgFileSelection([file]);
+      setKgUrlInput('');
+      setStatus(`Loaded KG URL: ${rawUrl}`);
+    } catch (error) {
+      setLoadError(error.message || 'Failed to download KG URL.');
+    } finally {
+      setIsKgUrlLoading(false);
+    }
+  }
+
+  async function handleOntologyUrlAdd() {
+    const rawUrl = ontologyUrlInput.trim();
+    if (!rawUrl || isOntologyUrlLoading) {
+      return;
+    }
+
+    setIsOntologyUrlLoading(true);
+    setLoadError('');
+    try {
+      const file = await downloadRemoteRdfFile(rawUrl, 'ontology');
+      handleOntologyFileSelection([file]);
+      setOntologyUrlInput('');
+      setStatus(`Loaded ontology URL: ${rawUrl}`);
+    } catch (error) {
+      setLoadError(error.message || 'Failed to download ontology URL.');
+    } finally {
+      setIsOntologyUrlLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
       setGraphData(null);
@@ -2780,6 +3073,8 @@ export default function App() {
       setLoadError('');
       setFilterError('');
       setIsLoading(false);
+      setIsKgUrlLoading(false);
+      setIsOntologyUrlLoading(false);
       setStatus(DEFAULT_STATUS);
       return;
     }
@@ -3374,6 +3669,29 @@ export default function App() {
                           event.target.value = '';
                         }}
                       />
+                      <div className="file-url-row">
+                        <input
+                          className="file-url-input"
+                          type="url"
+                          placeholder="Or paste KG URL (max 500KB)"
+                          value={kgUrlInput}
+                          onChange={(event) => setKgUrlInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleKgUrlAdd();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="file-url-add"
+                          onClick={handleKgUrlAdd}
+                          disabled={isKgUrlLoading || isLoading || kgUrlInput.trim().length === 0}
+                        >
+                          {isKgUrlLoading ? 'Loading…' : 'Load URL'}
+                        </button>
+                      </div>
                       <small>{formatSelectedFiles(kgFiles, 'No KG files selected')}</small>
                     </label>
 
@@ -3389,9 +3707,36 @@ export default function App() {
                           event.target.value = '';
                         }}
                       />
+                      <div className="file-url-row">
+                        <input
+                          className="file-url-input"
+                          type="url"
+                          placeholder="Or paste ontology URL (max 500KB)"
+                          value={ontologyUrlInput}
+                          onChange={(event) => setOntologyUrlInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleOntologyUrlAdd();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="file-url-add"
+                          onClick={handleOntologyUrlAdd}
+                          disabled={isOntologyUrlLoading || isLoading || ontologyUrlInput.trim().length === 0}
+                        >
+                          {isOntologyUrlLoading ? 'Loading…' : 'Load URL'}
+                        </button>
+                      </div>
                       <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
                     </label>
-                    <small className="muted">{isLoading ? 'Parsing and merging graph...' : 'Graph updates automatically when files are added.'}</small>
+                    <small className="muted">
+                      {isLoading
+                        ? 'Parsing and merging graph...'
+                        : `Graph updates automatically when files are added. URL imports are validated and limited to ${toReadableFileSize(MAX_REMOTE_FILE_BYTES)}.`}
+                    </small>
                   </div>
                 )}
               </section>

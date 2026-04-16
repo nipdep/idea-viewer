@@ -563,6 +563,8 @@ export function compactIri(iri) {
 const NODE_TEXT_LINE_LENGTH = 26;
 const NODE_TEXT_TRUNCATE_AT = 220;
 const NODE_TEXT_MAX_LINES = 12;
+const NODE_BOX_PADDING_X = 6;
+const NODE_BOX_PADDING_Y = 4;
 
 export function makeDisplayLabel(label, maxLineLength = NODE_TEXT_LINE_LENGTH, truncateAt = NODE_TEXT_TRUNCATE_AT) {
   if (!label) {
@@ -640,9 +642,9 @@ function computeNodeMetrics(displayLabel) {
     }
   }
 
-  const nodeWidth = Math.max(64, Math.min(214, Math.round(maxLineLength * 6.2 + 26)));
-  const nodeHeight = Math.max(34, Math.min(176, Math.round(lineCount * 16 + 14)));
-  const textMaxWidth = Math.max(48, nodeWidth - 16);
+  const nodeWidth = Math.max(64, Math.min(214, Math.round(maxLineLength * 6.2 + NODE_BOX_PADDING_X * 2)));
+  const nodeHeight = Math.max(34, Math.min(176, Math.round(lineCount * 16 + NODE_BOX_PADDING_Y * 2)));
+  const textMaxWidth = Math.max(48, nodeWidth - NODE_BOX_PADDING_X * 2);
 
   return {
     nodeWidth,

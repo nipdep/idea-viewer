@@ -1633,7 +1633,7 @@ export default function App() {
             'border-color': '#7e6f60',
             width: 'data(nodeWidth)',
             height: 'data(nodeHeight)',
-            padding: '6px',
+            padding: '3px',
           },
         },
         {

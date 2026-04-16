@@ -512,15 +512,23 @@ function getBaseIri(iri) {
 
 export function getTermId(term) {
   if (!term) {
-    return '';
+    return 'term:missing';
   }
 
   if (term.termType === 'NamedNode') {
-    return term.value;
+    const value = String(term.value ?? '');
+    if (value) {
+      return value;
+    }
+    return `term:named:${hashText(formatTermValue(term))}`;
   }
 
   if (term.termType === 'BlankNode') {
-    return `_:${term.value}`;
+    const value = String(term.value ?? '');
+    if (value) {
+      return `_:${value}`;
+    }
+    return `_:blank-${hashText(formatTermValue(term))}`;
   }
 
   if (term.termType === 'Literal') {
@@ -531,7 +539,7 @@ export function getTermId(term) {
     return `stmt:${hashText(formatTermValue(term))}`;
   }
 
-  return `term:${hashText(term.value ?? '')}`;
+  return `term:${hashText(formatTermValue(term))}`;
 }
 
 export function compactIri(iri) {
@@ -1148,7 +1156,11 @@ export function parseRdfText(text, fileName) {
     return normalizeParsedQuads(parseRdfXml(text, fileName), format);
   }
 
-  const parser = createPatchedParser({ format });
+  const safeFileName = encodeURIComponent(fileName || 'uploaded.rdf');
+  const parser = createPatchedParser({
+    format,
+    baseIRI: `https://idea-viewer.local/${safeFileName}`,
+  });
   return normalizeParsedQuads(parser.parse(text), format);
 }
 
@@ -2434,8 +2446,9 @@ export function buildGraphData(quads, options = {}) {
 }
 
 export function toElements(nodes, edges) {
-  return [
-    ...nodes.map((node) => ({
+  const safeNodes = (nodes || [])
+    .filter((node) => typeof node?.id === 'string' && node.id.length > 0)
+    .map((node) => ({
       data: {
         id: node.id,
         label: node.displayLabel,
@@ -2473,8 +2486,22 @@ export function toElements(nodes, edges) {
         classTooltip: node.classTooltip ?? '',
         lightOntologyView: node.lightOntologyView ?? 0,
       },
-    })),
-    ...edges.map((edge) => ({
+    }));
+
+  const visibleNodeIds = new Set(safeNodes.map((node) => node.data.id));
+  const safeEdges = (edges || [])
+    .filter(
+      (edge) =>
+        typeof edge?.id === 'string' &&
+        edge.id.length > 0 &&
+        typeof edge?.source === 'string' &&
+        edge.source.length > 0 &&
+        typeof edge?.target === 'string' &&
+        edge.target.length > 0 &&
+        visibleNodeIds.has(edge.source) &&
+        visibleNodeIds.has(edge.target),
+    )
+    .map((edge) => ({
       data: {
         id: edge.id,
         source: edge.source,
@@ -2490,8 +2517,9 @@ export function toElements(nodes, edges) {
         lightRestrictionEdge: edge.lightRestrictionEdge ?? 0,
         lightOntologyView: edge.lightOntologyView ?? 0,
       },
-    })),
-  ];
+    }));
+
+  return [...safeNodes, ...safeEdges];
 }
 
 function normalizeViewOptions(viewOptions) {

@@ -1348,6 +1348,7 @@ function modelHasOntologySchema(model) {
 export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
+  const sourceHelpButtonRef = useRef(null);
   const previousFocusedNodeIdRef = useRef(null);
   const previousFocusedNodeIdsRef = useRef([]);
   const focusedNodeIdRef = useRef(null);
@@ -1407,6 +1408,8 @@ export default function App() {
   const [isLegendOpen, setIsLegendOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSourceHelpTooltipOpen, setIsSourceHelpTooltipOpen] = useState(false);
+  const [sourceHelpTooltipPosition, setSourceHelpTooltipPosition] = useState({ left: 8, top: 8, width: 280 });
   const [isLightOntologyView, setIsLightOntologyView] = useState(false);
   const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
   const [graphFontSize, setGraphFontSize] = useState(DEFAULT_GRAPH_FONT_SIZE);
@@ -2606,6 +2609,26 @@ export default function App() {
   }, [isExportMenuOpen]);
 
   useEffect(() => {
+    if (!isSourceHelpTooltipOpen) {
+      return undefined;
+    }
+
+    const closeTooltip = () => setIsSourceHelpTooltipOpen(false);
+    window.addEventListener('resize', closeTooltip);
+    window.addEventListener('scroll', closeTooltip, true);
+    return () => {
+      window.removeEventListener('resize', closeTooltip);
+      window.removeEventListener('scroll', closeTooltip, true);
+    };
+  }, [isSourceHelpTooltipOpen]);
+
+  useEffect(() => {
+    if (!leftSectionOpen.source || leftCollapsed || (isGraphFullscreen && !leftFlyoutOpen)) {
+      setIsSourceHelpTooltipOpen(false);
+    }
+  }, [leftSectionOpen.source, leftCollapsed, isGraphFullscreen, leftFlyoutOpen]);
+
+  useEffect(() => {
     if (!isSettingsOpen) {
       return undefined;
     }
@@ -2997,6 +3020,7 @@ export default function App() {
     setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
     setIsLightOntologyView(false);
     setIsExportMenuOpen(false);
+    setIsSourceHelpTooltipOpen(false);
     setOntologyMetadataRows([]);
     setKgUrlInput('');
     setOntologyUrlInput('');
@@ -3331,6 +3355,26 @@ export default function App() {
     });
   }
 
+  function openSourceHelpTooltip() {
+    const button = sourceHelpButtonRef.current;
+    if (!button) {
+      return;
+    }
+
+    const rect = button.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || 1200;
+    const tooltipWidth = Math.min(320, Math.max(240, viewportWidth - 24));
+    const left = Math.min(Math.max(8, rect.right - tooltipWidth), Math.max(8, viewportWidth - tooltipWidth - 8));
+    const top = rect.bottom + 8;
+
+    setSourceHelpTooltipPosition({ left, top, width: tooltipWidth });
+    setIsSourceHelpTooltipOpen(true);
+  }
+
+  function closeSourceHelpTooltip() {
+    setIsSourceHelpTooltipOpen(false);
+  }
+
   function toggleLeftSection(sectionKey) {
     setLeftSectionOpen((current) => ({
       ...current,
@@ -3658,10 +3702,14 @@ export default function App() {
                   <h2>Source File</h2>
                   <button
                     type="button"
+                    ref={sourceHelpButtonRef}
                     className="section-help"
                     aria-label="Remote file size guidance"
-                    data-tooltip={REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
                     title={REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
+                    onMouseEnter={openSourceHelpTooltip}
+                    onMouseLeave={closeSourceHelpTooltip}
+                    onFocus={openSourceHelpTooltip}
+                    onBlur={closeSourceHelpTooltip}
                   >
                     i
                   </button>
@@ -4648,6 +4696,20 @@ export default function App() {
           </>
         )}
       </div>
+
+      {isSourceHelpTooltipOpen && (
+        <div
+          className="section-help-tooltip-floating"
+          role="tooltip"
+          style={{
+            left: `${sourceHelpTooltipPosition.left}px`,
+            top: `${sourceHelpTooltipPosition.top}px`,
+            width: `${sourceHelpTooltipPosition.width}px`,
+          }}
+        >
+          {REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
+        </div>
+      )}
 
       <footer className="app-footer">
         Copyright © 2026 Rensselaer Polytechnic Institute | Tetherless World Constellation

@@ -480,12 +480,8 @@ textarea {
   outline-offset: 1px;
 }
 
-.section-help::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: min(288px, calc(100vw - 48px));
+.section-help-tooltip-floating {
+  position: fixed;
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid rgba(30, 27, 22, 0.2);
@@ -499,18 +495,8 @@ textarea {
   text-transform: none;
   white-space: pre-line;
   pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-2px);
-  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
-  z-index: 22;
-}
-
-.section-help:hover::after,
-.section-help:focus-visible::after {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
+  box-shadow: 0 10px 22px rgba(30, 27, 22, 0.12);
+  z-index: 80;
 }
 
 .section-toggle {

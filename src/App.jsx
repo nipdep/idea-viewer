@@ -1360,6 +1360,7 @@ export default function App() {
   const resizeStateRef = useRef(null);
   const hasAppliedInitialLayoutRef = useRef(false);
   const layoutPositionCacheRef = useRef(new Map());
+  const wasLightOntologyViewActiveRef = useRef(false);
   const groupDragStateRef = useRef(null);
   const groupDragArmRef = useRef(null);
   const shouldFitAfterFocusClearRef = useRef(false);
@@ -1871,6 +1872,14 @@ export default function App() {
       });
     });
   }, [graphData]);
+
+  useEffect(() => {
+    if (wasLightOntologyViewActiveRef.current && !isLightOntologyViewActive) {
+      hasAppliedInitialLayoutRef.current = false;
+      layoutPositionCacheRef.current.clear();
+    }
+    wasLightOntologyViewActiveRef.current = isLightOntologyViewActive;
+  }, [isLightOntologyViewActive]);
 
   useEffect(() => {
     if (!graphContainerRef.current) {
@@ -2698,6 +2707,17 @@ export default function App() {
       });
     });
     const isInitialLayout = !hasAppliedInitialLayoutRef.current;
+    const layoutSpacing = isLightOntologyViewActive
+      ? {
+          idealEdgeLength: 135,
+          edgeElasticity: 70,
+          nodeRepulsion: 26000,
+        }
+      : {
+          idealEdgeLength: 110,
+          edgeElasticity: 80,
+          nodeRepulsion: 20000,
+        };
 
     cy.batch(() => {
       cy.elements().remove();
@@ -2716,12 +2736,12 @@ export default function App() {
         animate: false,
         fit: true,
         padding: 42,
-        idealEdgeLength: 110,
-        edgeElasticity: 80,
-        nodeRepulsion: 20000,
+        idealEdgeLength: layoutSpacing.idealEdgeLength,
+        edgeElasticity: layoutSpacing.edgeElasticity,
+        nodeRepulsion: layoutSpacing.nodeRepulsion,
       }).run();
       if (isLightOntologyViewActive) {
-        nudgeNodesTowardLandscape(cy, 1.5);
+        nudgeNodesTowardLandscape(cy, 1.35);
       }
       positionReifiedStatementNodes(cy);
       cy.nodes().forEach((node) => {
@@ -2755,15 +2775,15 @@ export default function App() {
         animate: false,
         fit: false,
         randomize: false,
-        idealEdgeLength: 110,
-        edgeElasticity: 80,
-        nodeRepulsion: 20000,
+        idealEdgeLength: layoutSpacing.idealEdgeLength,
+        edgeElasticity: layoutSpacing.edgeElasticity,
+        nodeRepulsion: layoutSpacing.nodeRepulsion,
       }).run();
       lockedNodes.unlock();
     }
 
     if (isLightOntologyViewActive) {
-      nudgeNodesTowardLandscape(cy, 1.5);
+      nudgeNodesTowardLandscape(cy, 1.35);
     }
 
     positionReifiedStatementNodes(cy);
@@ -3590,16 +3610,15 @@ export default function App() {
               title={settingsButtonLabel}
               aria-pressed={isSettingsOpen}
             >
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="12" cy="12" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              <svg viewBox="0 0 24 24" aria-hidden="true" style={{ fill: 'none' }}>
+                <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.8" />
                 <path
-                  d="M12 2.8V5M12 19V21.2M21.2 12H19M5 12H2.8M18.5 5.5L16.9 7.1M7.1 16.9L5.5 18.5M18.5 18.5L16.9 16.9M7.1 7.1L5.5 5.5"
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"
                   stroke="currentColor"
                   strokeWidth="1.6"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
-                <circle cx="12" cy="12" r="2.8" fill="currentColor" />
               </svg>
             </button>
 

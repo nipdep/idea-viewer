@@ -2695,45 +2695,29 @@ export default function App() {
           'background-color': '#ffffff',
           color: '#000000',
           'border-color': '#000000',
-          'border-width': 1.2,
+          'border-width': 1.4,
+          'border-style': 'solid',
         })
-        .selector('node[kind = "literal"]')
+        .selector('node[hasClass > 0][entityCategory != "class-expression"]')
         .style({
-          'background-color': '#000000',
-          color: '#ffffff',
-          'border-color': '#ffffff',
-        })
-        .selector('node[entityCategory = "datatype"]')
-        .style({
-          'background-color': '#f2f2f2',
-          color: '#000000',
-          'border-color': '#000000',
-        })
-        .selector('node[entityCategory = "data-property"]')
-        .style({
-          'background-color': '#d9d9d9',
-          color: '#000000',
-          'border-color': '#000000',
-        })
-        .selector('node[entityCategory = "object-property"]')
-        .style({
-          'background-color': '#cfcfcf',
-          color: '#000000',
-          'border-color': '#000000',
+          'background-image': 'none',
+          'background-image-opacity': 0,
+          'background-width': 0,
+          'background-height': 0,
+          'background-offset-x': 0,
+          'background-offset-y': 0,
+          'bounds-expansion': 8,
         })
         .selector('node[entityCategory = "annotation-property"]')
         .style({
-          'background-color': '#ebebeb',
-          color: '#000000',
-          'border-color': '#000000',
           'border-style': 'dashed',
         })
         .selector('node[entityCategory = "class-expression"]')
         .style({
-          'background-color': '#f7f7f7',
+          'background-color': '#ffffff',
           color: '#000000',
-          'border-color': '#111111',
-          'border-width': 2,
+          'border-color': '#000000',
+          'border-width': 1.8,
         })
         .selector('node[lightOntologyView = 1]')
         .style({
@@ -2742,51 +2726,15 @@ export default function App() {
           'border-color': '#000000',
           'border-style': 'solid',
         })
-        .selector('node[lightOntologyView = 1][entityCategory = "class"]')
-        .style({
-          'background-color': '#ffffff',
-          'border-color': '#000000',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "object-property"]')
-        .style({
-          'background-color': '#d9d9d9',
-          'border-color': '#000000',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "data-property"]')
-        .style({
-          'background-color': '#cfcfcf',
-          'border-color': '#000000',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "annotation-property"]')
-        .style({
-          'background-color': '#ececec',
-          'border-color': '#000000',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "individual"]')
-        .style({
-          'background-color': '#ededed',
-          'border-color': '#000000',
-        })
-        .selector('node[lightOntologyView = 1][kind = "literal"]')
-        .style({
-          'background-color': '#000000',
-          color: '#ffffff',
-          'border-color': '#ffffff',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "datatype"]')
-        .style({
-          'background-color': '#f2f2f2',
-          'border-color': '#000000',
-        })
         .selector('node[mixedMode = 1][isOntologyNode = 1]')
         .style({
-          'background-color': '#e6e6e6',
+          'background-color': '#ffffff',
           'border-color': '#000000',
           color: '#000000',
         })
         .selector('node[kind = "blank"]')
         .style({
-          'background-color': '#f3f3f3',
+          'background-color': '#ffffff',
           'border-color': '#000000',
           color: '#000000',
         })
@@ -2801,60 +2749,62 @@ export default function App() {
           color: '#000000',
           'text-background-color': '#ffffff',
           'text-border-color': '#000000',
-          'line-color': '#000000',
-          'target-arrow-color': '#000000',
-          opacity: 0.94,
+          'text-border-width': 0.8,
+          'line-color': '#ffffff',
+          'target-arrow-color': '#ffffff',
+          width: 1.6,
+          opacity: 0.96,
         })
         .selector('edge[category = "reification"]')
         .style({
-          'line-color': '#000000',
-          'target-arrow-color': '#000000',
+          'line-color': '#ffffff',
+          'target-arrow-color': '#ffffff',
           color: '#000000',
         })
         .selector('edge[reifiedOnly = 1]')
         .style({
           'line-style': 'dashed',
-          opacity: 0.88,
+          opacity: 0.9,
         })
         .selector('edge[lightOntologyView = 1]')
         .style({
-          'line-color': '#000000',
-          'target-arrow-color': '#000000',
+          'line-color': '#ffffff',
+          'target-arrow-color': '#ffffff',
           color: '#000000',
         })
         .selector('edge[lightOntologyView = 1][lightRestrictionEdge = 1]')
         .style({
-          'line-color': '#000000',
-          'target-arrow-color': '#000000',
+          'line-color': '#ffffff',
+          'target-arrow-color': '#ffffff',
           color: '#000000',
           'text-background-color': '#ffffff',
           'text-border-color': '#000000',
         })
         .selector('.focus-node')
         .style({
-          'border-color': '#000000',
-          'background-color': '#ffffff',
-          color: '#000000',
+          'border-color': '#ffffff',
+          'background-color': '#000000',
+          color: '#ffffff',
         })
         .selector('.focus-neighbor')
         .style({
-          'border-color': '#000000',
+          'border-color': '#ffffff',
         })
         .selector('.focus-edge')
         .style({
-          'line-color': '#000000',
-          'target-arrow-color': '#000000',
+          'line-color': '#ffffff',
+          'target-arrow-color': '#ffffff',
         })
         .selector('.selected-relation')
         .style({
-          'line-color': '#000000',
-          'target-arrow-color': '#000000',
+          'line-color': '#ffffff',
+          'target-arrow-color': '#ffffff',
           'text-background-color': '#ffffff',
           'text-border-color': '#000000',
         })
         .selector('.faded')
         .style({
-          opacity: 0.08,
+          opacity: 0.16,
         });
     } else {
       styleBuilder
@@ -3977,7 +3927,7 @@ export default function App() {
                 <div className="header-setting-row">
                   <div className="header-setting-label-row">
                     <span>Graph theme</span>
-                    <span>{isHighContrastGraph ? 'High contrast' : 'Classic'}</span>
+                    <span>{isHighContrastGraph ? 'Legacy B/W' : 'Classic'}</span>
                   </div>
                   <div
                     className={`header-theme-toggle ${isHighContrastGraph ? 'mode-high-contrast' : 'mode-classic'}`}
@@ -3999,11 +3949,11 @@ export default function App() {
                       type="button"
                       className={`header-theme-toggle-button ${isHighContrastGraph ? 'active' : ''}`}
                       onClick={() => setGraphThemeMode(GRAPH_THEME_MODES.HIGH_CONTRAST)}
-                      aria-label="Use high-contrast graph theme"
-                      title="High-contrast graph theme"
+                      aria-label="Use legacy black-and-white graph theme"
+                      title="Legacy black-and-white graph theme"
                       aria-pressed={isHighContrastGraph}
                     >
-                      Contrast
+                      Legacy B/W
                     </button>
                   </div>
                 </div>

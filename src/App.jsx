@@ -59,6 +59,10 @@ const MAX_GRAPH_ZOOM_SPEED = 0.8;
 const DEFAULT_GRAPH_FONT_SIZE = 10;
 const MIN_GRAPH_FONT_SIZE = 8;
 const MAX_GRAPH_FONT_SIZE = 18;
+const GRAPH_THEME_MODES = {
+  CLASSIC: 'classic',
+  HIGH_CONTRAST: 'high-contrast',
+};
 const MAX_REMOTE_FILE_BYTES = 500 * 1024;
 const KG_ALLOWED_EXTENSIONS = new Set(['ttl', 'rdf', 'n3', 'nt', 'nq', 'trig']);
 const ONTOLOGY_ALLOWED_EXTENSIONS = new Set(['ttl', 'owl', 'rdf', 'n3', 'nt', 'nq', 'trig']);
@@ -1312,13 +1316,13 @@ function toViewFlags(filterMode) {
   }
 }
 
-function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false) {
+function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false, forceTypeLinks = false) {
   const flags = toViewFlags(filterMode);
   if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
     return {
       projectionMode: GRAPH_PROJECTION_MODES.KG,
       ...flags,
-      showTypeLinks: Boolean(graphData?.hasOntology),
+      showTypeLinks: Boolean(forceTypeLinks || graphData?.hasOntology),
       lightOntologyMode: false,
     };
   }
@@ -1326,7 +1330,7 @@ function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode 
   return {
     projectionMode: GRAPH_PROJECTION_MODES.ONTOLOGY,
     ...flags,
-    showTypeLinks: Boolean(graphData?.hasOntology),
+    showTypeLinks: Boolean(forceTypeLinks || graphData?.hasOntology),
     lightOntologyMode: Boolean(lightOntologyMode),
   };
 }
@@ -1414,6 +1418,7 @@ export default function App() {
   const [isLightOntologyView, setIsLightOntologyView] = useState(false);
   const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
   const [graphFontSize, setGraphFontSize] = useState(DEFAULT_GRAPH_FONT_SIZE);
+  const [graphThemeMode, setGraphThemeMode] = useState(GRAPH_THEME_MODES.CLASSIC);
   const [kgUrlInput, setKgUrlInput] = useState('');
   const [ontologyUrlInput, setOntologyUrlInput] = useState('');
   const [isKgUrlLoading, setIsKgUrlLoading] = useState(false);
@@ -1842,6 +1847,8 @@ export default function App() {
   const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
   const isLightOntologyViewActive =
     isLightOntologyView && isOntologyOnlyDataset && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
+  const isHighContrastGraph = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
+  const useLegacyTypeLinks = isHighContrastGraph;
 
   const isAllClassesSelected =
     allClassIris.length === 0 ||
@@ -2674,19 +2681,327 @@ export default function App() {
 
     const clampedZoomSpeed = Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, graphZoomSpeed));
     const clampedFontSize = Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, graphFontSize));
+    const isHighContrast = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
     graphZoomSpeedRef.current = clampedZoomSpeed;
 
     if (cy._private?.options) {
       cy._private.options.wheelSensitivity = clampedZoomSpeed;
     }
 
-    cy.style()
+    const styleBuilder = cy.style();
+
+    if (isHighContrast) {
+      styleBuilder
+        .selector('node')
+        .style({
+          'background-color': '#ffffff',
+          color: '#000000',
+          'border-color': '#000000',
+          'border-width': 1.4,
+          'border-style': 'solid',
+        })
+        .selector('node[hasClass > 0][entityCategory != "class-expression"]')
+        .style({
+          'background-image': 'none',
+          'background-image-opacity': 0,
+          'background-width': 0,
+          'background-height': 0,
+          'background-offset-x': 0,
+          'background-offset-y': 0,
+          'bounds-expansion': 8,
+        })
+        .selector('node[entityCategory = "annotation-property"]')
+        .style({
+          'border-style': 'dashed',
+        })
+        .selector('node[entityCategory = "class-expression"]')
+        .style({
+          'background-color': '#ffffff',
+          color: '#000000',
+          'border-color': '#000000',
+          'border-width': 1.8,
+        })
+        .selector('node[lightOntologyView = 1]')
+        .style({
+          color: '#000000',
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          'border-style': 'solid',
+        })
+        .selector('node[mixedMode = 1][isOntologyNode = 1]')
+        .style({
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          color: '#000000',
+        })
+        .selector('node[kind = "blank"]')
+        .style({
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          color: '#000000',
+        })
+        .selector('node[reifiedStatement = 1]')
+        .style({
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          color: '#ffffff',
+        })
+        .selector('edge')
+        .style({
+          color: '#000000',
+          'text-background-color': '#ffffff',
+          'text-border-color': '#000000',
+          'text-border-width': 0.8,
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          width: 1.6,
+          opacity: 0.96,
+        })
+        .selector('edge[category = "reification"]')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          color: '#000000',
+        })
+        .selector('edge[reifiedOnly = 1]')
+        .style({
+          'line-style': 'dashed',
+          opacity: 0.9,
+        })
+        .selector('edge[lightOntologyView = 1]')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          color: '#000000',
+        })
+        .selector('edge[lightOntologyView = 1][lightRestrictionEdge = 1]')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          color: '#000000',
+          'text-background-color': '#ffffff',
+          'text-border-color': '#000000',
+        })
+        .selector('.focus-node')
+        .style({
+          'border-color': '#000000',
+          'background-color': '#ffffff',
+          color: '#000000',
+        })
+        .selector('.focus-neighbor')
+        .style({
+          'border-color': '#000000',
+        })
+        .selector('.focus-edge')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+        })
+        .selector('.selected-relation')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          'text-background-color': '#ffffff',
+          'text-border-color': '#000000',
+        })
+        .selector('.faded')
+        .style({
+          opacity: 0.16,
+        });
+    } else {
+      styleBuilder
+        .selector('node')
+        .style({
+          'background-color': '#f6f0e8',
+          color: '#1e1b16',
+          'border-color': '#7e6f60',
+          'border-width': 0.4,
+        })
+        .selector('node[hasClass > 0][entityCategory != "class-expression"]')
+        .style({
+          'background-image': 'data(badgeSvg)',
+          'background-image-opacity': 1,
+          'background-image-containment': 'over',
+          'background-width': 'data(badgeWidth)',
+          'background-height': 24,
+          'background-position-x': '100%',
+          'background-position-y': '0%',
+          'background-offset-x': 26,
+          'background-offset-y': -7,
+          'background-repeat': 'no-repeat',
+          'background-fit': 'none',
+          'background-clip': 'none',
+          'bounds-expansion': 36,
+        })
+        .selector('node[kind = "literal"]')
+        .style({
+          'background-color': '#f0e4d7',
+          'border-color': '#9b7458',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "datatype"]')
+        .style({
+          'background-color': '#eee5da',
+          'border-color': '#8e7560',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "data-property"]')
+        .style({
+          'background-color': '#f0e7db',
+          'border-color': '#9b7f66',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "object-property"]')
+        .style({
+          'background-color': '#efe4d7',
+          'border-color': '#9f7a57',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "annotation-property"]')
+        .style({
+          'background-color': '#efe6dd',
+          'border-color': '#9e846b',
+          'border-style': 'dashed',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "class-expression"]')
+        .style({
+          'background-color': '#e8f2ef',
+          'border-color': '#2f8a81',
+          'border-width': 2.2,
+          color: '#1f4f4c',
+        })
+        .selector('node[lightOntologyView = 1]')
+        .style({
+          color: '#2a231d',
+          'background-color': '#f6f0e8',
+          'border-color': '#7e6f60',
+          'border-style': 'solid',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "class"]')
+        .style({
+          'background-color': '#d9c4ab',
+          'border-color': '#8d6b4c',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "object-property"]')
+        .style({
+          'background-color': '#d4e2f2',
+          'border-color': '#5d7fa8',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "data-property"]')
+        .style({
+          'background-color': '#d6ebd9',
+          'border-color': '#5f9067',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "annotation-property"]')
+        .style({
+          'background-color': '#f0d9e4',
+          'border-color': '#ab6f8a',
+          'border-style': 'solid',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "individual"]')
+        .style({
+          'background-color': '#dfdfdf',
+          'border-color': '#7f7f7f',
+        })
+        .selector('node[lightOntologyView = 1][kind = "literal"]')
+        .style({
+          'background-color': '#f5ebbe',
+          'border-color': '#b9a14f',
+          color: '#2a231d',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "datatype"]')
+        .style({
+          'background-color': '#d6ebd9',
+          'border-color': '#5f9067',
+        })
+        .selector('node[mixedMode = 1][isOntologyNode = 1]')
+        .style({
+          'background-color': '#e5d5c4',
+          'border-color': '#86684f',
+          color: '#2d2218',
+        })
+        .selector('node[kind = "blank"]')
+        .style({
+          'background-color': '#ece7e1',
+          'border-color': '#c6bbae',
+          color: '#6b6157',
+        })
+        .selector('node[reifiedStatement = 1]')
+        .style({
+          'background-color': '#f7f0e8',
+          'border-color': '#86684f',
+          color: '#f7f0e8',
+        })
+        .selector('edge')
+        .style({
+          color: '#5a524a',
+          'text-background-color': '#fffaf2',
+          'text-border-color': '#e2d8cb',
+          'line-color': '#c8bfb4',
+          'target-arrow-color': '#c8bfb4',
+          opacity: 0.76,
+        })
+        .selector('edge[category = "reification"]')
+        .style({
+          'line-color': '#86684f',
+          'target-arrow-color': '#86684f',
+          color: '#5e4734',
+        })
+        .selector('edge[reifiedOnly = 1]')
+        .style({
+          'line-style': 'dashed',
+          opacity: 0.62,
+        })
+        .selector('edge[lightOntologyView = 1]')
+        .style({
+          'line-color': '#b8afa5',
+          'target-arrow-color': '#b8afa5',
+          color: '#5a524a',
+        })
+        .selector('edge[lightOntologyView = 1][lightRestrictionEdge = 1]')
+        .style({
+          'line-color': '#3f8f86',
+          'target-arrow-color': '#3f8f86',
+          color: '#3d665f',
+          'text-background-color': '#f8f5ef',
+          'text-border-color': '#d2cbc2',
+        })
+        .selector('.focus-node')
+        .style({
+          'border-color': '#1e6b6a',
+          'background-color': '#d8eeeb',
+          color: '#1e1b16',
+        })
+        .selector('.focus-neighbor')
+        .style({
+          'border-color': '#3a8f86',
+        })
+        .selector('.focus-edge')
+        .style({
+          'line-color': '#3a8f86',
+          'target-arrow-color': '#3a8f86',
+        })
+        .selector('.selected-relation')
+        .style({
+          'line-color': '#1e6b6a',
+          'target-arrow-color': '#1e6b6a',
+          'text-background-color': '#f0fff8',
+          'text-border-color': '#9fd5cb',
+        })
+        .selector('.faded')
+        .style({
+          opacity: 0.12,
+        });
+    }
+
+    styleBuilder
       .selector('node')
       .style('font-size', clampedFontSize)
       .selector('edge')
       .style('font-size', clampedFontSize)
       .update();
-  }, [graphZoomSpeed, graphFontSize]);
+  }, [graphZoomSpeed, graphFontSize, graphThemeMode]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -2914,7 +3229,13 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive);
+        const viewOptions = toViewOptions(
+          graphProjectionMode,
+          ontologyViewMode,
+          graphData,
+          isLightOntologyViewActive,
+          useLegacyTypeLinks,
+        );
         const classFilterActive =
           showClassTypeFilter &&
           graphData.classes.length > 0 &&
@@ -2963,7 +3284,17 @@ export default function App() {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
-            buildFocusedSubset(graphData, null, toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive)),
+            buildFocusedSubset(
+              graphData,
+              null,
+              toViewOptions(
+                graphProjectionMode,
+                ontologyViewMode,
+                graphData,
+                isLightOntologyViewActive,
+                useLegacyTypeLinks,
+              ),
+            ),
           );
         }
       } finally {
@@ -2988,6 +3319,7 @@ export default function App() {
     ontologyViewMode,
     isOntologyOnlyDataset,
     isLightOntologyViewActive,
+    useLegacyTypeLinks,
     showClassTypeFilter,
   ]);
 
@@ -3625,6 +3957,40 @@ export default function App() {
             {isSettingsOpen && (
               <div className="header-settings-popover" role="dialog" aria-label="Graph settings">
                 <div className="header-settings-title">Graph settings</div>
+
+                <div className="header-setting-row">
+                  <div className="header-setting-label-row">
+                    <span>Graph theme</span>
+                    <span>{isHighContrastGraph ? 'Legacy B/W' : 'Classic'}</span>
+                  </div>
+                  <div
+                    className={`header-theme-toggle ${isHighContrastGraph ? 'mode-high-contrast' : 'mode-classic'}`}
+                    role="tablist"
+                    aria-label="Graph render theme"
+                  >
+                    <span className="header-theme-toggle-thumb" aria-hidden="true" />
+                    <button
+                      type="button"
+                      className={`header-theme-toggle-button ${!isHighContrastGraph ? 'active' : ''}`}
+                      onClick={() => setGraphThemeMode(GRAPH_THEME_MODES.CLASSIC)}
+                      aria-label="Use classic graph theme"
+                      title="Classic graph theme"
+                      aria-pressed={!isHighContrastGraph}
+                    >
+                      Classic
+                    </button>
+                    <button
+                      type="button"
+                      className={`header-theme-toggle-button ${isHighContrastGraph ? 'active' : ''}`}
+                      onClick={() => setGraphThemeMode(GRAPH_THEME_MODES.HIGH_CONTRAST)}
+                      aria-label="Use legacy black-and-white graph theme"
+                      title="Legacy black-and-white graph theme"
+                      aria-pressed={isHighContrastGraph}
+                    >
+                      Legacy B/W
+                    </button>
+                  </div>
+                </div>
 
                 <div className="header-setting-row">
                   <div className="header-setting-label-row">
@@ -4418,7 +4784,12 @@ export default function App() {
             )}
           </div>
 
-          <div ref={graphContainerRef} className={`graph-canvas ${isDetachedPanMode ? 'detached-pan-mode' : ''}`} />
+          <div
+            ref={graphContainerRef}
+            className={`graph-canvas ${isDetachedPanMode ? 'detached-pan-mode' : ''} ${
+              isHighContrastGraph ? 'high-contrast' : ''
+            }`}
+          />
 
           {multiClassBadgeTooltip && (
             <div className="badge-fanout" style={{ left: multiClassBadgeTooltip.left, top: multiClassBadgeTooltip.top }}>

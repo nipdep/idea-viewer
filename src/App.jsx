@@ -1316,13 +1316,13 @@ function toViewFlags(filterMode) {
   }
 }
 
-function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false) {
+function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false, forceTypeLinks = false) {
   const flags = toViewFlags(filterMode);
   if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
     return {
       projectionMode: GRAPH_PROJECTION_MODES.KG,
       ...flags,
-      showTypeLinks: Boolean(graphData?.hasOntology),
+      showTypeLinks: Boolean(forceTypeLinks || graphData?.hasOntology),
       lightOntologyMode: false,
     };
   }
@@ -1330,7 +1330,7 @@ function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode 
   return {
     projectionMode: GRAPH_PROJECTION_MODES.ONTOLOGY,
     ...flags,
-    showTypeLinks: Boolean(graphData?.hasOntology),
+    showTypeLinks: Boolean(forceTypeLinks || graphData?.hasOntology),
     lightOntologyMode: Boolean(lightOntologyMode),
   };
 }
@@ -1847,6 +1847,8 @@ export default function App() {
   const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
   const isLightOntologyViewActive =
     isLightOntologyView && isOntologyOnlyDataset && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
+  const isHighContrastGraph = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
+  const useLegacyTypeLinks = isHighContrastGraph;
 
   const isAllClassesSelected =
     allClassIris.length === 0 ||
@@ -2700,19 +2702,13 @@ export default function App() {
         })
         .selector('node[hasClass > 0][entityCategory != "class-expression"]')
         .style({
-          'background-image': 'data(badgeSvg)',
-          'background-image-opacity': 1,
-          'background-image-containment': 'over',
-          'background-width': 'data(badgeWidth)',
-          'background-height': 24,
-          'background-position-x': '100%',
-          'background-position-y': '0%',
-          'background-offset-x': 26,
-          'background-offset-y': -7,
-          'background-repeat': 'no-repeat',
-          'background-fit': 'none',
-          'background-clip': 'none',
-          'bounds-expansion': 36,
+          'background-image': 'none',
+          'background-image-opacity': 0,
+          'background-width': 0,
+          'background-height': 0,
+          'background-offset-x': 0,
+          'background-offset-y': 0,
+          'bounds-expansion': 8,
         })
         .selector('node[entityCategory = "annotation-property"]')
         .style({
@@ -3233,7 +3229,13 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive);
+        const viewOptions = toViewOptions(
+          graphProjectionMode,
+          ontologyViewMode,
+          graphData,
+          isLightOntologyViewActive,
+          useLegacyTypeLinks,
+        );
         const classFilterActive =
           showClassTypeFilter &&
           graphData.classes.length > 0 &&
@@ -3282,7 +3284,17 @@ export default function App() {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
-            buildFocusedSubset(graphData, null, toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive)),
+            buildFocusedSubset(
+              graphData,
+              null,
+              toViewOptions(
+                graphProjectionMode,
+                ontologyViewMode,
+                graphData,
+                isLightOntologyViewActive,
+                useLegacyTypeLinks,
+              ),
+            ),
           );
         }
       } finally {
@@ -3307,6 +3319,7 @@ export default function App() {
     ontologyViewMode,
     isOntologyOnlyDataset,
     isLightOntologyViewActive,
+    useLegacyTypeLinks,
     showClassTypeFilter,
   ]);
 
@@ -3885,7 +3898,6 @@ export default function App() {
   const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
   const settingsButtonLabel = isSettingsOpen ? 'Hide graph settings' : 'Show graph settings';
-  const isHighContrastGraph = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
   const showLightOntologyLegend = isLightOntologyViewActive;
   const hasExportableGraph = visibleElements.length > 0;
 

@@ -2750,15 +2750,15 @@ export default function App() {
           'text-background-color': '#ffffff',
           'text-border-color': '#000000',
           'text-border-width': 0.8,
-          'line-color': '#ffffff',
-          'target-arrow-color': '#ffffff',
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
           width: 1.6,
           opacity: 0.96,
         })
         .selector('edge[category = "reification"]')
         .style({
-          'line-color': '#ffffff',
-          'target-arrow-color': '#ffffff',
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
           color: '#000000',
         })
         .selector('edge[reifiedOnly = 1]')
@@ -2768,37 +2768,37 @@ export default function App() {
         })
         .selector('edge[lightOntologyView = 1]')
         .style({
-          'line-color': '#ffffff',
-          'target-arrow-color': '#ffffff',
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
           color: '#000000',
         })
         .selector('edge[lightOntologyView = 1][lightRestrictionEdge = 1]')
         .style({
-          'line-color': '#ffffff',
-          'target-arrow-color': '#ffffff',
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
           color: '#000000',
           'text-background-color': '#ffffff',
           'text-border-color': '#000000',
         })
         .selector('.focus-node')
         .style({
-          'border-color': '#ffffff',
-          'background-color': '#000000',
-          color: '#ffffff',
+          'border-color': '#000000',
+          'background-color': '#ffffff',
+          color: '#000000',
         })
         .selector('.focus-neighbor')
         .style({
-          'border-color': '#ffffff',
+          'border-color': '#000000',
         })
         .selector('.focus-edge')
         .style({
-          'line-color': '#ffffff',
-          'target-arrow-color': '#ffffff',
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
         })
         .selector('.selected-relation')
         .style({
-          'line-color': '#ffffff',
-          'target-arrow-color': '#ffffff',
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
           'text-background-color': '#ffffff',
           'text-border-color': '#000000',
         })

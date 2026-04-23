@@ -1378,8 +1378,8 @@ textarea {
 }
 
 .graph-canvas.high-contrast {
-  background: #000;
-  border-color: #1a1a1a;
+  background: #ffffff;
+  border-color: #bdbdbd;
 }
 
 .graph-canvas.detached-pan-mode {

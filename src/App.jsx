@@ -2700,13 +2700,19 @@ export default function App() {
         })
         .selector('node[hasClass > 0][entityCategory != "class-expression"]')
         .style({
-          'background-image': 'none',
-          'background-image-opacity': 0,
-          'background-width': 0,
-          'background-height': 0,
-          'background-offset-x': 0,
-          'background-offset-y': 0,
-          'bounds-expansion': 8,
+          'background-image': 'data(badgeSvg)',
+          'background-image-opacity': 1,
+          'background-image-containment': 'over',
+          'background-width': 'data(badgeWidth)',
+          'background-height': 24,
+          'background-position-x': '100%',
+          'background-position-y': '0%',
+          'background-offset-x': 26,
+          'background-offset-y': -7,
+          'background-repeat': 'no-repeat',
+          'background-fit': 'none',
+          'background-clip': 'none',
+          'bounds-expansion': 36,
         })
         .selector('node[entityCategory = "annotation-property"]')
         .style({
@@ -2814,6 +2820,22 @@ export default function App() {
           color: '#1e1b16',
           'border-color': '#7e6f60',
           'border-width': 0.4,
+        })
+        .selector('node[hasClass > 0][entityCategory != "class-expression"]')
+        .style({
+          'background-image': 'data(badgeSvg)',
+          'background-image-opacity': 1,
+          'background-image-containment': 'over',
+          'background-width': 'data(badgeWidth)',
+          'background-height': 24,
+          'background-position-x': '100%',
+          'background-position-y': '0%',
+          'background-offset-x': 26,
+          'background-offset-y': -7,
+          'background-repeat': 'no-repeat',
+          'background-fit': 'none',
+          'background-clip': 'none',
+          'bounds-expansion': 36,
         })
         .selector('node[kind = "literal"]')
         .style({

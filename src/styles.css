@@ -383,7 +383,7 @@ textarea {
 .panel-content {
   height: 100%;
   min-height: 0;
-  padding: 0 2px 4px;
+  padding: 2px 14px 12px 4px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -968,7 +968,7 @@ textarea {
 .graph-area {
   position: relative;
   padding: 0 2px 4px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .graph-tools {
@@ -1376,6 +1376,7 @@ textarea {
   border-radius: 12px;
   background: linear-gradient(180deg, #fcfaf6 0%, #f8f3ec 100%);
   border: 1px solid #e0d6cb;
+  box-shadow: 6px 10px 22px rgba(71, 52, 28, 0.11);
 }
 
 .graph-canvas.high-contrast {

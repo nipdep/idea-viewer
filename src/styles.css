@@ -476,7 +476,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: #fffdf9;
-  box-shadow: 0 8px 18px rgba(71, 52, 28, 0.06);
+  box-shadow: 6px 10px 22px rgba(71, 52, 28, 0.11);
   padding: 14px;
 }
 

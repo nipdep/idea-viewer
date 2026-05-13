@@ -352,17 +352,17 @@ textarea {
 
 .panel,
 .graph-area {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   min-width: 0;
   min-height: 0;
 }
 
 .panel {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .page-shell.resizing,
@@ -383,7 +383,7 @@ textarea {
 .panel-content {
   height: 100%;
   min-height: 0;
-  padding: 16px;
+  padding: 8px 10px 12px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -966,7 +966,7 @@ textarea {
 
 .graph-area {
   position: relative;
-  padding: 14px;
+  padding: 8px 10px 12px;
   overflow: hidden;
 }
 
@@ -1887,8 +1887,9 @@ textarea {
   opacity: 0;
   pointer-events: none;
   border: 1px solid var(--border);
-  background: var(--panel);
+  background: rgba(255, 253, 249, 0.96);
   box-shadow: var(--shadow);
+  border-radius: 18px;
   overflow: hidden;
   transition: transform 180ms ease, opacity 180ms ease;
 }

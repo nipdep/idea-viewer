@@ -383,7 +383,7 @@ textarea {
 .panel-content {
   height: 100%;
   min-height: 0;
-  padding: 8px 10px 12px;
+  padding: 0 2px 4px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -472,7 +472,7 @@ textarea {
 }
 
 .panel-section {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: #fffdf9;
@@ -966,7 +966,7 @@ textarea {
 
 .graph-area {
   position: relative;
-  padding: 8px 10px 12px;
+  padding: 0 2px 4px;
   overflow: hidden;
 }
 

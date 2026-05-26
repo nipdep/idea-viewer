@@ -1203,6 +1203,10 @@ function applyNodeDisplayLabel(node, fullLabel) {
   node.textMaxWidth = metrics.textMaxWidth;
 }
 
+function hasExplicitLabel(node, labelIndex) {
+  return Boolean(node?.id && labelIndex?.has(node.id));
+}
+
 function makeNodeData(term, labelIndex, options = {}) {
   const id = getTermId(term);
   const termType = term.termType;
@@ -2386,6 +2390,22 @@ export function buildGraphData(quads, options = {}) {
         node.badgeWidth = 0;
         node.classCount = 0;
         node.classTooltip = '';
+        node.isInstanceNode = 0;
+        node.isOntologyNode = 0;
+        node.mixedMode = hasOntology && hasKg ? 1 : 0;
+        node.namedGraphIds = Array.from(nodeNamedGraphAssignments.get(node.id) ?? []);
+        continue;
+      }
+
+      const isLabeledBlankEntity = hasExplicitLabel(node, labelIndex);
+      if (isLabeledBlankEntity) {
+        node.entityCategory = 'individual';
+        node.ontologyKind = '';
+        node.isInstanceNode = 1;
+        node.isOntologyNode = 0;
+        node.mixedMode = hasOntology && hasKg ? 1 : 0;
+        node.graphRole = hasOntology && hasKg ? 'kg-instance' : '';
+        node.namedGraphIds = Array.from(nodeNamedGraphAssignments.get(node.id) ?? []);
       }
       continue;
     }
@@ -2954,7 +2974,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       return false;
     }
 
-    if (node.termType === 'BlankNode') {
+    if (
+      node.termType === 'BlankNode' &&
+      (node.entityCategory === 'class-expression' || !node.isInstanceNode)
+    ) {
       return false;
     }
 

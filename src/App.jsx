@@ -889,6 +889,24 @@ function runBaseIriFilter(graphData, baseIris) {
   return matchedNodeIds;
 }
 
+function runNamedGraphFilter(graphData, namedGraphIds) {
+  if (!graphData || namedGraphIds.length === 0) {
+    return new Set();
+  }
+
+  const allowedNamedGraphIds = new Set(namedGraphIds);
+  const matchedNodeIds = new Set();
+
+  for (const node of graphData.nodes) {
+    const nodeGraphIds = Array.isArray(node.namedGraphIds) ? node.namedGraphIds : [];
+    if (nodeGraphIds.some((graphId) => allowedNamedGraphIds.has(graphId))) {
+      matchedNodeIds.add(node.id);
+    }
+  }
+
+  return matchedNodeIds;
+}
+
 function normalizeSearchText(value) {
   return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -1316,7 +1334,14 @@ function toViewFlags(filterMode) {
   }
 }
 
-function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false, forceTypeLinks = false) {
+function toViewOptions(
+  projectionMode,
+  filterMode,
+  graphData,
+  lightOntologyMode = false,
+  forceTypeLinks = false,
+  selectedNamedGraphIds = [],
+) {
   const flags = toViewFlags(filterMode);
   if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
     return {
@@ -1324,6 +1349,7 @@ function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode 
       ...flags,
       showTypeLinks: Boolean(forceTypeLinks || graphData?.hasOntology),
       lightOntologyMode: false,
+      selectedNamedGraphIds,
     };
   }
 
@@ -1332,6 +1358,7 @@ function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode 
     ...flags,
     showTypeLinks: Boolean(forceTypeLinks || graphData?.hasOntology),
     lightOntologyMode: Boolean(lightOntologyMode),
+    selectedNamedGraphIds: [],
   };
 }
 
@@ -1380,6 +1407,7 @@ export default function App() {
 
   const [selectedClassIris, setSelectedClassIris] = useState([]);
   const [selectedBaseIris, setSelectedBaseIris] = useState([]);
+  const [selectedNamedGraphIds, setSelectedNamedGraphIds] = useState([]);
   const [nodeNameQuery, setNodeNameQuery] = useState('');
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
@@ -1838,11 +1866,16 @@ export default function App() {
   }, [graphData]);
   const allClassIris = useMemo(() => classFilterEntries.map((entry) => entry.id), [classFilterEntries]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
+  const allNamedGraphIds = useMemo(() => graphData?.namedGraphs.map((entry) => entry.id) ?? [], [graphData]);
   const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
   const hasOntologyUploads = ontologyFiles.length > 0 || Boolean(graphData?.hasOntology);
   const hasNamedIndividuals = Boolean(
     graphData?.nodes?.some((node) => node.isInstanceNode),
   );
+  const showNamedGraphFilter =
+    graphProjectionMode === GRAPH_PROJECTION_MODES.KG &&
+    Boolean(graphData?.hasKg) &&
+    (graphData?.namedGraphs?.length ?? 0) > 0;
   const showViewFiltering = hasOntologyUploads;
   const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
   const isLightOntologyViewActive =
@@ -1856,6 +1889,10 @@ export default function App() {
   const isAllBaseIrisSelected =
     allBaseIris.length === 0 ||
     (selectedBaseIris.length === allBaseIris.length && allBaseIris.every((iri) => selectedBaseIris.includes(iri)));
+  const isAllNamedGraphsSelected =
+    allNamedGraphIds.length === 0 ||
+    (selectedNamedGraphIds.length === allNamedGraphIds.length &&
+      allNamedGraphIds.every((graphId) => selectedNamedGraphIds.includes(graphId)));
 
   useEffect(() => {
     if (!graphData) {
@@ -3235,17 +3272,22 @@ export default function App() {
           graphData,
           isLightOntologyViewActive,
           useLegacyTypeLinks,
+          selectedNamedGraphIds,
         );
         const classFilterActive =
           showClassTypeFilter &&
           graphData.classes.length > 0 &&
           selectedClassIris.length !== graphData.classes.length;
+        const namedGraphFilterActive =
+          graphProjectionMode === GRAPH_PROJECTION_MODES.KG &&
+          graphData.namedGraphs.length > 0 &&
+          selectedNamedGraphIds.length !== graphData.namedGraphs.length;
         const baseIriFilterActive =
           graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
         const nodeNameFilterActive = nodeNameQuery.trim().length > 0;
         const sparqlActive = sparqlQuery.trim().length > 0;
 
-        if (!classFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
+        if (!classFilterActive && !namedGraphFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
             setVisibleElements(buildFocusedSubset(graphData, null, viewOptions));
           }
@@ -3255,8 +3297,14 @@ export default function App() {
         const engine = queryEngineRef.current;
         let selectedEntities = null;
 
+        if (namedGraphFilterActive) {
+          const namedGraphMatches = runNamedGraphFilter(graphData, selectedNamedGraphIds);
+          selectedEntities = selectedEntities ? intersectSets(selectedEntities, namedGraphMatches) : namedGraphMatches;
+        }
+
         if (baseIriFilterActive) {
-          selectedEntities = runBaseIriFilter(graphData, selectedBaseIris);
+          const baseIriMatches = runBaseIriFilter(graphData, selectedBaseIris);
+          selectedEntities = selectedEntities ? intersectSets(selectedEntities, baseIriMatches) : baseIriMatches;
         }
 
         if (classFilterActive) {
@@ -3293,6 +3341,7 @@ export default function App() {
                 graphData,
                 isLightOntologyViewActive,
                 useLegacyTypeLinks,
+                selectedNamedGraphIds,
               ),
             ),
           );
@@ -3313,6 +3362,7 @@ export default function App() {
     graphData,
     selectedClassIris,
     selectedBaseIris,
+    selectedNamedGraphIds,
     nodeNameQuery,
     sparqlQuery,
     graphProjectionMode,
@@ -3362,6 +3412,7 @@ export default function App() {
     setVisibleElements([]);
     setSelectedClassIris([]);
     setSelectedBaseIris([]);
+    setSelectedNamedGraphIds([]);
     setNodeNameQuery('');
     setSparqlDraft('');
     setSparqlQuery('');
@@ -3453,6 +3504,7 @@ export default function App() {
       setVisibleElements([]);
       setSelectedClassIris([]);
       setSelectedBaseIris([]);
+      setSelectedNamedGraphIds([]);
       setSelectedNodeId(null);
       setSelectedEdgeId(null);
       setFocusedNodeId(null);
@@ -3553,6 +3605,7 @@ export default function App() {
         setGraphData(nextGraphData);
         setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
         setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
+        setSelectedNamedGraphIds(nextGraphData.namedGraphs.map((entry) => entry.id));
         setNodeNameQuery('');
         setSparqlDraft('');
         setSparqlQuery('');
@@ -3615,6 +3668,23 @@ export default function App() {
       }
       return [...current, baseIri];
     });
+  }
+
+  function toggleNamedGraph(namedGraphId) {
+    setSelectedNamedGraphIds((current) => {
+      if (current.includes(namedGraphId)) {
+        return current.filter((entry) => entry !== namedGraphId);
+      }
+      return [...current, namedGraphId];
+    });
+  }
+
+  function selectAllNamedGraphs() {
+    setSelectedNamedGraphIds(allNamedGraphIds);
+  }
+
+  function clearNamedGraphs() {
+    setSelectedNamedGraphIds([]);
   }
 
   function selectAllBaseIris() {
@@ -4304,6 +4374,48 @@ export default function App() {
                                   onChange={() => toggleClass(entry.id)}
                                 />
                                 <span className="class-label" title={entry.id}>
+                                  {entry.label}
+                                </span>
+                                <small>{entry.count}</small>
+                              </label>
+                            ))}
+                        </div>
+                      </>
+                    )}
+                    {showNamedGraphFilter && (
+                      <>
+                        <h3 className="filter-group-title">KG named graph</h3>
+                        <div className="mini-actions">
+                          <button
+                            type="button"
+                            onClick={selectAllNamedGraphs}
+                            disabled={!graphData || isAllNamedGraphsSelected}
+                          >
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearNamedGraphs}
+                            disabled={!graphData || selectedNamedGraphIds.length === 0}
+                          >
+                            Clear
+                          </button>
+                        </div>
+
+                        <div className="class-list">
+                          {!graphData && <p className="muted">Load data to list KG named graphs.</p>}
+                          {graphData && graphData.namedGraphs.length === 0 && (
+                            <p className="muted">No named graphs detected in the loaded KG data.</p>
+                          )}
+                          {graphData &&
+                            graphData.namedGraphs.map((entry) => (
+                              <label key={entry.id} className="class-item">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedNamedGraphIds.includes(entry.id)}
+                                  onChange={() => toggleNamedGraph(entry.id)}
+                                />
+                                <span className="class-label" title={entry.label}>
                                   {entry.label}
                                 </span>
                                 <small>{entry.count}</small>

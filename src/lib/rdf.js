@@ -1604,6 +1604,22 @@ function isHiddenBackgroundClassIri(iri) {
   return HIDDEN_BACKGROUND_CLASS_IRIS.has(iri);
 }
 
+function formatNamedGraphLabel(term) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'NamedNode') {
+    return term.value;
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `[Blank ${term.value}]`;
+  }
+
+  return formatTermValue(term);
+}
+
 export function extractOntologyModel(quads) {
   const classIds = new Set();
   const objectPropertyIds = new Set();
@@ -1768,6 +1784,8 @@ export function buildGraphData(quads, options = {}) {
   const nodeMetadata = new Map();
   const edgeMetadata = new Map();
   const baseIriCounts = new Map();
+  const namedGraphMap = new Map();
+  const nodeNamedGraphAssignments = new Map();
   const classNodeIds = new Set();
   const badgeClassNodeIds = new Set();
   const namedIndividualNodeIds = new Set();
@@ -1784,6 +1802,15 @@ export function buildGraphData(quads, options = {}) {
       nodeMap.set(nodeId, makeNodeData(term, labelIndex, { blankLabelById }));
     }
     return nodeMap.get(nodeId);
+  };
+
+  const addNodeNamedGraph = (nodeId, graphId) => {
+    if (!nodeId || !graphId) {
+      return;
+    }
+    const graphIds = nodeNamedGraphAssignments.get(nodeId) ?? new Set();
+    graphIds.add(graphId);
+    nodeNamedGraphAssignments.set(nodeId, graphIds);
   };
 
   const addNodeMetadataRow = (nodeId, row) => {
@@ -1911,6 +1938,22 @@ export function buildGraphData(quads, options = {}) {
       ensureNode(quad.subject);
     }
 
+    const quadGraphId =
+      !isDefaultGraphTerm(quad.graph) && isRenderableTerm(quad.graph) ? getTermId(quad.graph) : '';
+    if (quadGraphId) {
+      const existingGraphEntry = namedGraphMap.get(quadGraphId);
+      if (existingGraphEntry) {
+        existingGraphEntry.count += 1;
+      } else {
+        namedGraphMap.set(quadGraphId, {
+          id: quadGraphId,
+          label: formatNamedGraphLabel(quad.graph),
+          count: 1,
+        });
+      }
+      addNodeNamedGraph(sourceId, quadGraphId);
+    }
+
     if (METADATA_PREDICATES.has(quad.predicate.value)) {
       addNodeMetadataRow(sourceId, {
         predicate: quad.predicate.value,
@@ -1948,12 +1991,16 @@ export function buildGraphData(quads, options = {}) {
       if (!nodeMap.has(literalId)) {
         ensureNode(annotationLiteral);
       }
+      if (quadGraphId) {
+        addNodeNamedGraph(literalId, quadGraphId);
+      }
 
       const edgeId = `l${literalEdgeCounter}`;
       const literalEdge = {
         id: edgeId,
         source: sourceId,
         target: literalId,
+        namedGraphIds: quadGraphId ? [quadGraphId] : [],
         predicate: quad.predicate.value,
         predicateLabel: compactIri(quad.predicate.value),
         category: 'annotation',
@@ -1987,6 +2034,9 @@ export function buildGraphData(quads, options = {}) {
       if (!nodeMap.has(targetId)) {
         ensureNode(quad.object);
       }
+      if (quadGraphId) {
+        addNodeNamedGraph(targetId, quadGraphId);
+      }
 
       if (quad.predicate.value === RDFS_SUBCLASS_OF) {
         classNodeIds.add(sourceId);
@@ -1999,6 +2049,7 @@ export function buildGraphData(quads, options = {}) {
         id: edgeId,
         source: sourceId,
         target: targetId,
+        namedGraphIds: quadGraphId ? [quadGraphId] : [],
         predicate: quad.predicate.value,
         predicateLabel,
         category,
@@ -2023,6 +2074,9 @@ export function buildGraphData(quads, options = {}) {
       if (!nodeMap.has(literalId)) {
         ensureNode(quad.object);
       }
+      if (quadGraphId) {
+        addNodeNamedGraph(literalId, quadGraphId);
+      }
 
       const literalCategory = category === 'annotation' ? 'annotation' : 'data';
       const edgeId = `l${literalEdgeCounter}`;
@@ -2030,6 +2084,7 @@ export function buildGraphData(quads, options = {}) {
         id: edgeId,
         source: sourceId,
         target: literalId,
+        namedGraphIds: quadGraphId ? [quadGraphId] : [],
         predicate: quad.predicate.value,
         predicateLabel: compactIri(quad.predicate.value),
         category: literalCategory,
@@ -2383,7 +2438,8 @@ export function buildGraphData(quads, options = {}) {
 
     node.isInstanceNode = isInstanceNode ? 1 : 0;
     node.isOntologyNode = node.ontologyKind ? 1 : 0;
-    node.mixedMode = hasOntology && hasKg ? 1 : 0;
+      node.mixedMode = hasOntology && hasKg ? 1 : 0;
+      node.namedGraphIds = Array.from(nodeNamedGraphAssignments.get(node.id) ?? []);
   }
 
   for (const node of nodeMap.values()) {
@@ -2408,6 +2464,7 @@ export function buildGraphData(quads, options = {}) {
   const baseIris = Array.from(baseIriCounts.entries())
     .map(([id, count]) => ({ id, label: id, count }))
     .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
+  const namedGraphs = Array.from(namedGraphMap.values()).sort((a, b) => a.label.localeCompare(b.label));
 
   const graphData = {
     store,
@@ -2417,6 +2474,7 @@ export function buildGraphData(quads, options = {}) {
     literalEdges,
     classes,
     baseIris,
+    namedGraphs,
     classNodeIds,
     badgeClassNodeIds,
     namedIndividualNodeIds,
@@ -2486,6 +2544,7 @@ export function toElements(nodes, edges) {
         badgeSvg: node.badgeSvg,
         badgeWidth: node.badgeWidth,
         classTooltip: node.classTooltip ?? '',
+        namedGraphIds: node.namedGraphIds ?? [],
         lightOntologyView: node.lightOntologyView ?? 0,
       },
     }));
@@ -2508,6 +2567,7 @@ export function toElements(nodes, edges) {
         id: edge.id,
         source: edge.source,
         target: edge.target,
+        namedGraphIds: edge.namedGraphIds ?? [],
         predicate: edge.predicate,
         predicateLabel: edge.predicateLabel,
         category: edge.category ?? 'object',
@@ -2533,6 +2593,9 @@ function normalizeViewOptions(viewOptions) {
     showNamedIndividuals: Boolean(viewOptions?.showNamedIndividuals),
     showTypeLinks: Boolean(viewOptions?.showTypeLinks),
     lightOntologyMode: Boolean(viewOptions?.lightOntologyMode),
+    selectedNamedGraphIds: Array.isArray(viewOptions?.selectedNamedGraphIds)
+      ? [...new Set(viewOptions.selectedNamedGraphIds.filter(Boolean))]
+      : [],
   };
 }
 
@@ -2844,9 +2907,37 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
   return true;
 }
 
+function nodeMatchesNamedGraphFilter(node, selectedNamedGraphIds) {
+  if (!selectedNamedGraphIds || selectedNamedGraphIds.size === 0) {
+    return true;
+  }
+
+  const nodeGraphIds = Array.isArray(node?.namedGraphIds) ? node.namedGraphIds : [];
+  if (nodeGraphIds.length === 0) {
+    return false;
+  }
+
+  return nodeGraphIds.some((graphId) => selectedNamedGraphIds.has(graphId));
+}
+
+function edgeMatchesNamedGraphFilter(edge, selectedNamedGraphIds) {
+  if (!selectedNamedGraphIds || selectedNamedGraphIds.size === 0) {
+    return true;
+  }
+
+  const edgeGraphIds = Array.isArray(edge?.namedGraphIds) ? edge.namedGraphIds : [];
+  if (edgeGraphIds.length === 0) {
+    return false;
+  }
+
+  return edgeGraphIds.some((graphId) => selectedNamedGraphIds.has(graphId));
+}
+
 function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
   const visibleNodeIds = new Set();
   const visibleEdges = [];
+  const selectedNamedGraphIds =
+    options.selectedNamedGraphIds.length > 0 ? new Set(options.selectedNamedGraphIds) : null;
 
   const isVisibleKgEntityNode = (nodeId) => {
     const node = graphData.nodeMap.get(nodeId);
@@ -2899,6 +2990,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       continue;
     }
 
+    if (!edgeMatchesNamedGraphFilter(edge, selectedNamedGraphIds)) {
+      continue;
+    }
+
     if (edge.predicate === RDF_FIRST || edge.predicate === RDF_REST) {
       continue;
     }
@@ -2925,6 +3020,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       continue;
     }
 
+    if (!edgeMatchesNamedGraphFilter(edge, selectedNamedGraphIds)) {
+      continue;
+    }
+
     if (focusedNodeIds && !focusedNodeIds.has(edge.source)) {
       continue;
     }
@@ -2944,6 +3043,9 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
 
   for (const node of candidateNodes) {
     if (!isVisibleKgEntityNode(node.id)) {
+      continue;
+    }
+    if (!nodeMatchesNamedGraphFilter(node, selectedNamedGraphIds) && !node.isOntologyNode) {
       continue;
     }
     visibleNodeIds.add(node.id);

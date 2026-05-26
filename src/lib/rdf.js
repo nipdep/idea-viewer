@@ -2549,6 +2549,16 @@ function toRestrictionEdgeLabel(restrictionNode) {
 }
 
 function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibleEdges) {
+  const RESTRICTION_REVERSE_TRAVERSAL_PREDICATES = new Set([
+    RDF_FIRST,
+    RDF_REST,
+    OWL_INTERSECTION_OF,
+    OWL_UNION_OF,
+    OWL_COMPLEMENT_OF,
+    OWL_ONE_OF,
+    OWL_WITH_RESTRICTIONS,
+    ...RESTRICTION_ANCHOR_AXIOM_PREDICATES,
+  ]);
   const restrictionNodeIds = new Set();
   for (const nodeId of visibleNodeIds) {
     const node = graphData.nodeMap.get(nodeId);
@@ -2584,6 +2594,13 @@ function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibl
 
   const syntheticEdges = [];
   const syntheticEdgeIds = new Set();
+  const incomingEdgesByTarget = new Map();
+
+  for (const edge of graphData.objectEdges) {
+    const rows = incomingEdgesByTarget.get(edge.target) ?? [];
+    rows.push(edge);
+    incomingEdgesByTarget.set(edge.target, rows);
+  }
 
   const isClassNode = (nodeId) => {
     const node = graphData.nodeMap.get(nodeId);
@@ -2593,20 +2610,62 @@ function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibl
     return node.ontologyKind === 'class' || graphData.classNodeIds.has(nodeId);
   };
 
+  const resolveRestrictionAnchorClassIds = (restrictionNodeId) => {
+    const anchorClassIds = new Set();
+    const visited = new Set();
+    const queue = [restrictionNodeId];
+
+    while (queue.length > 0) {
+      const currentNodeId = queue.shift();
+      if (!currentNodeId || visited.has(currentNodeId)) {
+        continue;
+      }
+      visited.add(currentNodeId);
+
+      const incomingEdges = incomingEdgesByTarget.get(currentNodeId) ?? [];
+      for (const edge of incomingEdges) {
+        if (!RESTRICTION_REVERSE_TRAVERSAL_PREDICATES.has(edge.predicate)) {
+          continue;
+        }
+
+        const sourceNodeId = edge.source;
+        if (!sourceNodeId || visited.has(sourceNodeId)) {
+          continue;
+        }
+
+        if (RESTRICTION_ANCHOR_AXIOM_PREDICATES.has(edge.predicate) && isClassNode(sourceNodeId)) {
+          anchorClassIds.add(sourceNodeId);
+        }
+
+        const sourceNode = graphData.nodeMap.get(sourceNodeId);
+        if (!sourceNode) {
+          continue;
+        }
+
+        const canTraverse =
+          sourceNode.termType === 'BlankNode' ||
+          sourceNode.blankExpressionType === 'ClassExpression' ||
+          sourceNode.blankExpressionType === 'Intersection' ||
+          sourceNode.blankExpressionType === 'Union' ||
+          sourceNode.blankExpressionType === 'Complement' ||
+          sourceNode.blankExpressionType === 'OneOf' ||
+          sourceNode.blankExpressionType === 'DataRange';
+
+        if (canTraverse) {
+          queue.push(sourceNodeId);
+        }
+      }
+    }
+
+    return anchorClassIds;
+  };
+
   for (const [restrictionNodeId, connectedEdges] of edgesByRestrictionNode.entries()) {
     const restrictionNode = graphData.nodeMap.get(restrictionNodeId);
-    const anchorClassIds = new Set();
+    const anchorClassIds = resolveRestrictionAnchorClassIds(restrictionNodeId);
     const fillerClassIds = new Set();
 
     for (const edge of connectedEdges) {
-      if (RESTRICTION_ANCHOR_AXIOM_PREDICATES.has(edge.predicate)) {
-        if (edge.source === restrictionNodeId && isClassNode(edge.target)) {
-          anchorClassIds.add(edge.target);
-        } else if (edge.target === restrictionNodeId && isClassNode(edge.source)) {
-          anchorClassIds.add(edge.source);
-        }
-      }
-
       if (edge.source === restrictionNodeId && RESTRICTION_BRIDGE_VALUE_PREDICATES.has(edge.predicate) && isClassNode(edge.target)) {
         fillerClassIds.add(edge.target);
       }

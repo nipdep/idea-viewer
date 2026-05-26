@@ -59,6 +59,7 @@ const OWL_HAS_SELF = `${OWL_NS}hasSelf`;
 const OWL_WITH_RESTRICTIONS = `${OWL_NS}withRestrictions`;
 const PROV_WAS_DERIVED_FROM = 'http://www.w3.org/ns/prov#wasDerivedFrom';
 const DCT_SOURCE = 'http://purl.org/dc/terms/source';
+const DEFAULT_NAMED_GRAPH_FILTER_ID = '__default_graph__';
 
 const CLASS_TYPE_IRIS = new Set([RDFS_CLASS, OWL_CLASS]);
 const DATATYPE_TYPE_IRIS = new Set([RDFS_DATATYPE, OWL_DATATYPE]);
@@ -1620,6 +1621,24 @@ function formatNamedGraphLabel(term) {
   return formatTermValue(term);
 }
 
+function registerNamedGraphOccurrence(namedGraphMap, graphId, label) {
+  if (!graphId) {
+    return;
+  }
+
+  const existingGraphEntry = namedGraphMap.get(graphId);
+  if (existingGraphEntry) {
+    existingGraphEntry.count += 1;
+    return;
+  }
+
+  namedGraphMap.set(graphId, {
+    id: graphId,
+    label,
+    count: 1,
+  });
+}
+
 export function extractOntologyModel(quads) {
   const classIds = new Set();
   const objectPropertyIds = new Set();
@@ -1939,20 +1958,12 @@ export function buildGraphData(quads, options = {}) {
     }
 
     const quadGraphId =
-      !isDefaultGraphTerm(quad.graph) && isRenderableTerm(quad.graph) ? getTermId(quad.graph) : '';
-    if (quadGraphId) {
-      const existingGraphEntry = namedGraphMap.get(quadGraphId);
-      if (existingGraphEntry) {
-        existingGraphEntry.count += 1;
-      } else {
-        namedGraphMap.set(quadGraphId, {
-          id: quadGraphId,
-          label: formatNamedGraphLabel(quad.graph),
-          count: 1,
-        });
-      }
-      addNodeNamedGraph(sourceId, quadGraphId);
-    }
+      !isDefaultGraphTerm(quad.graph) && isRenderableTerm(quad.graph)
+        ? getTermId(quad.graph)
+        : DEFAULT_NAMED_GRAPH_FILTER_ID;
+    const quadGraphLabel = quadGraphId === DEFAULT_NAMED_GRAPH_FILTER_ID ? 'Default graph' : formatNamedGraphLabel(quad.graph);
+    registerNamedGraphOccurrence(namedGraphMap, quadGraphId, quadGraphLabel);
+    addNodeNamedGraph(sourceId, quadGraphId);
 
     if (METADATA_PREDICATES.has(quad.predicate.value)) {
       addNodeMetadataRow(sourceId, {
@@ -1991,16 +2002,14 @@ export function buildGraphData(quads, options = {}) {
       if (!nodeMap.has(literalId)) {
         ensureNode(annotationLiteral);
       }
-      if (quadGraphId) {
-        addNodeNamedGraph(literalId, quadGraphId);
-      }
+      addNodeNamedGraph(literalId, quadGraphId);
 
       const edgeId = `l${literalEdgeCounter}`;
       const literalEdge = {
         id: edgeId,
         source: sourceId,
         target: literalId,
-        namedGraphIds: quadGraphId ? [quadGraphId] : [],
+        namedGraphIds: [quadGraphId],
         predicate: quad.predicate.value,
         predicateLabel: compactIri(quad.predicate.value),
         category: 'annotation',
@@ -2034,9 +2043,7 @@ export function buildGraphData(quads, options = {}) {
       if (!nodeMap.has(targetId)) {
         ensureNode(quad.object);
       }
-      if (quadGraphId) {
-        addNodeNamedGraph(targetId, quadGraphId);
-      }
+      addNodeNamedGraph(targetId, quadGraphId);
 
       if (quad.predicate.value === RDFS_SUBCLASS_OF) {
         classNodeIds.add(sourceId);
@@ -2049,7 +2056,7 @@ export function buildGraphData(quads, options = {}) {
         id: edgeId,
         source: sourceId,
         target: targetId,
-        namedGraphIds: quadGraphId ? [quadGraphId] : [],
+        namedGraphIds: [quadGraphId],
         predicate: quad.predicate.value,
         predicateLabel,
         category,
@@ -2074,9 +2081,7 @@ export function buildGraphData(quads, options = {}) {
       if (!nodeMap.has(literalId)) {
         ensureNode(quad.object);
       }
-      if (quadGraphId) {
-        addNodeNamedGraph(literalId, quadGraphId);
-      }
+      addNodeNamedGraph(literalId, quadGraphId);
 
       const literalCategory = category === 'annotation' ? 'annotation' : 'data';
       const edgeId = `l${literalEdgeCounter}`;
@@ -2084,7 +2089,7 @@ export function buildGraphData(quads, options = {}) {
         id: edgeId,
         source: sourceId,
         target: literalId,
-        namedGraphIds: quadGraphId ? [quadGraphId] : [],
+        namedGraphIds: [quadGraphId],
         predicate: quad.predicate.value,
         predicateLabel: compactIri(quad.predicate.value),
         category: literalCategory,

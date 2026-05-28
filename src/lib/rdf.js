@@ -1207,6 +1207,18 @@ function hasExplicitLabel(node, labelIndex) {
   return Boolean(node?.id && labelIndex?.has(node.id));
 }
 
+function isEntityLikeBlankNode(node, labelIndex) {
+  if (!node || node.termType !== 'BlankNode') {
+    return false;
+  }
+
+  if (hasExplicitLabel(node, labelIndex)) {
+    return true;
+  }
+
+  return Array.isArray(node.classes) && node.classes.length > 0;
+}
+
 function makeNodeData(term, labelIndex, options = {}) {
   const id = getTermId(term);
   const termType = term.termType;
@@ -2373,7 +2385,9 @@ export function buildGraphData(quads, options = {}) {
 
     if (node.termType === 'BlankNode') {
       const role = blankRoles.get(node.id)?.role ?? '';
-      if (role) {
+      const shouldSurfaceAsInstance = isEntityLikeBlankNode(node, labelIndex);
+
+      if (role && !shouldSurfaceAsInstance) {
         if (role.startsWith('Restriction')) {
           node.blankExpressionType = 'Restriction';
           const fallbackKind = role.startsWith('Restriction:') ? role.slice('Restriction:'.length) || 'Restriction' : 'Restriction';
@@ -2397,14 +2411,16 @@ export function buildGraphData(quads, options = {}) {
         continue;
       }
 
-      const isLabeledBlankEntity = hasExplicitLabel(node, labelIndex);
-      if (isLabeledBlankEntity) {
+      if (shouldSurfaceAsInstance) {
+        node.kind = 'entity';
         node.entityCategory = 'individual';
         node.ontologyKind = '';
         node.isInstanceNode = 1;
         node.isOntologyNode = 0;
         node.mixedMode = hasOntology && hasKg ? 1 : 0;
         node.graphRole = hasOntology && hasKg ? 'kg-instance' : '';
+        node.namedGraphIds = Array.from(nodeNamedGraphAssignments.get(node.id) ?? []);
+      } else {
         node.namedGraphIds = Array.from(nodeNamedGraphAssignments.get(node.id) ?? []);
       }
       continue;

@@ -26,6 +26,7 @@ const OWL_DATATYPE = `${OWL_NS}Datatype`;
 const OWL_OBJECT_PROPERTY = `${OWL_NS}ObjectProperty`;
 const OWL_DATATYPE_PROPERTY = `${OWL_NS}DatatypeProperty`;
 const OWL_ANNOTATION_PROPERTY = `${OWL_NS}AnnotationProperty`;
+const OWL_AXIOM = `${OWL_NS}Axiom`;
 const OWL_NAMED_INDIVIDUAL = `${OWL_NS}NamedIndividual`;
 const OWL_ONTOLOGY = `${OWL_NS}Ontology`;
 const OWL_IMPORTS = `${OWL_NS}imports`;
@@ -1209,6 +1210,10 @@ function hasExplicitLabel(node, labelIndex) {
 
 function isEntityLikeBlankNode(node, labelIndex) {
   if (!node || node.termType !== 'BlankNode') {
+    return false;
+  }
+
+  if (Array.isArray(node.classes) && node.classes.includes(OWL_AXIOM)) {
     return false;
   }
 

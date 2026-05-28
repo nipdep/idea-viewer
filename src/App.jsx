@@ -1869,6 +1869,8 @@ export default function App() {
   const allNamedGraphIds = useMemo(() => graphData?.namedGraphs.map((entry) => entry.id) ?? [], [graphData]);
   const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
   const hasOntologyUploads = ontologyFiles.length > 0 || Boolean(graphData?.hasOntology);
+  const hasKgUploads = kgFiles.length > 0 || Boolean(graphData?.hasKg);
+  const hasAnyUploads = hasKgUploads || hasOntologyUploads;
   const hasNamedIndividuals = Boolean(
     graphData?.nodes?.some((node) => node.isInstanceNode),
   );
@@ -1878,8 +1880,9 @@ export default function App() {
     (graphData?.namedGraphs?.length ?? 0) > 0;
   const showViewFiltering = hasOntologyUploads;
   const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
+  const showKgProjectionButton = hasKgUploads;
   const isLightOntologyViewActive =
-    isLightOntologyView && isOntologyOnlyDataset && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
+    isLightOntologyView && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
   const isHighContrastGraph = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
   const useLegacyTypeLinks = isHighContrastGraph;
 
@@ -3441,6 +3444,7 @@ export default function App() {
 
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
       setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG);
+      setIsLightOntologyView(false);
     }
 
     setKgFiles((current) => mergeSelectedFiles(current, files));
@@ -3453,6 +3457,7 @@ export default function App() {
 
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
       setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+      setIsLightOntologyView(true);
     }
 
     setOntologyFiles((current) => mergeSelectedFiles(current, files));
@@ -3521,6 +3526,7 @@ export default function App() {
     }
 
     let cancelled = false;
+    const hadExistingGraph = Boolean(graphData);
 
     const loadGraph = async () => {
       setIsLoading(true);
@@ -3603,6 +3609,13 @@ export default function App() {
         }
 
         setGraphData(nextGraphData);
+        if (!hadExistingGraph && hasOntology && !hasKg) {
+          setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+          setIsLightOntologyView(true);
+        } else if (!hadExistingGraph && hasKg && !hasOntology) {
+          setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG);
+          setIsLightOntologyView(false);
+        }
         setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
         setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
         setSelectedNamedGraphIds(nextGraphData.namedGraphs.map((entry) => entry.id));
@@ -3947,10 +3960,25 @@ export default function App() {
     if (!isLightOntologyView) {
       return;
     }
-    if (!isOntologyOnlyDataset || graphProjectionMode !== GRAPH_PROJECTION_MODES.ONTOLOGY) {
+    if (graphProjectionMode !== GRAPH_PROJECTION_MODES.ONTOLOGY) {
       setIsLightOntologyView(false);
     }
-  }, [isLightOntologyView, isOntologyOnlyDataset, graphProjectionMode]);
+  }, [isLightOntologyView, graphProjectionMode]);
+
+  function activateFullOntologyView() {
+    setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+    setIsLightOntologyView(false);
+  }
+
+  function activateLightOntologyView() {
+    setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+    setIsLightOntologyView(true);
+  }
+
+  function activateKgView() {
+    setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG);
+    setIsLightOntologyView(false);
+  }
 
   const showLeftPanelContent = isGraphFullscreen ? leftFlyoutOpen : !leftCollapsed;
   const showRightPanelContent = isGraphFullscreen ? rightFlyoutOpen : !rightCollapsed;
@@ -3965,7 +3993,9 @@ export default function App() {
   };
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
-  const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
+  const lightOntologyButtonLabel = isLightOntologyViewActive
+    ? 'Switch to full ontology view'
+    : 'Switch to light ontology view';
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
   const settingsButtonLabel = isSettingsOpen ? 'Hide graph settings' : 'Show graph settings';
   const showLightOntologyLegend = isLightOntologyViewActive;
@@ -4630,88 +4660,84 @@ export default function App() {
           )}
 
           <div className="graph-tools graph-tools-left">
-            <div
-              className={`projection-toggle theme-switch ${
-                graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'mode-kg' : 'mode-ontology'
-              }`}
-              role="tablist"
-              aria-label="Graph projection mode"
-            >
-              <span className="projection-switch-thumb" aria-hidden="true" />
-              <button
-                type="button"
-                className={`projection-toggle-button ${
-                  graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY ? 'active' : ''
-                }`}
-                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY)}
-                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY}
-                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
-                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
-              >
-                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
-                  <circle cx="8" cy="3.2" r="1.2" fill="currentColor" />
-                  <circle cx="12.2" cy="5" r="1.1" fill="currentColor" />
-                  <circle cx="12" cy="10.8" r="1.1" fill="currentColor" />
-                  <circle cx="4" cy="10.8" r="1.1" fill="currentColor" />
-                  <circle cx="3.8" cy="5" r="1.1" fill="currentColor" />
-                  <path
-                    d="M8 5.2V6.1M10.2 6.2L9.3 6.9M10 9.9L9.2 9.2M6.8 9.2L6 9.9M6.7 6.9L5.8 6.2"
-                    stroke="currentColor"
-                    strokeWidth="1"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className={`projection-toggle-button ${
-                  graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'active' : ''
-                }`}
-                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG)}
-                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.KG}
-                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
-                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
-              >
-                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
-                  <circle cx="12.5" cy="4" r="1.5" fill="currentColor" />
-                  <circle cx="8" cy="12" r="1.8" fill="currentColor" />
-                  <path
-                    d="M4.9 4.9L7.1 10.1M11.1 4.9L8.9 10.1M5.1 4H10.9"
-                    stroke="currentColor"
-                    strokeWidth="1.1"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
+            <div className="graph-view-switcher" aria-label="Graph view selection">
+              {hasAnyUploads && (
+                <div
+                  className={`projection-toggle theme-switch ontology-view-toggle ${
+                    isLightOntologyViewActive ? 'mode-secondary' : 'mode-primary'
+                  }`}
+                  role="tablist"
+                  aria-label="Ontology view mode"
+                >
+                  <span className="projection-switch-thumb" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className={`projection-toggle-button ${
+                      graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY && !isLightOntologyViewActive ? 'active' : ''
+                    }`}
+                    onClick={activateFullOntologyView}
+                    aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY && !isLightOntologyViewActive}
+                    aria-label="Ontology full detailed view"
+                    title="Ontology full detailed view"
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
+                      <circle cx="8" cy="3.2" r="1.2" fill="currentColor" />
+                      <circle cx="12.2" cy="5" r="1.1" fill="currentColor" />
+                      <circle cx="12" cy="10.8" r="1.1" fill="currentColor" />
+                      <circle cx="4" cy="10.8" r="1.1" fill="currentColor" />
+                      <circle cx="3.8" cy="5" r="1.1" fill="currentColor" />
+                      <path
+                        d="M8 5.2V6.1M10.2 6.2L9.3 6.9M10 9.9L9.2 9.2M6.8 9.2L6 9.9M6.7 6.9L5.8 6.2"
+                        stroke="currentColor"
+                        strokeWidth="1"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={`projection-toggle-button ${isLightOntologyViewActive ? 'active' : ''}`}
+                    onClick={activateLightOntologyView}
+                    aria-pressed={isLightOntologyViewActive}
+                    aria-label={lightOntologyButtonLabel}
+                    title={lightOntologyButtonLabel}
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <rect x="2.4" y="3.4" width="11.2" height="8.2" rx="1.1" stroke="currentColor" strokeWidth="1.2" />
+                      <path d="M4.2 12.8H11.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                      <path d="M5.2 6.2H10.8M5.2 8.6H8.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              {showKgProjectionButton && (
+                <button
+                  type="button"
+                  className={`graph-tool-button icon-only ${graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'active' : ''}`}
+                  onClick={activateKgView}
+                  aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.KG}
+                  aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
+                  title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
+                    <circle cx="12.5" cy="4" r="1.5" fill="currentColor" />
+                    <circle cx="8" cy="12" r="1.8" fill="currentColor" />
+                    <path
+                      d="M4.9 4.9L7.1 10.1M11.1 4.9L8.9 10.1M5.1 4H10.9"
+                      stroke="currentColor"
+                      strokeWidth="1.1"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
 
           <div className="graph-tools graph-tools-right">
-            {isOntologyOnlyDataset && (
-              <button
-                type="button"
-                className={`graph-tool-button icon-only ${isLightOntologyViewActive ? 'active' : ''}`}
-                onClick={() => {
-                  const next = !isLightOntologyViewActive;
-                  setIsLightOntologyView(next);
-                  if (next) {
-                    setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
-                  }
-                }}
-                aria-label={lightOntologyButtonLabel}
-                title={lightOntologyButtonLabel}
-                aria-pressed={isLightOntologyViewActive}
-              >
-                <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <rect x="2.4" y="3.4" width="11.2" height="8.2" rx="1.1" stroke="currentColor" strokeWidth="1.2" />
-                  <path d="M4.2 12.8H11.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  <path d="M5.2 6.2H10.8M5.2 8.6H8.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-              </button>
-            )}
-
             <button
               type="button"
               className={`graph-tool-button icon-only ${isLegendOpen ? 'active' : ''}`}

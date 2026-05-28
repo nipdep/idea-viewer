@@ -982,6 +982,12 @@ textarea {
   right: auto;
 }
 
+.graph-view-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .graph-tools-right {
   display: flex;
   align-items: flex-start;
@@ -1026,6 +1032,14 @@ textarea {
   transform: translateX(100%);
 }
 
+.projection-toggle.theme-switch.mode-secondary .projection-switch-thumb {
+  transform: translateX(100%);
+}
+
+.ontology-view-toggle {
+  width: 92px;
+}
+
 .projection-toggle-button {
   position: relative;
   z-index: 1;
@@ -1057,6 +1071,15 @@ textarea {
   border-color: transparent;
   background: transparent;
   color: #1f5f5e;
+}
+
+.projection-toggle-button:disabled {
+  color: rgba(90, 82, 74, 0.42);
+  cursor: not-allowed;
+}
+
+.projection-toggle-button:disabled:hover {
+  background: transparent;
 }
 
 .projection-toggle-button svg {

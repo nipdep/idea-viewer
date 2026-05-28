@@ -3145,7 +3145,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       return false;
     }
 
-    if (options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg) {
+    if (options.lightOntologyMode && graphData.hasOntology) {
       if (node.termType === 'NamedNode' && node.iri === OWL_RESTRICTION) {
         return true;
       }
@@ -3271,7 +3271,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     visibleNodeIds.add(edge.target);
   }
 
-  if (options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg) {
+  if (options.lightOntologyMode && graphData.hasOntology) {
     collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibleEdges);
   }
 
@@ -3316,7 +3316,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       !isOntologyStructuralNodeHidden(node.id),
   );
   const elements = toElements(nodes, visibleEdges);
-  if (!(options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg)) {
+  if (!options.lightOntologyMode) {
     return elements;
   }
 

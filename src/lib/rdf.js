@@ -26,6 +26,7 @@ const OWL_DATATYPE = `${OWL_NS}Datatype`;
 const OWL_OBJECT_PROPERTY = `${OWL_NS}ObjectProperty`;
 const OWL_DATATYPE_PROPERTY = `${OWL_NS}DatatypeProperty`;
 const OWL_ANNOTATION_PROPERTY = `${OWL_NS}AnnotationProperty`;
+const OWL_AXIOM = `${OWL_NS}Axiom`;
 const OWL_NAMED_INDIVIDUAL = `${OWL_NS}NamedIndividual`;
 const OWL_ONTOLOGY = `${OWL_NS}Ontology`;
 const OWL_IMPORTS = `${OWL_NS}imports`;
@@ -59,6 +60,7 @@ const OWL_HAS_SELF = `${OWL_NS}hasSelf`;
 const OWL_WITH_RESTRICTIONS = `${OWL_NS}withRestrictions`;
 const PROV_WAS_DERIVED_FROM = 'http://www.w3.org/ns/prov#wasDerivedFrom';
 const DCT_SOURCE = 'http://purl.org/dc/terms/source';
+const DEFAULT_NAMED_GRAPH_FILTER_ID = '__default_graph__';
 
 const CLASS_TYPE_IRIS = new Set([RDFS_CLASS, OWL_CLASS]);
 const DATATYPE_TYPE_IRIS = new Set([RDFS_DATATYPE, OWL_DATATYPE]);
@@ -1202,6 +1204,26 @@ function applyNodeDisplayLabel(node, fullLabel) {
   node.textMaxWidth = metrics.textMaxWidth;
 }
 
+function hasExplicitLabel(node, labelIndex) {
+  return Boolean(node?.id && labelIndex?.has(node.id));
+}
+
+function isEntityLikeBlankNode(node, labelIndex) {
+  if (!node || node.termType !== 'BlankNode') {
+    return false;
+  }
+
+  if (Array.isArray(node.classes) && node.classes.includes(OWL_AXIOM)) {
+    return false;
+  }
+
+  if (hasExplicitLabel(node, labelIndex)) {
+    return true;
+  }
+
+  return Array.isArray(node.classes) && node.classes.length > 0;
+}
+
 function makeNodeData(term, labelIndex, options = {}) {
   const id = getTermId(term);
   const termType = term.termType;
@@ -1604,6 +1626,40 @@ function isHiddenBackgroundClassIri(iri) {
   return HIDDEN_BACKGROUND_CLASS_IRIS.has(iri);
 }
 
+function formatNamedGraphLabel(term) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'NamedNode') {
+    return term.value;
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `[Blank ${term.value}]`;
+  }
+
+  return formatTermValue(term);
+}
+
+function registerNamedGraphOccurrence(namedGraphMap, graphId, label) {
+  if (!graphId) {
+    return;
+  }
+
+  const existingGraphEntry = namedGraphMap.get(graphId);
+  if (existingGraphEntry) {
+    existingGraphEntry.count += 1;
+    return;
+  }
+
+  namedGraphMap.set(graphId, {
+    id: graphId,
+    label,
+    count: 1,
+  });
+}
+
 export function extractOntologyModel(quads) {
   const classIds = new Set();
   const objectPropertyIds = new Set();
@@ -1768,6 +1824,8 @@ export function buildGraphData(quads, options = {}) {
   const nodeMetadata = new Map();
   const edgeMetadata = new Map();
   const baseIriCounts = new Map();
+  const namedGraphMap = new Map();
+  const nodeNamedGraphAssignments = new Map();
   const classNodeIds = new Set();
   const badgeClassNodeIds = new Set();
   const namedIndividualNodeIds = new Set();
@@ -1784,6 +1842,15 @@ export function buildGraphData(quads, options = {}) {
       nodeMap.set(nodeId, makeNodeData(term, labelIndex, { blankLabelById }));
     }
     return nodeMap.get(nodeId);
+  };
+
+  const addNodeNamedGraph = (nodeId, graphId) => {
+    if (!nodeId || !graphId) {
+      return;
+    }
+    const graphIds = nodeNamedGraphAssignments.get(nodeId) ?? new Set();
+    graphIds.add(graphId);
+    nodeNamedGraphAssignments.set(nodeId, graphIds);
   };
 
   const addNodeMetadataRow = (nodeId, row) => {
@@ -1911,6 +1978,14 @@ export function buildGraphData(quads, options = {}) {
       ensureNode(quad.subject);
     }
 
+    const quadGraphId =
+      !isDefaultGraphTerm(quad.graph) && isRenderableTerm(quad.graph)
+        ? getTermId(quad.graph)
+        : DEFAULT_NAMED_GRAPH_FILTER_ID;
+    const quadGraphLabel = quadGraphId === DEFAULT_NAMED_GRAPH_FILTER_ID ? 'Default graph' : formatNamedGraphLabel(quad.graph);
+    registerNamedGraphOccurrence(namedGraphMap, quadGraphId, quadGraphLabel);
+    addNodeNamedGraph(sourceId, quadGraphId);
+
     if (METADATA_PREDICATES.has(quad.predicate.value)) {
       addNodeMetadataRow(sourceId, {
         predicate: quad.predicate.value,
@@ -1948,12 +2023,14 @@ export function buildGraphData(quads, options = {}) {
       if (!nodeMap.has(literalId)) {
         ensureNode(annotationLiteral);
       }
+      addNodeNamedGraph(literalId, quadGraphId);
 
       const edgeId = `l${literalEdgeCounter}`;
       const literalEdge = {
         id: edgeId,
         source: sourceId,
         target: literalId,
+        namedGraphIds: [quadGraphId],
         predicate: quad.predicate.value,
         predicateLabel: compactIri(quad.predicate.value),
         category: 'annotation',
@@ -1987,6 +2064,7 @@ export function buildGraphData(quads, options = {}) {
       if (!nodeMap.has(targetId)) {
         ensureNode(quad.object);
       }
+      addNodeNamedGraph(targetId, quadGraphId);
 
       if (quad.predicate.value === RDFS_SUBCLASS_OF) {
         classNodeIds.add(sourceId);
@@ -1999,6 +2077,7 @@ export function buildGraphData(quads, options = {}) {
         id: edgeId,
         source: sourceId,
         target: targetId,
+        namedGraphIds: [quadGraphId],
         predicate: quad.predicate.value,
         predicateLabel,
         category,
@@ -2023,6 +2102,7 @@ export function buildGraphData(quads, options = {}) {
       if (!nodeMap.has(literalId)) {
         ensureNode(quad.object);
       }
+      addNodeNamedGraph(literalId, quadGraphId);
 
       const literalCategory = category === 'annotation' ? 'annotation' : 'data';
       const edgeId = `l${literalEdgeCounter}`;
@@ -2030,6 +2110,7 @@ export function buildGraphData(quads, options = {}) {
         id: edgeId,
         source: sourceId,
         target: literalId,
+        namedGraphIds: [quadGraphId],
         predicate: quad.predicate.value,
         predicateLabel: compactIri(quad.predicate.value),
         category: literalCategory,
@@ -2309,7 +2390,9 @@ export function buildGraphData(quads, options = {}) {
 
     if (node.termType === 'BlankNode') {
       const role = blankRoles.get(node.id)?.role ?? '';
-      if (role) {
+      const shouldSurfaceAsInstance = isEntityLikeBlankNode(node, labelIndex);
+
+      if (role && !shouldSurfaceAsInstance) {
         if (role.startsWith('Restriction')) {
           node.blankExpressionType = 'Restriction';
           const fallbackKind = role.startsWith('Restriction:') ? role.slice('Restriction:'.length) || 'Restriction' : 'Restriction';
@@ -2326,6 +2409,24 @@ export function buildGraphData(quads, options = {}) {
         node.badgeWidth = 0;
         node.classCount = 0;
         node.classTooltip = '';
+        node.isInstanceNode = 0;
+        node.isOntologyNode = 0;
+        node.mixedMode = hasOntology && hasKg ? 1 : 0;
+        node.namedGraphIds = Array.from(nodeNamedGraphAssignments.get(node.id) ?? []);
+        continue;
+      }
+
+      if (shouldSurfaceAsInstance) {
+        node.kind = 'entity';
+        node.entityCategory = 'individual';
+        node.ontologyKind = '';
+        node.isInstanceNode = 1;
+        node.isOntologyNode = 0;
+        node.mixedMode = hasOntology && hasKg ? 1 : 0;
+        node.graphRole = hasOntology && hasKg ? 'kg-instance' : '';
+        node.namedGraphIds = Array.from(nodeNamedGraphAssignments.get(node.id) ?? []);
+      } else {
+        node.namedGraphIds = Array.from(nodeNamedGraphAssignments.get(node.id) ?? []);
       }
       continue;
     }
@@ -2383,7 +2484,8 @@ export function buildGraphData(quads, options = {}) {
 
     node.isInstanceNode = isInstanceNode ? 1 : 0;
     node.isOntologyNode = node.ontologyKind ? 1 : 0;
-    node.mixedMode = hasOntology && hasKg ? 1 : 0;
+      node.mixedMode = hasOntology && hasKg ? 1 : 0;
+      node.namedGraphIds = Array.from(nodeNamedGraphAssignments.get(node.id) ?? []);
   }
 
   for (const node of nodeMap.values()) {
@@ -2408,6 +2510,7 @@ export function buildGraphData(quads, options = {}) {
   const baseIris = Array.from(baseIriCounts.entries())
     .map(([id, count]) => ({ id, label: id, count }))
     .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
+  const namedGraphs = Array.from(namedGraphMap.values()).sort((a, b) => a.label.localeCompare(b.label));
 
   const graphData = {
     store,
@@ -2417,6 +2520,7 @@ export function buildGraphData(quads, options = {}) {
     literalEdges,
     classes,
     baseIris,
+    namedGraphs,
     classNodeIds,
     badgeClassNodeIds,
     namedIndividualNodeIds,
@@ -2486,6 +2590,7 @@ export function toElements(nodes, edges) {
         badgeSvg: node.badgeSvg,
         badgeWidth: node.badgeWidth,
         classTooltip: node.classTooltip ?? '',
+        namedGraphIds: node.namedGraphIds ?? [],
         lightOntologyView: node.lightOntologyView ?? 0,
       },
     }));
@@ -2508,6 +2613,7 @@ export function toElements(nodes, edges) {
         id: edge.id,
         source: edge.source,
         target: edge.target,
+        namedGraphIds: edge.namedGraphIds ?? [],
         predicate: edge.predicate,
         predicateLabel: edge.predicateLabel,
         category: edge.category ?? 'object',
@@ -2533,6 +2639,9 @@ function normalizeViewOptions(viewOptions) {
     showNamedIndividuals: Boolean(viewOptions?.showNamedIndividuals),
     showTypeLinks: Boolean(viewOptions?.showTypeLinks),
     lightOntologyMode: Boolean(viewOptions?.lightOntologyMode),
+    selectedNamedGraphIds: Array.isArray(viewOptions?.selectedNamedGraphIds)
+      ? [...new Set(viewOptions.selectedNamedGraphIds.filter(Boolean))]
+      : [],
   };
 }
 
@@ -2549,6 +2658,16 @@ function toRestrictionEdgeLabel(restrictionNode) {
 }
 
 function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibleEdges) {
+  const RESTRICTION_REVERSE_TRAVERSAL_PREDICATES = new Set([
+    RDF_FIRST,
+    RDF_REST,
+    OWL_INTERSECTION_OF,
+    OWL_UNION_OF,
+    OWL_COMPLEMENT_OF,
+    OWL_ONE_OF,
+    OWL_WITH_RESTRICTIONS,
+    ...RESTRICTION_ANCHOR_AXIOM_PREDICATES,
+  ]);
   const restrictionNodeIds = new Set();
   for (const nodeId of visibleNodeIds) {
     const node = graphData.nodeMap.get(nodeId);
@@ -2584,6 +2703,13 @@ function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibl
 
   const syntheticEdges = [];
   const syntheticEdgeIds = new Set();
+  const incomingEdgesByTarget = new Map();
+
+  for (const edge of graphData.objectEdges) {
+    const rows = incomingEdgesByTarget.get(edge.target) ?? [];
+    rows.push(edge);
+    incomingEdgesByTarget.set(edge.target, rows);
+  }
 
   const isClassNode = (nodeId) => {
     const node = graphData.nodeMap.get(nodeId);
@@ -2593,20 +2719,62 @@ function collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibl
     return node.ontologyKind === 'class' || graphData.classNodeIds.has(nodeId);
   };
 
+  const resolveRestrictionAnchorClassIds = (restrictionNodeId) => {
+    const anchorClassIds = new Set();
+    const visited = new Set();
+    const queue = [restrictionNodeId];
+
+    while (queue.length > 0) {
+      const currentNodeId = queue.shift();
+      if (!currentNodeId || visited.has(currentNodeId)) {
+        continue;
+      }
+      visited.add(currentNodeId);
+
+      const incomingEdges = incomingEdgesByTarget.get(currentNodeId) ?? [];
+      for (const edge of incomingEdges) {
+        if (!RESTRICTION_REVERSE_TRAVERSAL_PREDICATES.has(edge.predicate)) {
+          continue;
+        }
+
+        const sourceNodeId = edge.source;
+        if (!sourceNodeId || visited.has(sourceNodeId)) {
+          continue;
+        }
+
+        if (RESTRICTION_ANCHOR_AXIOM_PREDICATES.has(edge.predicate) && isClassNode(sourceNodeId)) {
+          anchorClassIds.add(sourceNodeId);
+        }
+
+        const sourceNode = graphData.nodeMap.get(sourceNodeId);
+        if (!sourceNode) {
+          continue;
+        }
+
+        const canTraverse =
+          sourceNode.termType === 'BlankNode' ||
+          sourceNode.blankExpressionType === 'ClassExpression' ||
+          sourceNode.blankExpressionType === 'Intersection' ||
+          sourceNode.blankExpressionType === 'Union' ||
+          sourceNode.blankExpressionType === 'Complement' ||
+          sourceNode.blankExpressionType === 'OneOf' ||
+          sourceNode.blankExpressionType === 'DataRange';
+
+        if (canTraverse) {
+          queue.push(sourceNodeId);
+        }
+      }
+    }
+
+    return anchorClassIds;
+  };
+
   for (const [restrictionNodeId, connectedEdges] of edgesByRestrictionNode.entries()) {
     const restrictionNode = graphData.nodeMap.get(restrictionNodeId);
-    const anchorClassIds = new Set();
+    const anchorClassIds = resolveRestrictionAnchorClassIds(restrictionNodeId);
     const fillerClassIds = new Set();
 
     for (const edge of connectedEdges) {
-      if (RESTRICTION_ANCHOR_AXIOM_PREDICATES.has(edge.predicate)) {
-        if (edge.source === restrictionNodeId && isClassNode(edge.target)) {
-          anchorClassIds.add(edge.target);
-        } else if (edge.target === restrictionNodeId && isClassNode(edge.source)) {
-          anchorClassIds.add(edge.source);
-        }
-      }
-
       if (edge.source === restrictionNodeId && RESTRICTION_BRIDGE_VALUE_PREDICATES.has(edge.predicate) && isClassNode(edge.target)) {
         fillerClassIds.add(edge.target);
       }
@@ -2785,9 +2953,37 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
   return true;
 }
 
+function nodeMatchesNamedGraphFilter(node, selectedNamedGraphIds) {
+  if (!selectedNamedGraphIds || selectedNamedGraphIds.size === 0) {
+    return true;
+  }
+
+  const nodeGraphIds = Array.isArray(node?.namedGraphIds) ? node.namedGraphIds : [];
+  if (nodeGraphIds.length === 0) {
+    return false;
+  }
+
+  return nodeGraphIds.some((graphId) => selectedNamedGraphIds.has(graphId));
+}
+
+function edgeMatchesNamedGraphFilter(edge, selectedNamedGraphIds) {
+  if (!selectedNamedGraphIds || selectedNamedGraphIds.size === 0) {
+    return true;
+  }
+
+  const edgeGraphIds = Array.isArray(edge?.namedGraphIds) ? edge.namedGraphIds : [];
+  if (edgeGraphIds.length === 0) {
+    return false;
+  }
+
+  return edgeGraphIds.some((graphId) => selectedNamedGraphIds.has(graphId));
+}
+
 function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
   const visibleNodeIds = new Set();
   const visibleEdges = [];
+  const selectedNamedGraphIds =
+    options.selectedNamedGraphIds.length > 0 ? new Set(options.selectedNamedGraphIds) : null;
 
   const isVisibleKgEntityNode = (nodeId) => {
     const node = graphData.nodeMap.get(nodeId);
@@ -2799,7 +2995,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       return false;
     }
 
-    if (node.termType === 'BlankNode') {
+    if (
+      node.termType === 'BlankNode' &&
+      (node.entityCategory === 'class-expression' || !node.isInstanceNode)
+    ) {
       return false;
     }
 
@@ -2840,6 +3039,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       continue;
     }
 
+    if (!edgeMatchesNamedGraphFilter(edge, selectedNamedGraphIds)) {
+      continue;
+    }
+
     if (edge.predicate === RDF_FIRST || edge.predicate === RDF_REST) {
       continue;
     }
@@ -2866,6 +3069,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
       continue;
     }
 
+    if (!edgeMatchesNamedGraphFilter(edge, selectedNamedGraphIds)) {
+      continue;
+    }
+
     if (focusedNodeIds && !focusedNodeIds.has(edge.source)) {
       continue;
     }
@@ -2885,6 +3092,9 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
 
   for (const node of candidateNodes) {
     if (!isVisibleKgEntityNode(node.id)) {
+      continue;
+    }
+    if (!nodeMatchesNamedGraphFilter(node, selectedNamedGraphIds) && !node.isOntologyNode) {
       continue;
     }
     visibleNodeIds.add(node.id);
@@ -2935,7 +3145,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       return false;
     }
 
-    if (options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg) {
+    if (options.lightOntologyMode && graphData.hasOntology) {
       if (node.termType === 'NamedNode' && node.iri === OWL_RESTRICTION) {
         return true;
       }
@@ -3061,7 +3271,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
     visibleNodeIds.add(edge.target);
   }
 
-  if (options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg) {
+  if (options.lightOntologyMode && graphData.hasOntology) {
     collapseRestrictionNodesToBridgeEdges(graphData, visibleNodeIds, visibleEdges);
   }
 
@@ -3106,7 +3316,7 @@ export function buildFocusedSubset(graphData, focusedNodeIds, viewOptions = DEFA
       !isOntologyStructuralNodeHidden(node.id),
   );
   const elements = toElements(nodes, visibleEdges);
-  if (!(options.lightOntologyMode && graphData.hasOntology && !graphData.hasKg)) {
+  if (!options.lightOntologyMode) {
     return elements;
   }
 

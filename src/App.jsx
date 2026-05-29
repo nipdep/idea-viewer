@@ -889,6 +889,24 @@ function runBaseIriFilter(graphData, baseIris) {
   return matchedNodeIds;
 }
 
+function runNamedGraphFilter(graphData, namedGraphIds) {
+  if (!graphData || namedGraphIds.length === 0) {
+    return new Set();
+  }
+
+  const allowedNamedGraphIds = new Set(namedGraphIds);
+  const matchedNodeIds = new Set();
+
+  for (const node of graphData.nodes) {
+    const nodeGraphIds = Array.isArray(node.namedGraphIds) ? node.namedGraphIds : [];
+    if (nodeGraphIds.some((graphId) => allowedNamedGraphIds.has(graphId))) {
+      matchedNodeIds.add(node.id);
+    }
+  }
+
+  return matchedNodeIds;
+}
+
 function normalizeSearchText(value) {
   return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -1316,7 +1334,14 @@ function toViewFlags(filterMode) {
   }
 }
 
-function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false, forceTypeLinks = false) {
+function toViewOptions(
+  projectionMode,
+  filterMode,
+  graphData,
+  lightOntologyMode = false,
+  forceTypeLinks = false,
+  selectedNamedGraphIds = [],
+) {
   const flags = toViewFlags(filterMode);
   if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
     return {
@@ -1324,6 +1349,7 @@ function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode 
       ...flags,
       showTypeLinks: Boolean(forceTypeLinks || graphData?.hasOntology),
       lightOntologyMode: false,
+      selectedNamedGraphIds,
     };
   }
 
@@ -1332,6 +1358,7 @@ function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode 
     ...flags,
     showTypeLinks: Boolean(forceTypeLinks || graphData?.hasOntology),
     lightOntologyMode: Boolean(lightOntologyMode),
+    selectedNamedGraphIds: [],
   };
 }
 
@@ -1380,6 +1407,7 @@ export default function App() {
 
   const [selectedClassIris, setSelectedClassIris] = useState([]);
   const [selectedBaseIris, setSelectedBaseIris] = useState([]);
+  const [selectedNamedGraphIds, setSelectedNamedGraphIds] = useState([]);
   const [nodeNameQuery, setNodeNameQuery] = useState('');
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
@@ -1838,15 +1866,23 @@ export default function App() {
   }, [graphData]);
   const allClassIris = useMemo(() => classFilterEntries.map((entry) => entry.id), [classFilterEntries]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
+  const allNamedGraphIds = useMemo(() => graphData?.namedGraphs.map((entry) => entry.id) ?? [], [graphData]);
   const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
   const hasOntologyUploads = ontologyFiles.length > 0 || Boolean(graphData?.hasOntology);
+  const hasKgUploads = kgFiles.length > 0 || Boolean(graphData?.hasKg);
+  const hasAnyUploads = hasKgUploads || hasOntologyUploads;
   const hasNamedIndividuals = Boolean(
     graphData?.nodes?.some((node) => node.isInstanceNode),
   );
+  const showNamedGraphFilter =
+    graphProjectionMode === GRAPH_PROJECTION_MODES.KG &&
+    Boolean(graphData?.hasKg) &&
+    (graphData?.namedGraphs?.length ?? 0) > 0;
   const showViewFiltering = hasOntologyUploads;
   const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
+  const showKgProjectionButton = hasKgUploads;
   const isLightOntologyViewActive =
-    isLightOntologyView && isOntologyOnlyDataset && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
+    isLightOntologyView && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
   const isHighContrastGraph = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
   const useLegacyTypeLinks = isHighContrastGraph;
 
@@ -1856,6 +1892,10 @@ export default function App() {
   const isAllBaseIrisSelected =
     allBaseIris.length === 0 ||
     (selectedBaseIris.length === allBaseIris.length && allBaseIris.every((iri) => selectedBaseIris.includes(iri)));
+  const isAllNamedGraphsSelected =
+    allNamedGraphIds.length === 0 ||
+    (selectedNamedGraphIds.length === allNamedGraphIds.length &&
+      allNamedGraphIds.every((graphId) => selectedNamedGraphIds.includes(graphId)));
 
   useEffect(() => {
     if (!graphData) {
@@ -3235,17 +3275,22 @@ export default function App() {
           graphData,
           isLightOntologyViewActive,
           useLegacyTypeLinks,
+          selectedNamedGraphIds,
         );
         const classFilterActive =
           showClassTypeFilter &&
           graphData.classes.length > 0 &&
           selectedClassIris.length !== graphData.classes.length;
+        const namedGraphFilterActive =
+          graphProjectionMode === GRAPH_PROJECTION_MODES.KG &&
+          graphData.namedGraphs.length > 0 &&
+          selectedNamedGraphIds.length !== graphData.namedGraphs.length;
         const baseIriFilterActive =
           graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
         const nodeNameFilterActive = nodeNameQuery.trim().length > 0;
         const sparqlActive = sparqlQuery.trim().length > 0;
 
-        if (!classFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
+        if (!classFilterActive && !namedGraphFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
             setVisibleElements(buildFocusedSubset(graphData, null, viewOptions));
           }
@@ -3255,8 +3300,14 @@ export default function App() {
         const engine = queryEngineRef.current;
         let selectedEntities = null;
 
+        if (namedGraphFilterActive) {
+          const namedGraphMatches = runNamedGraphFilter(graphData, selectedNamedGraphIds);
+          selectedEntities = selectedEntities ? intersectSets(selectedEntities, namedGraphMatches) : namedGraphMatches;
+        }
+
         if (baseIriFilterActive) {
-          selectedEntities = runBaseIriFilter(graphData, selectedBaseIris);
+          const baseIriMatches = runBaseIriFilter(graphData, selectedBaseIris);
+          selectedEntities = selectedEntities ? intersectSets(selectedEntities, baseIriMatches) : baseIriMatches;
         }
 
         if (classFilterActive) {
@@ -3293,6 +3344,7 @@ export default function App() {
                 graphData,
                 isLightOntologyViewActive,
                 useLegacyTypeLinks,
+                selectedNamedGraphIds,
               ),
             ),
           );
@@ -3313,6 +3365,7 @@ export default function App() {
     graphData,
     selectedClassIris,
     selectedBaseIris,
+    selectedNamedGraphIds,
     nodeNameQuery,
     sparqlQuery,
     graphProjectionMode,
@@ -3362,6 +3415,7 @@ export default function App() {
     setVisibleElements([]);
     setSelectedClassIris([]);
     setSelectedBaseIris([]);
+    setSelectedNamedGraphIds([]);
     setNodeNameQuery('');
     setSparqlDraft('');
     setSparqlQuery('');
@@ -3390,6 +3444,7 @@ export default function App() {
 
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
       setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG);
+      setIsLightOntologyView(false);
     }
 
     setKgFiles((current) => mergeSelectedFiles(current, files));
@@ -3402,6 +3457,7 @@ export default function App() {
 
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
       setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+      setIsLightOntologyView(true);
     }
 
     setOntologyFiles((current) => mergeSelectedFiles(current, files));
@@ -3453,6 +3509,7 @@ export default function App() {
       setVisibleElements([]);
       setSelectedClassIris([]);
       setSelectedBaseIris([]);
+      setSelectedNamedGraphIds([]);
       setSelectedNodeId(null);
       setSelectedEdgeId(null);
       setFocusedNodeId(null);
@@ -3469,6 +3526,7 @@ export default function App() {
     }
 
     let cancelled = false;
+    const hadExistingGraph = Boolean(graphData);
 
     const loadGraph = async () => {
       setIsLoading(true);
@@ -3551,8 +3609,16 @@ export default function App() {
         }
 
         setGraphData(nextGraphData);
+        if (!hadExistingGraph && hasOntology && !hasKg) {
+          setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+          setIsLightOntologyView(true);
+        } else if (!hadExistingGraph && hasKg && !hasOntology) {
+          setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG);
+          setIsLightOntologyView(false);
+        }
         setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
         setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
+        setSelectedNamedGraphIds(nextGraphData.namedGraphs.map((entry) => entry.id));
         setNodeNameQuery('');
         setSparqlDraft('');
         setSparqlQuery('');
@@ -3615,6 +3681,23 @@ export default function App() {
       }
       return [...current, baseIri];
     });
+  }
+
+  function toggleNamedGraph(namedGraphId) {
+    setSelectedNamedGraphIds((current) => {
+      if (current.includes(namedGraphId)) {
+        return current.filter((entry) => entry !== namedGraphId);
+      }
+      return [...current, namedGraphId];
+    });
+  }
+
+  function selectAllNamedGraphs() {
+    setSelectedNamedGraphIds(allNamedGraphIds);
+  }
+
+  function clearNamedGraphs() {
+    setSelectedNamedGraphIds([]);
   }
 
   function selectAllBaseIris() {
@@ -3877,10 +3960,25 @@ export default function App() {
     if (!isLightOntologyView) {
       return;
     }
-    if (!isOntologyOnlyDataset || graphProjectionMode !== GRAPH_PROJECTION_MODES.ONTOLOGY) {
+    if (graphProjectionMode !== GRAPH_PROJECTION_MODES.ONTOLOGY) {
       setIsLightOntologyView(false);
     }
-  }, [isLightOntologyView, isOntologyOnlyDataset, graphProjectionMode]);
+  }, [isLightOntologyView, graphProjectionMode]);
+
+  function activateFullOntologyView() {
+    setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+    setIsLightOntologyView(false);
+  }
+
+  function activateLightOntologyView() {
+    setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+    setIsLightOntologyView(true);
+  }
+
+  function activateKgView() {
+    setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG);
+    setIsLightOntologyView(false);
+  }
 
   const showLeftPanelContent = isGraphFullscreen ? leftFlyoutOpen : !leftCollapsed;
   const showRightPanelContent = isGraphFullscreen ? rightFlyoutOpen : !rightCollapsed;
@@ -3895,7 +3993,9 @@ export default function App() {
   };
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
-  const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
+  const lightOntologyButtonLabel = isLightOntologyViewActive
+    ? 'Switch to full ontology view'
+    : 'Switch to light ontology view';
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
   const settingsButtonLabel = isSettingsOpen ? 'Hide graph settings' : 'Show graph settings';
   const showLightOntologyLegend = isLightOntologyViewActive;
@@ -4312,6 +4412,48 @@ export default function App() {
                         </div>
                       </>
                     )}
+                    {showNamedGraphFilter && (
+                      <>
+                        <h3 className="filter-group-title">KG named graph</h3>
+                        <div className="mini-actions">
+                          <button
+                            type="button"
+                            onClick={selectAllNamedGraphs}
+                            disabled={!graphData || isAllNamedGraphsSelected}
+                          >
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearNamedGraphs}
+                            disabled={!graphData || selectedNamedGraphIds.length === 0}
+                          >
+                            Clear
+                          </button>
+                        </div>
+
+                        <div className="class-list">
+                          {!graphData && <p className="muted">Load data to list KG named graphs.</p>}
+                          {graphData && graphData.namedGraphs.length === 0 && (
+                            <p className="muted">No named graphs detected in the loaded KG data.</p>
+                          )}
+                          {graphData &&
+                            graphData.namedGraphs.map((entry) => (
+                              <label key={entry.id} className="class-item">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedNamedGraphIds.includes(entry.id)}
+                                  onChange={() => toggleNamedGraph(entry.id)}
+                                />
+                                <span className="class-label" title={entry.label}>
+                                  {entry.label}
+                                </span>
+                                <small>{entry.count}</small>
+                              </label>
+                            ))}
+                        </div>
+                      </>
+                    )}
                     <h3 className="filter-group-title">Node name</h3>
                     <div className="node-search-row">
                       <input
@@ -4518,88 +4660,86 @@ export default function App() {
           )}
 
           <div className="graph-tools graph-tools-left">
-            <div
-              className={`projection-toggle theme-switch ${
-                graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'mode-kg' : 'mode-ontology'
-              }`}
-              role="tablist"
-              aria-label="Graph projection mode"
-            >
-              <span className="projection-switch-thumb" aria-hidden="true" />
-              <button
-                type="button"
-                className={`projection-toggle-button ${
-                  graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY ? 'active' : ''
-                }`}
-                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY)}
-                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY}
-                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
-                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
-              >
-                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
-                  <circle cx="8" cy="3.2" r="1.2" fill="currentColor" />
-                  <circle cx="12.2" cy="5" r="1.1" fill="currentColor" />
-                  <circle cx="12" cy="10.8" r="1.1" fill="currentColor" />
-                  <circle cx="4" cy="10.8" r="1.1" fill="currentColor" />
-                  <circle cx="3.8" cy="5" r="1.1" fill="currentColor" />
-                  <path
-                    d="M8 5.2V6.1M10.2 6.2L9.3 6.9M10 9.9L9.2 9.2M6.8 9.2L6 9.9M6.7 6.9L5.8 6.2"
-                    stroke="currentColor"
-                    strokeWidth="1"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className={`projection-toggle-button ${
-                  graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'active' : ''
-                }`}
-                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG)}
-                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.KG}
-                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
-                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
-              >
-                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
-                  <circle cx="12.5" cy="4" r="1.5" fill="currentColor" />
-                  <circle cx="8" cy="12" r="1.8" fill="currentColor" />
-                  <path
-                    d="M4.9 4.9L7.1 10.1M11.1 4.9L8.9 10.1M5.1 4H10.9"
-                    stroke="currentColor"
-                    strokeWidth="1.1"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
+            <div className="graph-view-switcher" aria-label="Graph view selection">
+              {hasAnyUploads && (
+                <div
+                  className={`projection-toggle theme-switch ontology-view-toggle ${
+                    isLightOntologyViewActive ? 'mode-secondary' : 'mode-primary'
+                  }`}
+                  role="tablist"
+                  aria-label="Ontology view mode"
+                >
+                  <span className="projection-switch-thumb" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className={`projection-toggle-button ${
+                      graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY && !isLightOntologyViewActive ? 'active' : ''
+                    }`}
+                    onClick={activateFullOntologyView}
+                    aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY && !isLightOntologyViewActive}
+                    aria-label="Ontology full detailed view"
+                    title="Ontology full detailed view"
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
+                      <circle cx="8" cy="3.2" r="1.2" fill="currentColor" />
+                      <circle cx="12.2" cy="5" r="1.1" fill="currentColor" />
+                      <circle cx="12" cy="10.8" r="1.1" fill="currentColor" />
+                      <circle cx="4" cy="10.8" r="1.1" fill="currentColor" />
+                      <circle cx="3.8" cy="5" r="1.1" fill="currentColor" />
+                      <path
+                        d="M8 5.2V6.1M10.2 6.2L9.3 6.9M10 9.9L9.2 9.2M6.8 9.2L6 9.9M6.7 6.9L5.8 6.2"
+                        stroke="currentColor"
+                        strokeWidth="1"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={`projection-toggle-button ${isLightOntologyViewActive ? 'active' : ''}`}
+                    onClick={activateLightOntologyView}
+                    aria-pressed={isLightOntologyViewActive}
+                    aria-label={lightOntologyButtonLabel}
+                    title={lightOntologyButtonLabel}
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <rect x="2.4" y="3.4" width="11.2" height="8.2" rx="1.1" stroke="currentColor" strokeWidth="1.2" />
+                      <path d="M4.2 12.8H11.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                      <path d="M5.2 6.2H10.8M5.2 8.6H8.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              {showKgProjectionButton && (
+                <button
+                  type="button"
+                  className={`graph-tool-button icon-only kg-view-button ${
+                    graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'active' : ''
+                  }`}
+                  onClick={activateKgView}
+                  aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.KG}
+                  aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
+                  title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
+                >
+                  <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
+                    <circle cx="12.5" cy="4" r="1.5" fill="currentColor" />
+                    <circle cx="8" cy="12" r="1.8" fill="currentColor" />
+                    <path
+                      d="M4.9 4.9L7.1 10.1M11.1 4.9L8.9 10.1M5.1 4H10.9"
+                      stroke="currentColor"
+                      strokeWidth="1.1"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
 
           <div className="graph-tools graph-tools-right">
-            {isOntologyOnlyDataset && (
-              <button
-                type="button"
-                className={`graph-tool-button icon-only ${isLightOntologyViewActive ? 'active' : ''}`}
-                onClick={() => {
-                  const next = !isLightOntologyViewActive;
-                  setIsLightOntologyView(next);
-                  if (next) {
-                    setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
-                  }
-                }}
-                aria-label={lightOntologyButtonLabel}
-                title={lightOntologyButtonLabel}
-                aria-pressed={isLightOntologyViewActive}
-              >
-                <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <rect x="2.4" y="3.4" width="11.2" height="8.2" rx="1.1" stroke="currentColor" strokeWidth="1.2" />
-                  <path d="M4.2 12.8H11.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  <path d="M5.2 6.2H10.8M5.2 8.6H8.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-              </button>
-            )}
-
             <button
               type="button"
               className={`graph-tool-button icon-only ${isLegendOpen ? 'active' : ''}`}

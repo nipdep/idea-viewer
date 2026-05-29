@@ -352,17 +352,17 @@ textarea {
 
 .panel,
 .graph-area {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   min-width: 0;
   min-height: 0;
 }
 
 .panel {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .page-shell.resizing,
@@ -383,7 +383,7 @@ textarea {
 .panel-content {
   height: 100%;
   min-height: 0;
-  padding: 16px;
+  padding: 0 2px 4px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -472,7 +472,7 @@ textarea {
 }
 
 .panel-section {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: #fffdf9;
@@ -966,8 +966,8 @@ textarea {
 
 .graph-area {
   position: relative;
-  padding: 14px;
-  overflow: hidden;
+  padding: 0 2px 4px;
+  overflow: visible;
 }
 
 .graph-tools {
@@ -980,6 +980,12 @@ textarea {
 .graph-tools-left {
   left: 18px;
   right: auto;
+}
+
+.graph-view-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .graph-tools-right {
@@ -1026,6 +1032,14 @@ textarea {
   transform: translateX(100%);
 }
 
+.projection-toggle.theme-switch.mode-secondary .projection-switch-thumb {
+  transform: translateX(100%);
+}
+
+.ontology-view-toggle {
+  width: 92px;
+}
+
 .projection-toggle-button {
   position: relative;
   z-index: 1;
@@ -1057,6 +1071,15 @@ textarea {
   border-color: transparent;
   background: transparent;
   color: #1f5f5e;
+}
+
+.projection-toggle-button:disabled {
+  color: rgba(90, 82, 74, 0.42);
+  cursor: not-allowed;
+}
+
+.projection-toggle-button:disabled:hover {
+  background: transparent;
 }
 
 .projection-toggle-button svg {
@@ -1099,6 +1122,16 @@ textarea {
 .graph-tool-icon {
   width: 16px;
   height: 16px;
+}
+
+.kg-view-button {
+  width: 32px;
+  height: 32px;
+}
+
+.kg-view-button .graph-tool-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .graph-export-menu {
@@ -1887,8 +1920,9 @@ textarea {
   opacity: 0;
   pointer-events: none;
   border: 1px solid var(--border);
-  background: var(--panel);
+  background: rgba(255, 253, 249, 0.96);
   box-shadow: var(--shadow);
+  border-radius: 18px;
   overflow: hidden;
   transition: transform 180ms ease, opacity 180ms ease;
 }

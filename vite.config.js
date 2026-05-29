@@ -41,6 +41,9 @@ export default defineConfig(({ mode }) => {
     hmr.port = toNumber(env.VITE_HMR_PORT, undefined);
   }
 
+  const usePolling = isTruthy(env.VITE_USE_POLLING) || isTruthy(env.CHOKIDAR_USEPOLLING);
+  const pollingInterval = toNumber(env.VITE_POLLING_INTERVAL || env.CHOKIDAR_INTERVAL, 250);
+
   return {
     base,
     define: {
@@ -54,6 +57,12 @@ export default defineConfig(({ mode }) => {
       allowedHosts: true,
       origin: env.VITE_DEV_ORIGIN || undefined,
       hmr: Object.keys(hmr).length > 0 ? hmr : undefined,
+      watch: usePolling
+        ? {
+            usePolling: true,
+            interval: pollingInterval,
+          }
+        : undefined,
     },
     preview: {
       host: env.VITE_PREVIEW_HOST || '0.0.0.0',

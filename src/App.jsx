@@ -1256,9 +1256,9 @@ export default function App() {
       return left.id.localeCompare(right.id);
     });
 
-    const baseSpacing = Math.max(110, Math.round(maxNodeSpan + 54));
-    const idealEdgeLength = Math.max(92, Math.round(baseSpacing * 0.88));
-    const repulsionRadius = Math.max(baseSpacing * 1.6, maxNodeSpan * 1.9);
+    const baseSpacing = Math.max(92, Math.round(maxNodeSpan + 36));
+    const idealEdgeLength = Math.max(68, Math.round(baseSpacing * 0.7));
+    const repulsionRadius = Math.max(baseSpacing * 1.15, maxNodeSpan * 1.45);
     const goldenAngle = Math.PI * (3 - Math.sqrt(5));
     const positions = new Map();
 
@@ -1276,7 +1276,7 @@ export default function App() {
       });
     });
 
-    const iterationCount = nodes.length > 160 ? 70 : 95;
+    const iterationCount = nodes.length > 160 ? 85 : 115;
     const bucketSize = repulsionRadius;
 
     for (let iteration = 0; iteration < iterationCount; iteration += 1) {
@@ -1328,10 +1328,10 @@ export default function App() {
               }
 
               const overlapDistance =
-                Math.max(entry.width, entry.height) / 2 + Math.max(other.width, other.height) / 2 + 16;
+                Math.max(entry.width, entry.height) / 2 + Math.max(other.width, other.height) / 2 + 12;
               const closeness = Math.max(0, (repulsionRadius - distance) / repulsionRadius);
-              const overlapBoost = distance < overlapDistance ? 1 + (overlapDistance - distance) / overlapDistance : 1;
-              const repulsion = closeness * closeness * 22 * overlapBoost;
+              const overlapBoost = distance < overlapDistance ? 1.6 + (overlapDistance - distance) / overlapDistance : 0.55;
+              const repulsion = closeness * closeness * 12 * overlapBoost;
               const unitX = dx / distance;
               const unitY = dy / distance;
               const entryForce = forceById.get(entry.id);
@@ -1362,7 +1362,7 @@ export default function App() {
         const unitX = dx / distance;
         const unitY = dy / distance;
         const stretch = distance - idealEdgeLength;
-        const attraction = stretch * 0.04;
+        const attraction = stretch * 0.085;
         const sourceForce = forceById.get(sourceId);
         const targetForce = forceById.get(targetId);
         sourceForce.x += unitX * attraction;
@@ -1381,11 +1381,11 @@ export default function App() {
       centroidX /= nodeMetrics.length;
       centroidY /= nodeMetrics.length;
 
-      const cooling = 0.5 + (1 - iteration / iterationCount) * 1.7;
+      const cooling = 0.45 + (1 - iteration / iterationCount) * 1.45;
       nodeMetrics.forEach((entry) => {
         const position = positions.get(entry.id);
         const force = forceById.get(entry.id);
-        const gravity = Math.max(0.0015, entry.degree > 0 ? 0.003 : 0.001);
+        const gravity = Math.max(0.001, entry.degree > 0 ? 0.0022 : 0.0008);
         position.x += (force.x - (position.x - centroidX) * gravity) * cooling;
         position.y += (force.y - (position.y - centroidY) * gravity) * cooling;
       });
@@ -2372,9 +2372,12 @@ export default function App() {
         fit: true,
         padding: 42,
         randomize: !useMagneticInitialLayout,
-        idealEdgeLength: useMagneticInitialLayout ? 94 : 110,
-        edgeElasticity: useMagneticInitialLayout ? 110 : 80,
-        nodeRepulsion: useMagneticInitialLayout ? 26000 : 20000,
+        idealEdgeLength: useMagneticInitialLayout ? 72 : 110,
+        edgeElasticity: useMagneticInitialLayout ? 180 : 80,
+        nodeRepulsion: useMagneticInitialLayout ? 9000 : 20000,
+        gravity: useMagneticInitialLayout ? 0.32 : 0.25,
+        numIter: useMagneticInitialLayout ? 140 : 1000,
+        coolingFactor: useMagneticInitialLayout ? 0.96 : 0.99,
       }).run();
       if (isLightOntologyViewActive) {
         nudgeNodesTowardLandscape(cy, 1.5);

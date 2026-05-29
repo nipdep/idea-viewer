@@ -1205,6 +1205,220 @@ export default function App() {
     });
   }
 
+  function shouldUseMagneticInitialLayout(projectionMode, isLightOntologyViewActive) {
+    return (
+      projectionMode === GRAPH_PROJECTION_MODES.KG ||
+      (projectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY && !isLightOntologyViewActive)
+    );
+  }
+
+  function applyMagneticInitialLayout(cy) {
+    const nodes = cy.nodes(':visible');
+    if (nodes.length < 2) {
+      return false;
+    }
+
+    const edges = cy.edges(':visible');
+    const adjacency = new Map();
+    const nodeMetrics = [];
+    let maxNodeSpan = 80;
+
+    nodes.forEach((node) => {
+      adjacency.set(node.id(), new Set());
+      const width = Math.max(36, Number(node.width()) || 36);
+      const height = Math.max(24, Number(node.height()) || 24);
+      maxNodeSpan = Math.max(maxNodeSpan, width, height);
+      nodeMetrics.push({
+        id: node.id(),
+        node,
+        width,
+        height,
+        degree: 0,
+      });
+    });
+
+    edges.forEach((edge) => {
+      const sourceId = edge.source().id();
+      const targetId = edge.target().id();
+      adjacency.get(sourceId)?.add(targetId);
+      adjacency.get(targetId)?.add(sourceId);
+    });
+
+    nodeMetrics.forEach((entry) => {
+      entry.degree = adjacency.get(entry.id)?.size ?? 0;
+    });
+
+    nodeMetrics.sort((left, right) => {
+      const degreeDiff = right.degree - left.degree;
+      if (degreeDiff !== 0) {
+        return degreeDiff;
+      }
+      return left.id.localeCompare(right.id);
+    });
+
+    const baseSpacing = Math.max(110, Math.round(maxNodeSpan + 54));
+    const idealEdgeLength = Math.max(92, Math.round(baseSpacing * 0.88));
+    const repulsionRadius = Math.max(baseSpacing * 1.6, maxNodeSpan * 1.9);
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    const positions = new Map();
+
+    nodeMetrics.forEach((entry, index) => {
+      if (index === 0) {
+        positions.set(entry.id, { x: 0, y: 0 });
+        return;
+      }
+
+      const radius = baseSpacing * Math.sqrt(index);
+      const angle = index * goldenAngle;
+      positions.set(entry.id, {
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+      });
+    });
+
+    const iterationCount = nodes.length > 160 ? 70 : 95;
+    const bucketSize = repulsionRadius;
+
+    for (let iteration = 0; iteration < iterationCount; iteration += 1) {
+      const forceById = new Map(nodeMetrics.map((entry) => [entry.id, { x: 0, y: 0 }]));
+      const buckets = new Map();
+
+      nodeMetrics.forEach((entry) => {
+        const position = positions.get(entry.id);
+        const bucketX = Math.floor(position.x / bucketSize);
+        const bucketY = Math.floor(position.y / bucketSize);
+        const bucketKey = `${bucketX}:${bucketY}`;
+        const bucket = buckets.get(bucketKey);
+        if (bucket) {
+          bucket.push(entry);
+        } else {
+          buckets.set(bucketKey, [entry]);
+        }
+      });
+
+      for (const entry of nodeMetrics) {
+        const position = positions.get(entry.id);
+        const bucketX = Math.floor(position.x / bucketSize);
+        const bucketY = Math.floor(position.y / bucketSize);
+
+        for (let deltaX = -1; deltaX <= 1; deltaX += 1) {
+          for (let deltaY = -1; deltaY <= 1; deltaY += 1) {
+            const bucket = buckets.get(`${bucketX + deltaX}:${bucketY + deltaY}`);
+            if (!bucket) {
+              continue;
+            }
+
+            for (const other of bucket) {
+              if (other.id <= entry.id) {
+                continue;
+              }
+
+              const otherPosition = positions.get(other.id);
+              let dx = otherPosition.x - position.x;
+              let dy = otherPosition.y - position.y;
+              let distance = Math.hypot(dx, dy);
+              if (distance < 0.001) {
+                dx = 0.01;
+                dy = 0.01;
+                distance = Math.hypot(dx, dy);
+              }
+
+              if (distance > repulsionRadius) {
+                continue;
+              }
+
+              const overlapDistance =
+                Math.max(entry.width, entry.height) / 2 + Math.max(other.width, other.height) / 2 + 16;
+              const closeness = Math.max(0, (repulsionRadius - distance) / repulsionRadius);
+              const overlapBoost = distance < overlapDistance ? 1 + (overlapDistance - distance) / overlapDistance : 1;
+              const repulsion = closeness * closeness * 22 * overlapBoost;
+              const unitX = dx / distance;
+              const unitY = dy / distance;
+              const entryForce = forceById.get(entry.id);
+              const otherForce = forceById.get(other.id);
+              entryForce.x -= unitX * repulsion;
+              entryForce.y -= unitY * repulsion;
+              otherForce.x += unitX * repulsion;
+              otherForce.y += unitY * repulsion;
+            }
+          }
+        }
+      }
+
+      edges.forEach((edge) => {
+        const sourceId = edge.source().id();
+        const targetId = edge.target().id();
+        const sourcePosition = positions.get(sourceId);
+        const targetPosition = positions.get(targetId);
+        let dx = targetPosition.x - sourcePosition.x;
+        let dy = targetPosition.y - sourcePosition.y;
+        let distance = Math.hypot(dx, dy);
+        if (distance < 0.001) {
+          dx = 0.01;
+          dy = 0.01;
+          distance = Math.hypot(dx, dy);
+        }
+
+        const unitX = dx / distance;
+        const unitY = dy / distance;
+        const stretch = distance - idealEdgeLength;
+        const attraction = stretch * 0.04;
+        const sourceForce = forceById.get(sourceId);
+        const targetForce = forceById.get(targetId);
+        sourceForce.x += unitX * attraction;
+        sourceForce.y += unitY * attraction;
+        targetForce.x -= unitX * attraction;
+        targetForce.y -= unitY * attraction;
+      });
+
+      let centroidX = 0;
+      let centroidY = 0;
+      nodeMetrics.forEach((entry) => {
+        const position = positions.get(entry.id);
+        centroidX += position.x;
+        centroidY += position.y;
+      });
+      centroidX /= nodeMetrics.length;
+      centroidY /= nodeMetrics.length;
+
+      const cooling = 0.5 + (1 - iteration / iterationCount) * 1.7;
+      nodeMetrics.forEach((entry) => {
+        const position = positions.get(entry.id);
+        const force = forceById.get(entry.id);
+        const gravity = Math.max(0.0015, entry.degree > 0 ? 0.003 : 0.001);
+        position.x += (force.x - (position.x - centroidX) * gravity) * cooling;
+        position.y += (force.y - (position.y - centroidY) * gravity) * cooling;
+      });
+    }
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    nodeMetrics.forEach((entry) => {
+      const position = positions.get(entry.id);
+      if (position.x < minX) minX = position.x;
+      if (position.x > maxX) maxX = position.x;
+      if (position.y < minY) minY = position.y;
+      if (position.y > maxY) maxY = position.y;
+    });
+
+    const offsetX = Number.isFinite(minX) && Number.isFinite(maxX) ? (minX + maxX) / 2 : 0;
+    const offsetY = Number.isFinite(minY) && Number.isFinite(maxY) ? (minY + maxY) / 2 : 0;
+
+    cy.batch(() => {
+      nodeMetrics.forEach((entry) => {
+        const position = positions.get(entry.id);
+        entry.node.position({
+          x: position.x - offsetX,
+          y: position.y - offsetY,
+        });
+      });
+    });
+
+    return true;
+  }
+
   function nudgeNodesTowardLandscape(cy, targetRatio = 1.5) {
     const nodes = cy.nodes(':visible');
     if (nodes.length < 2) {
@@ -2143,14 +2357,24 @@ export default function App() {
     }
 
     if (isInitialLayout) {
+      const useMagneticInitialLayout = shouldUseMagneticInitialLayout(
+        graphProjectionMode,
+        isLightOntologyViewActive,
+      );
+
+      if (useMagneticInitialLayout) {
+        applyMagneticInitialLayout(cy);
+      }
+
       cy.layout({
         name: 'cose',
         animate: false,
         fit: true,
         padding: 42,
-        idealEdgeLength: 110,
-        edgeElasticity: 80,
-        nodeRepulsion: 20000,
+        randomize: !useMagneticInitialLayout,
+        idealEdgeLength: useMagneticInitialLayout ? 94 : 110,
+        edgeElasticity: useMagneticInitialLayout ? 110 : 80,
+        nodeRepulsion: useMagneticInitialLayout ? 26000 : 20000,
       }).run();
       if (isLightOntologyViewActive) {
         nudgeNodesTowardLandscape(cy, 1.5);
@@ -2206,7 +2430,7 @@ export default function App() {
 
     cy.zoom(previousViewport.zoom);
     cy.pan(previousViewport.pan);
-  }, [visibleElements, isLightOntologyViewActive]);
+  }, [visibleElements, graphProjectionMode, isLightOntologyViewActive]);
 
   useEffect(() => {
     const cy = cyRef.current;

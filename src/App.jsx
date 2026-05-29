@@ -1419,6 +1419,78 @@ export default function App() {
     return true;
   }
 
+  function resolveNodeOverlaps(cy, maxPasses = 16, spacing = 18) {
+    const nodes = cy.nodes(':visible');
+    if (nodes.length < 2) {
+      return false;
+    }
+
+    let movedAny = false;
+
+    for (let pass = 0; pass < maxPasses; pass += 1) {
+      let movedThisPass = false;
+      const nodeEntries = nodes.map((node) => ({
+        id: node.id(),
+        node,
+        x: node.position('x'),
+        y: node.position('y'),
+        halfWidth: Math.max(20, node.width() / 2) + spacing / 2,
+        halfHeight: Math.max(16, node.height() / 2) + spacing / 2,
+      }));
+
+      cy.batch(() => {
+        for (let index = 0; index < nodeEntries.length; index += 1) {
+          const current = nodeEntries[index];
+
+          for (let otherIndex = index + 1; otherIndex < nodeEntries.length; otherIndex += 1) {
+            const other = nodeEntries[otherIndex];
+            let dx = other.x - current.x;
+            let dy = other.y - current.y;
+            const overlapX = current.halfWidth + other.halfWidth - Math.abs(dx);
+            const overlapY = current.halfHeight + other.halfHeight - Math.abs(dy);
+
+            if (overlapX <= 0 || overlapY <= 0) {
+              continue;
+            }
+
+            movedThisPass = true;
+            movedAny = true;
+
+            if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) {
+              dx = 0.01;
+              dy = 0.01;
+            }
+
+            if (overlapX < overlapY) {
+              const shift = overlapX / 2 + 1.5;
+              const direction = dx >= 0 ? 1 : -1;
+              current.x -= direction * shift;
+              other.x += direction * shift;
+            } else {
+              const shift = overlapY / 2 + 1.5;
+              const direction = dy >= 0 ? 1 : -1;
+              current.y -= direction * shift;
+              other.y += direction * shift;
+            }
+          }
+        }
+
+        nodeEntries.forEach((entry) => {
+          entry.node.position({
+            x: entry.x,
+            y: entry.y,
+          });
+        });
+      });
+
+      if (!movedThisPass) {
+        break;
+      }
+    }
+
+    return movedAny;
+  }
+
   function nudgeNodesTowardLandscape(cy, targetRatio = 1.5) {
     const nodes = cy.nodes(':visible');
     if (nodes.length < 2) {
@@ -2379,8 +2451,12 @@ export default function App() {
         numIter: useMagneticInitialLayout ? 140 : 1000,
         coolingFactor: useMagneticInitialLayout ? 0.96 : 0.99,
       }).run();
+      resolveNodeOverlaps(cy, useMagneticInitialLayout ? 20 : 12, useMagneticInitialLayout ? 26 : 18);
       if (isLightOntologyViewActive) {
         nudgeNodesTowardLandscape(cy, 1.5);
+      }
+      if (useMagneticInitialLayout) {
+        resolveNodeOverlaps(cy, 10, 24);
       }
       cy.nodes().forEach((node) => {
         positionCache.set(node.id(), {

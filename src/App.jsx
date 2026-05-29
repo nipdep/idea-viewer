@@ -4715,13 +4715,15 @@ export default function App() {
               {showKgProjectionButton && (
                 <button
                   type="button"
-                  className={`graph-tool-button icon-only ${graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'active' : ''}`}
+                  className={`graph-tool-button icon-only kg-view-button ${
+                    graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'active' : ''
+                  }`}
                   onClick={activateKgView}
                   aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.KG}
                   aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
                   title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
                 >
-                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
                     <circle cx="12.5" cy="4" r="1.5" fill="currentColor" />
                     <circle cx="8" cy="12" r="1.8" fill="currentColor" />

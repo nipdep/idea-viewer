@@ -1124,6 +1124,16 @@ textarea {
   height: 16px;
 }
 
+.kg-view-button {
+  width: 32px;
+  height: 32px;
+}
+
+.kg-view-button .graph-tool-icon {
+  width: 14px;
+  height: 14px;
+}
+
 .graph-export-menu {
   position: relative;
 }

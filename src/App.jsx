@@ -1993,6 +1993,12 @@ export default function App() {
     if (!edge) {
       return baseRows;
     }
+    const projectedRows = Array.isArray(edge.projectedMetadataRows)
+      ? edge.projectedMetadataRows.map((row) => ({
+          key: row.key,
+          value: row.value,
+        }))
+      : [];
 
     const predicateMetadata = graphData.nodeMetadata.get(edge.predicate) ?? [];
     const predicateRows = predicateMetadata.map((row) => ({
@@ -2000,7 +2006,7 @@ export default function App() {
       value: row.value,
     }));
 
-    return [...baseRows, ...predicateRows];
+    return [...baseRows, ...projectedRows, ...predicateRows];
   }, [selectedEdgeId, graphData, selectedEdge]);
 
   const neighborRows = useMemo(

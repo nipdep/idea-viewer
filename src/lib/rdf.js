@@ -6,6 +6,7 @@ export const RDFS_SUBPROPERTY_OF = 'http://www.w3.org/2000/01/rdf-schema#subProp
 const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const RDFS_NS = 'http://www.w3.org/2000/01/rdf-schema#';
 const OWL_NS = 'http://www.w3.org/2002/07/owl#';
+const XSD_NS = 'http://www.w3.org/2001/XMLSchema#';
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 const RDF_DESCRIPTION = `${RDF_NS}Description`;
 const RDF_FIRST = `${RDF_NS}first`;
@@ -67,7 +68,7 @@ const DCT_SOURCE = 'http://purl.org/dc/terms/source';
 
 const CLASS_TYPE_IRIS = new Set([RDFS_CLASS, OWL_CLASS]);
 const DATATYPE_TYPE_IRIS = new Set([RDFS_DATATYPE, OWL_DATATYPE]);
-const BUILTIN_DATATYPE_IRI_PREFIXES = [RDF_NS, RDFS_NS, OWL_NS, 'http://www.w3.org/2001/XMLSchema#'];
+const BUILTIN_DATATYPE_IRI_PREFIXES = [RDF_NS, RDFS_NS, OWL_NS, XSD_NS];
 const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
   OWL_DATATYPE_PROPERTY,
   OWL_OBJECT_PROPERTY,
@@ -1171,6 +1172,10 @@ function isBuiltinDatatypeIri(iri) {
   return BUILTIN_DATATYPE_IRI_PREFIXES.some((prefix) => iri?.startsWith(prefix));
 }
 
+function isXmlSchemaDatatypeIri(iri) {
+  return iri?.startsWith(XSD_NS);
+}
+
 function termIdFromIri(iri) {
   return iri ? getTermId(namedNode(iri)) : '';
 }
@@ -1767,6 +1772,24 @@ export function buildGraphData(quads, options = {}) {
     ...Array.from(annotationPropertyIris.values()),
   ]);
 
+  for (const quad of quads) {
+    if (
+      quad.predicate.value === RDFS_RANGE &&
+      quad.subject.termType === 'NamedNode' &&
+      quad.object.termType === 'NamedNode' &&
+      ontologyDataPropertyIds.has(quad.subject.value)
+    ) {
+      datatypeNodeIds.add(getTermId(quad.object));
+    }
+
+    if (
+      quad.predicate.value === OWL_ON_DATATYPE &&
+      quad.object.termType === 'NamedNode'
+    ) {
+      datatypeNodeIds.add(getTermId(quad.object));
+    }
+  }
+
   for (const node of nodeMap.values()) {
     if (node.termType === 'BlankNode') {
       const role = blankRoles.get(node.id)?.role ?? '';
@@ -1827,7 +1850,7 @@ export function buildGraphData(quads, options = {}) {
       // KG instance nodes that happen to include owl:NamedIndividual.
       node.ontologyKind = isOntologyNamedIndividual ? 'individual' : '';
       node.entityCategory = 'individual';
-    } else if (datatypeNodeIds.has(node.id)) {
+    } else if (datatypeNodeIds.has(node.id) || isXmlSchemaDatatypeIri(node.iri)) {
       node.ontologyKind = 'datatype';
       node.entityCategory = 'datatype';
     } else {

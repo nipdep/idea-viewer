@@ -27,6 +27,7 @@ const OWL_ONTOLOGY = `${OWL_NS}Ontology`;
 const OWL_THING = `${OWL_NS}Thing`;
 const OWL_ALL_DIFFERENT = `${OWL_NS}AllDifferent`;
 const OWL_ALL_DISJOINT_CLASSES = `${OWL_NS}AllDisjointClasses`;
+const OWL_AXIOM = `${OWL_NS}Axiom`;
 const OWL_DISTINCT_MEMBERS = `${OWL_NS}distinctMembers`;
 const OWL_MEMBERS = `${OWL_NS}members`;
 const OWL_IMPORTS = `${OWL_NS}imports`;
@@ -61,6 +62,7 @@ const OWL_ON_DATATYPE = `${OWL_NS}onDatatype`;
 const OWL_HAS_SELF = `${OWL_NS}hasSelf`;
 const OWL_WITH_RESTRICTIONS = `${OWL_NS}withRestrictions`;
 const OWL_FUNCTIONAL_PROPERTY = `${OWL_NS}FunctionalProperty`;
+const OWL_ASYMMETRIC_PROPERTY = `${OWL_NS}AsymmetricProperty`;
 const OWL_INVERSE_FUNCTIONAL_PROPERTY = `${OWL_NS}InverseFunctionalProperty`;
 const OWL_TRANSITIVE_PROPERTY = `${OWL_NS}TransitiveProperty`;
 const OWL_SYMMETRIC_PROPERTY = `${OWL_NS}SymmetricProperty`;
@@ -71,9 +73,16 @@ const CLASS_TYPE_IRIS = new Set([RDFS_CLASS, OWL_CLASS]);
 const DATATYPE_TYPE_IRIS = new Set([RDFS_DATATYPE, OWL_DATATYPE]);
 const BUILTIN_DATATYPE_IRI_PREFIXES = [RDF_NS, RDFS_NS, OWL_NS, XSD_NS];
 const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
+  RDF_NIL,
+  OWL_ANNOTATION_PROPERTY,
   OWL_DATATYPE_PROPERTY,
   OWL_OBJECT_PROPERTY,
   OWL_ONTOLOGY,
+  OWL_RESTRICTION,
+  OWL_ALL_DIFFERENT,
+  OWL_ALL_DISJOINT_CLASSES,
+  OWL_AXIOM,
+  OWL_ASYMMETRIC_PROPERTY,
   OWL_CLASS,
   RDFS_CLASS,
 ]);
@@ -2109,6 +2118,10 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
     return false;
   }
 
+  if (node.termType === 'NamedNode' && isHiddenBackgroundClassIri(node.id)) {
+    return false;
+  }
+
   // Do not duplicate class representation: if a class is already rendered as a badge on
   // instance nodes, hide the standalone class node in all projections.
   if (isBadgeOnlyClassNode) {
@@ -2121,6 +2134,10 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
       node.entityCategory === 'data-property' ||
       node.entityCategory === 'annotation-property'
     ) {
+      return false;
+    }
+
+    if (node.id === RDF_NIL || isHiddenBackgroundClassIri(node.id)) {
       return false;
     }
     return true;
@@ -2181,6 +2198,10 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
     }
 
     if (node.termType === 'Literal') {
+      return false;
+    }
+
+    if (node.id === RDF_NIL || isHiddenBackgroundClassIri(node.id)) {
       return false;
     }
 

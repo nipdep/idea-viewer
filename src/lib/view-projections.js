@@ -1,4 +1,4 @@
-import { buildFocusedSubset, compactIri, DEFAULT_VIEW_OPTIONS } from './rdf';
+import { buildFocusedSubset, compactIri, DEFAULT_VIEW_OPTIONS, getTermId } from './rdf';
 
 export const GRAPH_VIEW_MODES = Object.freeze({
   OWL: 'owl',
@@ -930,12 +930,16 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
   const synthesizedEdges = [];
   const hiddenNodeIds = new Set();
 
-  for (const edge of graphData?.objectEdges ?? []) {
+  for (const quad of graphData?.quads ?? []) {
+    const subjectIsEntity = quad.subject.termType === 'NamedNode' || quad.subject.termType === 'BlankNode';
     if (
-      edge.predicate === RDF_TYPE &&
-      edge.target === OWL_ALL_DIFFERENT
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_ALL_DIFFERENT &&
+      subjectIsEntity
     ) {
-      const membersEdge = (outgoingBySource.get(edge.source) ?? []).find((row) => row.predicate === OWL_DISTINCT_MEMBERS);
+      const sourceId = getTermId(quad.subject);
+      const membersEdge = (outgoingBySource.get(sourceId) ?? []).find((row) => row.predicate === OWL_DISTINCT_MEMBERS);
       if (!membersEdge) {
         continue;
       }
@@ -944,9 +948,9 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
         continue;
       }
 
-      hiddenNodeIds.add(edge.source);
+      hiddenNodeIds.add(sourceId);
       hiddenNodeIds.add(membersEdge.target);
-      const markerId = `owl-all-different:${edge.source}`;
+      const markerId = `owl-all-different:${sourceId}`;
       synthesizedNodes.push({
         data: makeAxiomMarkerNodeData(markerId, '≠'),
       });
@@ -968,10 +972,13 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
     }
 
     if (
-      edge.predicate === RDF_TYPE &&
-      edge.target === OWL_ALL_DISJOINT_CLASSES
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_ALL_DISJOINT_CLASSES &&
+      subjectIsEntity
     ) {
-      const membersEdge = (outgoingBySource.get(edge.source) ?? []).find((row) => row.predicate === OWL_MEMBERS);
+      const sourceId = getTermId(quad.subject);
+      const membersEdge = (outgoingBySource.get(sourceId) ?? []).find((row) => row.predicate === OWL_MEMBERS);
       if (!membersEdge) {
         continue;
       }
@@ -980,9 +987,9 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
         continue;
       }
 
-      hiddenNodeIds.add(edge.source);
+      hiddenNodeIds.add(sourceId);
       hiddenNodeIds.add(membersEdge.target);
-      const markerId = `owl-all-disjoint-classes:${edge.source}`;
+      const markerId = `owl-all-disjoint-classes:${sourceId}`;
       synthesizedNodes.push({
         data: makeAxiomMarkerNodeData(markerId, '≢'),
       });
@@ -1002,7 +1009,9 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
         });
       }
     }
+  }
 
+  for (const edge of graphData?.objectEdges ?? []) {
     if (edge.predicate !== OWL_DISJOINT_UNION_OF || !visibleNodeIds.has(edge.source)) {
       continue;
     }

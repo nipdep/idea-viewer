@@ -423,9 +423,9 @@ function makeAxiomMarkerNodeData(id, label) {
     ...makeExpressionNodeData(id, label, 'AxiomMarker'),
     entityCategory: 'all-different',
     graphRole: 'owl-axiom-marker',
-    nodeWidth: 48,
+    nodeWidth: 42,
     nodeHeight: 42,
-    textMaxWidth: 40,
+    textMaxWidth: 36,
   };
 }
 
@@ -909,6 +909,42 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
   const hiddenNodeIds = new Set();
 
   for (const edge of graphData?.objectEdges ?? []) {
+    if (
+      edge.predicate === RDF_TYPE &&
+      edge.target === OWL_ALL_DIFFERENT
+    ) {
+      const membersEdge = (outgoingBySource.get(edge.source) ?? []).find((row) => row.predicate === OWL_DISTINCT_MEMBERS);
+      if (!membersEdge) {
+        continue;
+      }
+      const members = readListMembers(membersEdge.target, outgoingBySource).filter((id) => visibleNodeIds.has(id));
+      if (members.length === 0) {
+        continue;
+      }
+
+      hiddenNodeIds.add(edge.source);
+      hiddenNodeIds.add(membersEdge.target);
+      const markerId = `owl-all-different:${edge.source}`;
+      synthesizedNodes.push({
+        data: makeAxiomMarkerNodeData(markerId, '≠'),
+      });
+      for (const memberId of members) {
+        synthesizedEdges.push({
+          data: {
+            id: `${markerId}:member:${memberId}`,
+            source: memberId,
+            target: markerId,
+            predicate: OWL_DISTINCT_MEMBERS,
+            predicateLabel: '',
+            category: 'individual-identity',
+            axiomKind: 'AllDifferent',
+            owlEdgeStyle: 'dotted',
+            owlSynthesized: 1,
+          },
+        });
+      }
+    }
+
     if (
       edge.predicate === RDF_TYPE &&
       edge.target === OWL_ALL_DISJOINT_CLASSES

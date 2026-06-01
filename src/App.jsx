@@ -2174,17 +2174,18 @@ export default function App() {
           },
         },
         {
-          selector: 'node[entityCategory = "class-expression-connector"]',
+          selector: 'node[entityCategory = "class-expression-connector"], node[entityCategory = "all-different"]',
           style: {
             shape: 'ellipse',
             width: 42,
             height: 42,
-            'background-color': '#e8f2ef',
-            'border-color': '#2f8a81',
+            'background-color': '#eef3f1',
+            'border-color': '#6f7f86',
             'border-width': 2,
-            color: '#1f4f4c',
-            'font-size': 16,
+            color: '#334047',
+            'font-size': 18,
             'font-weight': 800,
+            'text-max-width': 36,
           },
         },
         {
@@ -2197,17 +2198,6 @@ export default function App() {
             'border-style': 'dashed',
             'border-width': 2,
             color: '#5a3d24',
-          },
-        },
-        {
-          selector: 'node[entityCategory = "all-different"]',
-          style: {
-            shape: 'diamond',
-            'background-color': '#f5ebbe',
-            'border-color': '#9b7458',
-            color: '#4f392b',
-            'font-size': 14,
-            'font-weight': 800,
           },
         },
         {

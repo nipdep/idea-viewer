@@ -344,12 +344,12 @@
 :Paper owl:disjointWith :Author .
 
 [] a owl:AllDisjointClasses ;
-   owl:members ( :Dataset :Method :Task ) .
+   owl:members ( :ConferencePaper :JournalPaper :DemoPaperSet ) .
 
 :Paper 
-    owl:disjoinUnionOf (
-        :ConferencePaper 
-        :JournalPaper
+    owl:disjointUnionOf (
+        :ReviewedPaper 
+        :NonReviewedPaper
     ) .
 
 # Keys

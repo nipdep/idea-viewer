@@ -34,6 +34,7 @@ const OWL_VERSION_IRI = `${OWL_NS}versionIRI`;
 const OWL_VERSION_INFO = `${OWL_NS}versionInfo`;
 const OWL_EQUIVALENT_CLASS = `${OWL_NS}equivalentClass`;
 const OWL_DISJOINT_WITH = `${OWL_NS}disjointWith`;
+const OWL_DISJOINT_UNION_OF = `${OWL_NS}disjointUnionOf`;
 const OWL_EQUIVALENT_PROPERTY = `${OWL_NS}equivalentProperty`;
 const OWL_INVERSE_OF = `${OWL_NS}inverseOf`;
 const OWL_SAME_AS = `${OWL_NS}sameAs`;
@@ -143,6 +144,12 @@ const RESTRICTION_BRIDGE_VALUE_PREDICATES = new Set([
 ]);
 
 const RESTRICTION_ANCHOR_AXIOM_PREDICATES = new Set([RDFS_SUBCLASS_OF, OWL_EQUIVALENT_CLASS, OWL_DISJOINT_WITH]);
+
+const CLASS_AXIOM_PREDICATES = new Set([
+  RDFS_SUBCLASS_OF,
+  OWL_EQUIVALENT_CLASS,
+  OWL_DISJOINT_WITH,
+]);
 
 const AXIOM_KIND_BY_PREDICATE = new Map([
   [RDFS_SUBCLASS_OF, 'SubClassOf'],
@@ -1501,6 +1508,32 @@ export function buildGraphData(quads, options = {}) {
       }
     }
 
+    if (CLASS_AXIOM_PREDICATES.has(quad.predicate.value) && isEntityTerm(quad.subject)) {
+      classNodeIds.add(getTermId(quad.subject));
+      if (isEntityTerm(quad.object)) {
+        classNodeIds.add(getTermId(quad.object));
+      }
+    }
+
+    if (quad.predicate.value === OWL_DISJOINT_UNION_OF && isEntityTerm(quad.subject)) {
+      classNodeIds.add(getTermId(quad.subject));
+      for (const member of readRdfListFromStore(store, quad.object).filter(isEntityTerm)) {
+        classNodeIds.add(getTermId(member));
+      }
+    }
+
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_ALL_DISJOINT_CLASSES &&
+      isEntityTerm(quad.subject)
+    ) {
+      const membersHead = store.getQuads(quad.subject, namedNode(OWL_MEMBERS), null, null)[0]?.object;
+      for (const member of readRdfListFromStore(store, membersHead).filter(isEntityTerm)) {
+        classNodeIds.add(getTermId(member));
+      }
+    }
+
     if (
       quad.predicate.value === RDFS_SUBPROPERTY_OF &&
       quad.subject.termType === 'NamedNode' &&
@@ -2702,6 +2735,37 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
   }
 
   for (const quad of graphData.quads ?? []) {
+    if (quad.predicate.value !== OWL_DISJOINT_UNION_OF || !isEntityTerm(quad.subject)) {
+      continue;
+    }
+    const members = readRdfListFromStore(store, quad.object).filter(isEntityTerm);
+    if (members.length === 0) {
+      continue;
+    }
+
+    const sourceId = getTermId(quad.subject);
+    addNodeById(sourceId, { entityCategory: 'class', ontologyKind: 'class' });
+    const marker = addSyntheticNode('⊎', 'all-different', {
+      id: `owl-disjoint-union:${sourceId}`,
+      nodeWidth: 48,
+      nodeHeight: 42,
+    });
+    addEdge(sourceId, marker.id, OWL_DISJOINT_UNION_OF, '', 'class-axiom', {
+      axiomKind: 'DisjointUnion',
+      edgeStyle: 'dotted',
+    });
+
+    for (const member of members) {
+      const memberId = getTermId(member);
+      addTermNode(member, { entityCategory: 'class', ontologyKind: 'class' });
+      addEdge(memberId, marker.id, OWL_DISJOINT_UNION_OF, '', 'class-axiom', {
+        axiomKind: 'DisjointUnion',
+        edgeStyle: 'dotted',
+      });
+    }
+  }
+
+  for (const quad of graphData.quads ?? []) {
     if (
       quad.predicate.value !== RDF_TYPE ||
       quad.object.termType !== 'NamedNode' ||
@@ -2716,8 +2780,9 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
     if (members.length === 0) {
       continue;
     }
-    const marker = addSyntheticNode('!=', 'all-different', {
-      id: `owl-all-different:${getTermId(quad.subject)}`,
+    const isAllDisjointClasses = quad.object.value === OWL_ALL_DISJOINT_CLASSES;
+    const marker = addSyntheticNode(isAllDisjointClasses ? '≢' : '!=', 'all-different', {
+      id: `${isAllDisjointClasses ? 'owl-all-disjoint-classes' : 'owl-all-different'}:${getTermId(quad.subject)}`,
       nodeWidth: 48,
       nodeHeight: 42,
     });

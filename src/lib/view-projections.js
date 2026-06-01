@@ -25,6 +25,7 @@ const OWL_CARDINALITY = 'http://www.w3.org/2002/07/owl#cardinality';
 const OWL_DATATYPE_PROPERTY = 'http://www.w3.org/2002/07/owl#DatatypeProperty';
 const OWL_DIFFERENT_FROM = 'http://www.w3.org/2002/07/owl#differentFrom';
 const OWL_DISJOINT_WITH = 'http://www.w3.org/2002/07/owl#disjointWith';
+const OWL_DISJOINT_UNION_OF = 'http://www.w3.org/2002/07/owl#disjointUnionOf';
 const OWL_EQUIVALENT_CLASS = 'http://www.w3.org/2002/07/owl#equivalentClass';
 const OWL_EQUIVALENT_PROPERTY = 'http://www.w3.org/2002/07/owl#equivalentProperty';
 const OWL_FUNCTIONAL_PROPERTY = 'http://www.w3.org/2002/07/owl#FunctionalProperty';
@@ -417,6 +418,17 @@ function makeNamedGroupNodeData(id, label, groupKind, size = 2) {
   };
 }
 
+function makeAxiomMarkerNodeData(id, label) {
+  return {
+    ...makeExpressionNodeData(id, label, 'AxiomMarker'),
+    entityCategory: 'all-different',
+    graphRole: 'owl-axiom-marker',
+    nodeWidth: 48,
+    nodeHeight: 42,
+    textMaxWidth: 40,
+  };
+}
+
 function buildOutgoingEdgeIndex(graphData) {
   const outgoing = new Map();
 
@@ -796,7 +808,7 @@ function synthesizeCollectionProjection(graphData, visibleNodeIds) {
   const hiddenNodeIds = new Set();
 
   for (const edge of graphData?.objectEdges ?? []) {
-    if (EXPRESSION_PREDICATES.has(edge.predicate)) {
+    if (EXPRESSION_PREDICATES.has(edge.predicate) || edge.predicate === OWL_DISJOINT_UNION_OF) {
       continue;
     }
     if (!visibleNodeIds.has(edge.source)) {
@@ -876,6 +888,100 @@ function synthesizeCollectionProjection(graphData, visibleNodeIds) {
           predicateLabel: compactIri(itemEdge.predicate),
           category: 'object',
           axiomKind: 'Sequence',
+          owlEdgeStyle: 'dotted',
+          owlSynthesized: 1,
+        },
+      });
+    }
+  }
+
+  return {
+    synthesizedNodes,
+    synthesizedEdges,
+    hiddenNodeIds,
+  };
+}
+
+function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
+  const outgoingBySource = buildOutgoingEdgeIndex(graphData);
+  const synthesizedNodes = [];
+  const synthesizedEdges = [];
+  const hiddenNodeIds = new Set();
+
+  for (const edge of graphData?.objectEdges ?? []) {
+    if (
+      edge.predicate === RDF_TYPE &&
+      edge.target === OWL_ALL_DISJOINT_CLASSES
+    ) {
+      const membersEdge = (outgoingBySource.get(edge.source) ?? []).find((row) => row.predicate === OWL_MEMBERS);
+      if (!membersEdge) {
+        continue;
+      }
+      const members = readListMembers(membersEdge.target, outgoingBySource).filter((id) => visibleNodeIds.has(id));
+      if (members.length === 0) {
+        continue;
+      }
+
+      hiddenNodeIds.add(edge.source);
+      hiddenNodeIds.add(membersEdge.target);
+      const markerId = `owl-all-disjoint-classes:${edge.source}`;
+      synthesizedNodes.push({
+        data: makeAxiomMarkerNodeData(markerId, '≢'),
+      });
+      for (const memberId of members) {
+        synthesizedEdges.push({
+          data: {
+            id: `${markerId}:member:${memberId}`,
+            source: memberId,
+            target: markerId,
+            predicate: OWL_MEMBERS,
+            predicateLabel: '',
+            category: 'class-axiom',
+            axiomKind: 'AllDisjointClasses',
+            owlEdgeStyle: 'dotted',
+            owlSynthesized: 1,
+          },
+        });
+      }
+    }
+
+    if (edge.predicate !== OWL_DISJOINT_UNION_OF || !visibleNodeIds.has(edge.source)) {
+      continue;
+    }
+
+    const members = readListMembers(edge.target, outgoingBySource).filter((id) => visibleNodeIds.has(id));
+    if (members.length === 0) {
+      continue;
+    }
+
+    hiddenNodeIds.add(edge.target);
+    const markerId = `owl-disjoint-union:${edge.source}:${edge.target}`;
+    synthesizedNodes.push({
+      data: makeAxiomMarkerNodeData(markerId, '⊎'),
+    });
+    synthesizedEdges.push({
+      data: {
+        id: `${markerId}:source`,
+        source: edge.source,
+        target: markerId,
+        predicate: OWL_DISJOINT_UNION_OF,
+        predicateLabel: '',
+        category: 'class-axiom',
+        axiomKind: 'DisjointUnion',
+        owlEdgeStyle: 'dotted',
+        owlSynthesized: 1,
+      },
+    });
+    for (const memberId of members) {
+      synthesizedEdges.push({
+        data: {
+          id: `${markerId}:member:${memberId}`,
+          source: markerId,
+          target: memberId,
+          predicate: OWL_DISJOINT_UNION_OF,
+          predicateLabel: '',
+          category: 'class-axiom',
+          axiomKind: 'DisjointUnion',
           owlEdgeStyle: 'dotted',
           owlSynthesized: 1,
         },
@@ -1422,10 +1528,13 @@ function applyOwlProjection(graphData, elements) {
     synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDeclarations);
   const { synthesizedNodes: collectionNodes, synthesizedEdges: collectionEdges, hiddenNodeIds: collectionHiddenNodeIds } =
     synthesizeCollectionProjection(graphData, renderableNodeIds);
+  const { synthesizedNodes: disjointAxiomNodes, synthesizedEdges: disjointAxiomEdges, hiddenNodeIds: disjointAxiomHiddenNodeIds } =
+    synthesizeDisjointAxiomProjection(graphData, renderableNodeIds);
   const hiddenNodeIds = new Set([
     ...classExpressionHiddenNodeIds,
     ...restrictionHiddenNodeIds,
     ...collectionHiddenNodeIds,
+    ...disjointAxiomHiddenNodeIds,
     ...PROPERTY_CHARACTERISTIC_CLASS_IDS,
   ]);
 
@@ -1464,6 +1573,8 @@ function applyOwlProjection(graphData, elements) {
     ...restrictionEdges,
     ...collectionNodes,
     ...collectionEdges,
+    ...disjointAxiomNodes,
+    ...disjointAxiomEdges,
     ...synthesizedNodes,
     ...synthesizedEdgeElements,
     ...relationConnectorEdges,

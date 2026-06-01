@@ -95,6 +95,15 @@ const PROPERTY_CHARACTERISTIC_PREFIXES = new Map([
   [OWL_REFLEXIVE_PROPERTY, 'R'],
 ]);
 
+const PROPERTY_CHARACTERISTIC_CLASS_IDS = new Set([
+  OWL_FUNCTIONAL_PROPERTY,
+  OWL_INVERSE_FUNCTIONAL_PROPERTY,
+  OWL_IRREFLEXIVE_PROPERTY,
+  OWL_REFLEXIVE_PROPERTY,
+  OWL_TRANSITIVE_PROPERTY,
+  OWL_SYMMETRIC_PROPERTY,
+]);
+
 const RESTRICTION_VALUE_PREDICATES = new Set([
   OWL_SOME_VALUES_FROM,
   OWL_ALL_VALUES_FROM,
@@ -403,11 +412,11 @@ function buildOutgoingLiteralEdgeIndex(graphData) {
 }
 
 function formatPropertyLabelWithCharacteristics(baseLabel, declaration) {
-  const prefixes = declaration?.characteristics ?? [];
-  if (prefixes.length === 0) {
+  const suffixes = declaration?.characteristics ?? [];
+  if (suffixes.length === 0) {
     return baseLabel;
   }
-  return `[${prefixes.join(',')}] ${baseLabel}`;
+  return `${baseLabel} [${suffixes.join(',')}]`;
 }
 
 function nodeLabel(graphData, nodeId) {
@@ -923,6 +932,7 @@ function applyOwlProjection(graphData, elements) {
     ...classExpressionHiddenNodeIds,
     ...restrictionHiddenNodeIds,
     ...collectionHiddenNodeIds,
+    ...PROPERTY_CHARACTERISTIC_CLASS_IDS,
   ]);
 
   const filteredElements = elements.filter((element) => {
@@ -972,6 +982,7 @@ function applyOwlProjection(graphData, elements) {
     const next = cloneElement(element);
     const sourceNode = graphData?.nodeMap?.get(data.source);
     const targetNode = graphData?.nodeMap?.get(data.target);
+    const propertyDeclaration = propertyDeclarations.get(data.predicate);
     const isClassMembership =
       data.predicate === RDF_TYPE &&
       sourceNode?.entityCategory === 'individual' &&
@@ -987,6 +998,17 @@ function applyOwlProjection(graphData, elements) {
       next.data.predicateLabel = '≢';
     } else if (data.predicate === OWL_SAME_AS || data.predicate === OWL_DIFFERENT_FROM) {
       next.data.owlEdgeStyle = 'dotted';
+    }
+
+    if (
+      propertyDeclaration &&
+      next.data.predicateLabel &&
+      (data.axiomKind === 'PropertyAssertion' || data.axiomKind === 'PropertyProjection')
+    ) {
+      next.data.predicateLabel = formatPropertyLabelWithCharacteristics(
+        propertyDeclaration.label,
+        propertyDeclaration,
+      );
     }
 
     if (!next.data.owlEdgeStyle) {

@@ -750,6 +750,7 @@ function synthesizeCollectionProjection(graphData, visibleNodeIds) {
 
 function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
   const outgoingBySource = buildOutgoingEdgeIndex(graphData);
+  const incomingByTarget = buildIncomingEdgeIndex(graphData);
   const synthesizedNodes = [];
   const synthesizedEdges = [];
   const hiddenNodeIds = new Set();
@@ -757,7 +758,7 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
   const expressionConfig = new Map([
     [OWL_INTERSECTION_OF, { label: '∩', kind: 'Intersection' }],
     [OWL_UNION_OF, { label: '∪', kind: 'Union' }],
-    [OWL_ONE_OF, { label: 'oneOf', kind: 'OneOf' }],
+    [OWL_ONE_OF, { label: 'OneOf', kind: 'OneOf' }],
     [OWL_COMPLEMENT_OF, { label: '¬', kind: 'Complement' }],
   ]);
 
@@ -767,16 +768,32 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
       continue;
     }
 
-    const sourceId = edge.source;
-    if (!visibleNodeIds.has(sourceId)) {
+    const sourceNode = graphData?.nodeMap?.get(edge.source);
+    const anchorSourceIds = visibleNodeIds.has(edge.source)
+      ? [edge.source]
+      : sourceNode?.termType === 'BlankNode'
+        ? (incomingByTarget.get(edge.source) ?? [])
+            .filter(
+              (incomingEdge) =>
+                visibleNodeIds.has(incomingEdge.source) &&
+                (incomingEdge.predicate === OWL_EQUIVALENT_CLASS ||
+                  incomingEdge.predicate === RDFS_SUBCLASS_OF ||
+                  incomingEdge.predicate === OWL_DISJOINT_WITH),
+            )
+            .map((incomingEdge) => incomingEdge.source)
+        : [];
+
+    if (anchorSourceIds.length === 0) {
       continue;
     }
 
     if (edge.predicate !== OWL_COMPLEMENT_OF) {
       hiddenNodeIds.add(edge.target);
     }
+    if (sourceNode?.termType === 'BlankNode') {
+      hiddenNodeIds.add(edge.source);
+    }
 
-    const helperNodeId = `owl-expr:${config.kind}:${sourceId}:${edge.target}`;
     let memberIds = [];
     if (edge.predicate === OWL_COMPLEMENT_OF) {
       memberIds = [edge.target];
@@ -793,18 +810,18 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
       continue;
     }
 
-    if (edge.predicate === OWL_ONE_OF) {
-      const groupNodeId = `${helperNodeId}:group`;
+    for (const anchorSourceId of anchorSourceIds) {
+      const helperNodeId = `owl-expr:${config.kind}:${anchorSourceId}:${edge.source}:${edge.target}`;
       synthesizedNodes.push({
-        data: makeGroupNodeData(groupNodeId, 'oneOf set', 'OneOfGroup', visibleMembers.length),
+        data: makeExpressionNodeData(helperNodeId, config.label, config.kind),
       });
       synthesizedEdges.push({
         data: {
           id: `${helperNodeId}:source`,
-          source: sourceId,
-          target: groupNodeId,
+          source: anchorSourceId,
+          target: helperNodeId,
           predicate: edge.predicate,
-          predicateLabel: 'oneOf',
+          predicateLabel: '',
           category: 'object',
           axiomKind: 'ClassExpression',
           owlEdgeStyle: 'dotted',
@@ -815,7 +832,7 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
         synthesizedEdges.push({
           data: {
             id: `${helperNodeId}:member:${memberId}`,
-            source: groupNodeId,
+            source: helperNodeId,
             target: memberId,
             predicate: edge.predicate,
             predicateLabel: '',
@@ -826,39 +843,6 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
           },
         });
       }
-      continue;
-    }
-
-    synthesizedNodes.push({
-      data: makeExpressionNodeData(helperNodeId, config.label, config.kind),
-    });
-    synthesizedEdges.push({
-      data: {
-        id: `${helperNodeId}:source`,
-        source: sourceId,
-        target: helperNodeId,
-        predicate: edge.predicate,
-        predicateLabel: '',
-        category: 'object',
-        axiomKind: 'ClassExpression',
-        owlEdgeStyle: 'dotted',
-        owlSynthesized: 1,
-      },
-    });
-    for (const memberId of visibleMembers) {
-      synthesizedEdges.push({
-        data: {
-          id: `${helperNodeId}:member:${memberId}`,
-          source: helperNodeId,
-          target: memberId,
-          predicate: edge.predicate,
-          predicateLabel: '',
-          category: 'object',
-          axiomKind: 'ClassExpression',
-          owlEdgeStyle: 'dotted',
-          owlSynthesized: 1,
-        },
-      });
     }
   }
 

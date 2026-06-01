@@ -883,6 +883,53 @@ function orderClassesSubToSuper(classIris, graphData) {
   });
 }
 
+function applyEdgeCurveOverrides(elements, edgeCurveOverrides) {
+  if (!edgeCurveOverrides || edgeCurveOverrides.size === 0) {
+    return elements;
+  }
+
+  return elements.map((element) => {
+    const data = element?.data;
+    if (!data?.source) {
+      return element;
+    }
+
+    const override = edgeCurveOverrides.get(data.id);
+    if (!override) {
+      return element;
+    }
+
+    return {
+      ...element,
+      data: {
+        ...data,
+        customCurve: 1,
+        curveStyle: 'round-segments',
+        segmentWeights: String(override.weight),
+        segmentDistances: String(override.distance),
+      },
+    };
+  });
+}
+
+const EDGE_BEND_DISTANCE_GAIN = 1.35;
+const EDGE_BEND_HANDLE_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <g fill="none" stroke="#a77b59" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4.5v15"/>
+      <path d="M4.5 12h15"/>
+      <path d="M12 4.5l-2.6 2.6"/>
+      <path d="M12 4.5l2.6 2.6"/>
+      <path d="M12 19.5l-2.6-2.6"/>
+      <path d="M12 19.5l2.6-2.6"/>
+      <path d="M4.5 12l2.6-2.6"/>
+      <path d="M4.5 12l2.6 2.6"/>
+      <path d="M19.5 12l-2.6-2.6"/>
+      <path d="M19.5 12l-2.6 2.6"/>
+    </g>
+  </svg>
+`)}`;
+
 function toViewFlags() {
   return {
     showDataProperties: true,
@@ -941,6 +988,7 @@ export default function App() {
   const detachedPanModeRef = useRef(false);
   const detachedPanLastMouseRef = useRef(null);
   const suppressNextTapRef = useRef(false);
+  const edgeCurveOverridesRef = useRef(new Map());
 
   const [kgFiles, setKgFiles] = useState([]);
   const [ontologyFiles, setOntologyFiles] = useState([]);
@@ -1173,7 +1221,11 @@ export default function App() {
   }
 
   function fitCurrentGraphViewport(cy, duration = 250) {
-    const visibleElementsForFit = cy.elements(':visible');
+    const visibleElementsForFit = cy
+      .elements(':visible')
+      .not('[edgeAnchor = 1]')
+      .not('[edgeBendHandle = 1]')
+      .not('[edgeAnchorTether = 1]');
     if (visibleElementsForFit.length === 0) {
       return;
     }
@@ -1191,14 +1243,204 @@ export default function App() {
   }
 
   function hasFiniteNodePositions(cy) {
-    return cy.nodes().every((node) => {
+    return cy.nodes().not('[edgeAnchor = 1]').every((node) => {
       const position = node.position();
       return Number.isFinite(position.x) && Number.isFinite(position.y);
     });
   }
 
+  function synchronizeEdgeAnchorPositions(cy) {
+    const anchorNodes = cy.nodes('[edgeAnchor = 1]');
+    if (anchorNodes.empty()) {
+      return;
+    }
+
+    cy.batch(() => {
+      anchorNodes.forEach((anchorNode) => {
+        const anchoredEdgeId = anchorNode.data('anchoredEdgeId');
+        if (anchoredEdgeId) {
+          const anchoredEdge = cy.$id(anchoredEdgeId);
+          if (!anchoredEdge.empty()) {
+            const midpoint = anchoredEdge.midpoint?.();
+            if (midpoint && Number.isFinite(midpoint.x) && Number.isFinite(midpoint.y)) {
+              anchorNode.position(midpoint);
+              return;
+            }
+          }
+        }
+
+        const sourceId = anchorNode.data('anchoredSourceId');
+        const targetId = anchorNode.data('anchoredTargetId');
+        if (!sourceId || !targetId) {
+          return;
+        }
+
+        const sourceNode = cy.$id(sourceId);
+        const targetNode = cy.$id(targetId);
+        if (sourceNode.empty() || targetNode.empty()) {
+          return;
+        }
+
+        const sourcePosition = sourceNode.position();
+        const targetPosition = targetNode.position();
+        if (
+          !Number.isFinite(sourcePosition.x) ||
+          !Number.isFinite(sourcePosition.y) ||
+          !Number.isFinite(targetPosition.x) ||
+          !Number.isFinite(targetPosition.y)
+        ) {
+          return;
+        }
+
+        anchorNode.position({
+          x: (sourcePosition.x + targetPosition.x) / 2,
+          y: (sourcePosition.y + targetPosition.y) / 2,
+        });
+      });
+    });
+  }
+
+  function isEditableCurveEdge(edge) {
+    if (!edge || edge.empty()) {
+      return false;
+    }
+
+    if (
+      edge.data('edgeAnchorTether') === 1 ||
+      edge.data('edgeAttachedConnector') === 1 ||
+      edge.data('owlRelationConnector') === 1
+    ) {
+      return false;
+    }
+
+    return edge.source().id() !== edge.target().id();
+  }
+
+  function computeCurveOverrideFromPoint(edge, point) {
+    const sourcePosition = edge.source().position();
+    const targetPosition = edge.target().position();
+    const dx = targetPosition.x - sourcePosition.x;
+    const dy = targetPosition.y - sourcePosition.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared < 0.0001) {
+      return null;
+    }
+
+    const length = Math.sqrt(lengthSquared);
+    const px = point.x - sourcePosition.x;
+    const py = point.y - sourcePosition.y;
+    const rawWeight = (px * dx + py * dy) / lengthSquared;
+    const weight = Math.max(0.08, Math.min(0.92, rawWeight));
+    const distance = ((px * dy - py * dx) / length) * -EDGE_BEND_DISTANCE_GAIN;
+    return {
+      weight: Number(weight.toFixed(4)),
+      distance: Number(distance.toFixed(2)),
+    };
+  }
+
+  function computeCurveHandlePosition(edge) {
+    const override = edgeCurveOverridesRef.current.get(edge.id());
+    const sourcePosition = edge.source().position();
+    const targetPosition = edge.target().position();
+    const dx = targetPosition.x - sourcePosition.x;
+    const dy = targetPosition.y - sourcePosition.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared < 0.0001) {
+      return edge.midpoint?.() ?? {
+        x: (sourcePosition.x + targetPosition.x) / 2,
+        y: (sourcePosition.y + targetPosition.y) / 2,
+      };
+    }
+
+    if (!override) {
+      return edge.midpoint?.() ?? {
+        x: (sourcePosition.x + targetPosition.x) / 2,
+        y: (sourcePosition.y + targetPosition.y) / 2,
+      };
+    }
+
+    const length = Math.sqrt(lengthSquared);
+    const weight = override.weight;
+    const distance = override.distance;
+    const baseX = sourcePosition.x + dx * weight;
+    const baseY = sourcePosition.y + dy * weight;
+    const normalX = -dy / length;
+    const normalY = dx / length;
+    return {
+      x: baseX + normalX * distance,
+      y: baseY + normalY * distance,
+    };
+  }
+
+  function applyCurveOverrideToEdge(cy, edgeId, override) {
+    const edge = cy.$id(edgeId);
+    if (edge.empty()) {
+      return;
+    }
+
+    if (override) {
+      edgeCurveOverridesRef.current.set(edgeId, override);
+      edge.data({
+        customCurve: 1,
+        curveStyle: 'round-segments',
+        segmentWeights: String(override.weight),
+        segmentDistances: String(override.distance),
+      });
+    } else {
+      edgeCurveOverridesRef.current.delete(edgeId);
+      edge.removeData('customCurve');
+      edge.removeData('curveStyle');
+      edge.removeData('segmentWeights');
+      edge.removeData('segmentDistances');
+    }
+  }
+
+  function synchronizeEdgeBendHandle(cy, activeEdgeId = selectedEdgeId) {
+    const handleId = '__edge-bend-handle__';
+    const existingHandle = cy.$id(handleId);
+    if (!activeEdgeId) {
+      if (!existingHandle.empty()) {
+        existingHandle.remove();
+      }
+      return;
+    }
+
+    const edge = cy.$id(activeEdgeId);
+    if (edge.empty() || !isEditableCurveEdge(edge)) {
+      if (!existingHandle.empty()) {
+        existingHandle.remove();
+      }
+      return;
+    }
+
+    const position = computeCurveHandlePosition(edge);
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+      if (!existingHandle.empty()) {
+        existingHandle.remove();
+      }
+      return;
+    }
+
+    if (existingHandle.empty()) {
+      cy.add({
+        group: 'nodes',
+        data: {
+          id: handleId,
+          label: '',
+          edgeBendHandle: 1,
+          ownerEdgeId: activeEdgeId,
+        },
+        position,
+      });
+      return;
+    }
+
+    existingHandle.data('ownerEdgeId', activeEdgeId);
+    existingHandle.position(position);
+  }
+
   function applySpiralSeedLayout(cy) {
-    const nodes = cy.nodes(':visible');
+    const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
     if (nodes.length === 0) {
       return false;
     }
@@ -1237,12 +1479,16 @@ export default function App() {
   }
 
   function applyMagneticInitialLayout(cy) {
-    const nodes = cy.nodes(':visible');
+    const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
     if (nodes.length < 2) {
       return false;
     }
 
-    const edges = cy.edges(':visible');
+    const edges = cy
+      .edges(':visible')
+      .not('[edgeAnchorTether = 1]')
+      .not('[edgeAttachedConnector = 1]')
+      .not('[owlRelationConnector = 1]');
     const adjacency = new Map();
     const nodeMetrics = [];
     let maxNodeSpan = 80;
@@ -1466,7 +1712,7 @@ export default function App() {
   }
 
   function resolveNodeOverlaps(cy, maxPasses = 16, spacing = 18) {
-    const nodes = cy.nodes(':visible');
+    const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
     if (nodes.length < 2) {
       return false;
     }
@@ -1973,6 +2219,43 @@ export default function App() {
           },
         },
         {
+          selector: 'node[edgeAnchor = 1]',
+          style: {
+            label: '',
+            width: 1,
+            height: 1,
+            'background-opacity': 0,
+            'border-width': 0,
+            opacity: 0,
+            'events': 'no',
+          },
+        },
+        {
+          selector: 'node[edgeBendHandle = 1]',
+          style: {
+            label: '',
+            shape: 'ellipse',
+            width: 18,
+            height: 18,
+            'background-color': '#fffaf2',
+            'background-opacity': 0.18,
+            'background-image': EDGE_BEND_HANDLE_ICON,
+            'background-image-opacity': 0.92,
+            'background-width': 14,
+            'background-height': 14,
+            'background-fit': 'contain',
+            'background-repeat': 'no-repeat',
+            'background-position-x': '50%',
+            'background-position-y': '50%',
+            'border-width': 0,
+            opacity: 0.82,
+            'overlay-opacity': 0,
+            'z-index-compare': 'manual',
+            'z-compound-depth': 'top',
+            'z-index': 999,
+          },
+        },
+        {
           selector: 'node[owlExpressionNode = 1]',
           style: {
             shape: 'ellipse',
@@ -2033,6 +2316,14 @@ export default function App() {
           },
         },
         {
+          selector: 'edge[customCurve = 1]',
+          style: {
+            'curve-style': 'round-segments',
+            'segment-weights': 'data(segmentWeights)',
+            'segment-distances': 'data(segmentDistances)',
+          },
+        },
+        {
           selector: 'edge[showSourceCardinality = 1]',
           style: {
             'source-text-background-opacity': 1,
@@ -2078,6 +2369,16 @@ export default function App() {
           },
         },
         {
+          selector: 'edge[edgeAnchorTether = 1]',
+          style: {
+            label: '',
+            opacity: 0,
+            width: 0.1,
+            'target-arrow-shape': 'none',
+            'events': 'no',
+          },
+        },
+        {
           selector: 'edge[category = "class-axiom"], edge[category = "individual-identity"], edge[category = "type"], edge[edgeStyle = "owl-rdf"]',
           style: {
             'line-color': '#6f7f86',
@@ -2094,6 +2395,7 @@ export default function App() {
             color: '#6f665d',
             width: 1.2,
             opacity: 0.82,
+            'curve-style': 'straight',
           },
         },
         {
@@ -2198,6 +2500,9 @@ export default function App() {
     });
 
     cy.on('tap', 'node', (event) => {
+      if (event.target.data('edgeBendHandle') === 1) {
+        return;
+      }
       if (suppressNextTapRef.current) {
         suppressNextTapRef.current = false;
         return;
@@ -2242,6 +2547,9 @@ export default function App() {
     });
 
     cy.on('mousedown', 'node', (event) => {
+      if (event.target.data('edgeBendHandle') === 1) {
+        return;
+      }
       const originalEvent = event.originalEvent;
       if (!(originalEvent instanceof MouseEvent) || originalEvent.button !== 0) {
         return;
@@ -2299,6 +2607,9 @@ export default function App() {
     });
 
     cy.on('grab', 'node', (event) => {
+      if (event.target.data('edgeBendHandle') === 1) {
+        return;
+      }
       const activeFocusedNodeIds = focusedNodeIdsRef.current;
       const grabbedNode = event.target;
       if (activeFocusedNodeIds.length === 0) {
@@ -2357,8 +2668,24 @@ export default function App() {
     });
 
     cy.on('drag', 'node', (event) => {
+      if (event.target.data('edgeBendHandle') === 1) {
+        const ownerEdgeId = event.target.data('ownerEdgeId');
+        if (ownerEdgeId) {
+          const ownerEdge = cy.$id(ownerEdgeId);
+          if (!ownerEdge.empty() && isEditableCurveEdge(ownerEdge)) {
+            const override = computeCurveOverrideFromPoint(ownerEdge, event.target.position());
+            if (override) {
+              applyCurveOverrideToEdge(cy, ownerEdgeId, override);
+              synchronizeEdgeAnchorPositions(cy);
+            }
+          }
+        }
+        return;
+      }
       const dragState = groupDragStateRef.current;
       if (!dragState || event.target.id() !== dragState.grabbedNodeId) {
+        synchronizeEdgeAnchorPositions(cy);
+        synchronizeEdgeBendHandle(cy);
         return;
       }
 
@@ -2379,13 +2706,21 @@ export default function App() {
           });
         }
       });
+      synchronizeEdgeAnchorPositions(cy);
+      synchronizeEdgeBendHandle(cy);
     });
 
     cy.on('free', 'node', (event) => {
+      if (event.target.data('edgeBendHandle') === 1) {
+        synchronizeEdgeBendHandle(cy, event.target.data('ownerEdgeId'));
+        return;
+      }
       if (groupDragStateRef.current?.grabbedNodeId === event.target.id()) {
         groupDragStateRef.current = null;
       }
 
+      synchronizeEdgeAnchorPositions(cy);
+      synchronizeEdgeBendHandle(cy);
       const cache = layoutPositionCacheRef.current;
       const releasedNode = event.target;
       cache.set(releasedNode.id(), {
@@ -2589,7 +2924,7 @@ export default function App() {
 
     const cacheCurrentPositions = () => {
       positionCache.clear();
-      cy.nodes().forEach((node) => {
+      cy.nodes().not('[edgeAnchor = 1]').forEach((node) => {
         positionCache.set(node.id(), {
           x: node.position('x'),
           y: node.position('y'),
@@ -2636,7 +2971,14 @@ export default function App() {
         initialPositionsAreFinite = hasFiniteNodePositions(cy);
       }
 
-      layout = cy.layout({
+      const layoutCollection = cy
+        .elements(':visible')
+        .not('[edgeAnchor = 1]')
+        .not('[edgeAnchorTether = 1]')
+        .not('[edgeAttachedConnector = 1]')
+        .not('[owlRelationConnector = 1]');
+
+      layout = layoutCollection.layout({
         name: 'cose',
         animate: false,
         fit: true,
@@ -2662,6 +3004,8 @@ export default function App() {
         if (useMagneticInitialLayout) {
           resolveNodeOverlaps(cy, 10, 24);
         }
+        synchronizeEdgeAnchorPositions(cy);
+        synchronizeEdgeBendHandle(cy);
         fitGraph(0);
         cacheCurrentPositions();
         hasAppliedInitialLayoutRef.current = true;
@@ -2679,6 +3023,8 @@ export default function App() {
           if (!hasFiniteNodePositions(cy)) {
             applySpiralSeedLayout(cy);
           }
+          synchronizeEdgeAnchorPositions(cy);
+          synchronizeEdgeBendHandle(cy);
           fitGraph(0);
           cacheCurrentPositions();
           hasAppliedInitialLayoutRef.current = true;
@@ -2711,7 +3057,14 @@ export default function App() {
     const timeoutId = setTimeout(() => {
       if (!cy.destroyed()) {
         cy.resize();
-        cy.fit(cy.nodes(), 42);
+        cy.fit(
+          cy
+            .nodes()
+            .not('[edgeAnchor = 1]')
+            .not('[edgeBendHandle = 1]'),
+          42,
+        );
+        synchronizeEdgeBendHandle(cy);
       }
     }, 0);
     return () => clearTimeout(timeoutId);
@@ -2812,6 +3165,7 @@ export default function App() {
 
     cy.edges().removeClass('selected-relation');
     if (!selectedEdgeId) {
+      synchronizeEdgeBendHandle(cy, null);
       return;
     }
 
@@ -2819,7 +3173,12 @@ export default function App() {
     if (!edge.empty()) {
       edge.addClass('selected-relation');
     }
+    synchronizeEdgeBendHandle(cy, selectedEdgeId);
   }, [selectedEdgeId, visibleElements]);
+
+  useEffect(() => {
+    edgeCurveOverridesRef.current = new Map();
+  }, [graphData]);
 
   useEffect(() => {
     if (!graphData) {
@@ -2846,7 +3205,12 @@ export default function App() {
 
         if (!classFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
-            setVisibleElements(buildProjectedElements(graphData, null, viewOptions));
+            setVisibleElements(
+              applyEdgeCurveOverrides(
+                buildProjectedElements(graphData, null, viewOptions),
+                edgeCurveOverridesRef.current,
+              ),
+            );
           }
           return;
         }
@@ -2877,16 +3241,24 @@ export default function App() {
         }
 
         if (!cancelled) {
-          setVisibleElements(buildProjectedElements(graphData, selectedEntities, viewOptions));
+          setVisibleElements(
+            applyEdgeCurveOverrides(
+              buildProjectedElements(graphData, selectedEntities, viewOptions),
+              edgeCurveOverridesRef.current,
+            ),
+          );
         }
       } catch (error) {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
-            buildProjectedElements(
-              graphData,
-              null,
-              toViewOptions(graphProjectionMode, graphData),
+            applyEdgeCurveOverrides(
+              buildProjectedElements(
+                graphData,
+                null,
+                toViewOptions(graphProjectionMode, graphData),
+              ),
+              edgeCurveOverridesRef.current,
             ),
           );
         }
@@ -2945,6 +3317,7 @@ export default function App() {
   }, [visibleElements, selectedNodeId, selectedEdgeId]);
 
   function clearLoadedGraph() {
+    edgeCurveOverridesRef.current = new Map();
     setKgFiles([]);
     setOntologyFiles([]);
     setGraphData(null);

@@ -256,6 +256,59 @@ function makeHelperNodeData(id) {
   };
 }
 
+function makeEdgeAnchorNodeData(id) {
+  return {
+    ...makeHelperNodeData(id),
+    entityCategory: 'edge-anchor',
+    graphRole: 'edge-anchor',
+    edgeAnchor: 1,
+    anchoredEdgeId: '',
+    anchoredSourceId: '',
+    anchoredTargetId: '',
+  };
+}
+
+function makeNodeElementFromGraphNode(node) {
+  if (!node) {
+    return null;
+  }
+
+  return {
+    data: {
+      ...node,
+      id: node.id,
+      label: node.displayLabel,
+      fullLabel: node.fullLabel,
+      iri: node.iri,
+      baseIri: node.baseIri ?? '',
+      kind: node.kind,
+      ontologyKind: node.ontologyKind ?? '',
+      entityCategory: node.entityCategory ?? '',
+      blankExpressionType: node.blankExpressionType ?? '',
+      restrictionKind: node.restrictionKind ?? '',
+      restrictionTooltip: node.restrictionTooltip ?? '',
+      graphRole: node.graphRole ?? '',
+      isInstanceNode: node.isInstanceNode ?? 0,
+      isOntologyNode: node.isOntologyNode ?? 0,
+      mixedMode: node.mixedMode ?? 0,
+      termType: node.termType,
+      literalValue: node.literalValue ?? '',
+      literalDatatype: node.literalDatatype ?? '',
+      literalLanguage: node.literalLanguage ?? '',
+      labelLength: node.labelLength,
+      nodeWidth: node.nodeWidth ?? 96,
+      nodeHeight: node.nodeHeight ?? 52,
+      textMaxWidth: node.textMaxWidth ?? 78,
+      hasClass: node.hasClass,
+      classCount: node.classCount ?? 0,
+      classBadge: node.classBadge,
+      badgeSvg: node.badgeSvg,
+      badgeWidth: node.badgeWidth,
+      classTooltip: node.classTooltip ?? '',
+    },
+  };
+}
+
 function makeExpressionNodeData(id, label, expressionKind) {
   return {
     id,
@@ -858,51 +911,242 @@ function synthesizeOwlPropertyProjection(graphData, visibleNodeIds) {
 }
 
 function synthesizePropertyRelationEdges(graphData, helperIdsByPropertyId) {
+  return [];
+}
+
+function ensureEdgeAnchor(edgeElement, anchorNodes, anchorEdges, anchorByEdgeId) {
+  const edgeId = edgeElement?.data?.id;
+  if (!edgeId) {
+    return null;
+  }
+
+  const existing = anchorByEdgeId.get(edgeId);
+  if (existing) {
+    return existing;
+  }
+
+  const anchorId = `edge-anchor:${edgeId}`;
+  anchorByEdgeId.set(edgeId, anchorId);
+  const anchorNodeData = makeEdgeAnchorNodeData(anchorId);
+  anchorNodeData.anchoredEdgeId = edgeId;
+  anchorNodeData.anchoredSourceId = edgeElement.data.source;
+  anchorNodeData.anchoredTargetId = edgeElement.data.target;
+  anchorNodes.push({
+    data: anchorNodeData,
+  });
+  anchorEdges.push({
+    data: {
+      id: `${anchorId}:source`,
+      source: edgeElement.data.source,
+      target: anchorId,
+      predicate: edgeElement.data.predicate,
+      predicateLabel: '',
+      category: edgeElement.data.category ?? 'object',
+      axiomKind: edgeElement.data.axiomKind ?? '',
+      restrictionKind: edgeElement.data.restrictionKind ?? '',
+      edgeAnchorTether: 1,
+      owlEdgeStyle: 'straight',
+    },
+  });
+  anchorEdges.push({
+    data: {
+      id: `${anchorId}:target`,
+      source: anchorId,
+      target: edgeElement.data.target,
+      predicate: edgeElement.data.predicate,
+      predicateLabel: '',
+      category: edgeElement.data.category ?? 'object',
+      axiomKind: edgeElement.data.axiomKind ?? '',
+      restrictionKind: edgeElement.data.restrictionKind ?? '',
+      edgeAnchorTether: 1,
+      owlEdgeStyle: 'straight',
+    },
+  });
+  return anchorId;
+}
+
+function buildReificationDescriptors(graphData) {
+  const objectOutgoing = buildOutgoingEdgeIndex(graphData);
+  const literalOutgoing = buildOutgoingLiteralEdgeIndex(graphData);
+  const descriptors = [];
+
+  for (const node of graphData?.nodes ?? []) {
+    const outgoing = objectOutgoing.get(node.id) ?? [];
+    const outgoingLiteral = literalOutgoing.get(node.id) ?? [];
+
+    const rdfSubject = outgoing.find((edge) => edge.predicate === RDF_SUBJECT)?.target;
+    const rdfPredicate = outgoing.find((edge) => edge.predicate === RDF_PREDICATE)?.target;
+    const rdfObjectNode = outgoing.find((edge) => edge.predicate === RDF_OBJECT)?.target;
+    const rdfObjectLiteral = outgoingLiteral.find((edge) => edge.predicate === RDF_OBJECT)?.target;
+    if (rdfSubject && rdfPredicate && (rdfObjectNode || rdfObjectLiteral)) {
+      descriptors.push({
+        reifierId: node.id,
+        source: rdfSubject,
+        predicate: rdfPredicate,
+        target: rdfObjectNode || rdfObjectLiteral,
+        label: 'rdf:reifies',
+        structuralPredicates: new Set([RDF_SUBJECT, RDF_PREDICATE, RDF_OBJECT]),
+      });
+    }
+
+    const annotatedSource = outgoing.find((edge) => edge.predicate === OWL_ANNOTATED_SOURCE)?.target;
+    const annotatedPredicate = outgoing.find((edge) => edge.predicate === OWL_ANNOTATED_PROPERTY)?.target;
+    const annotatedTarget = outgoing.find((edge) => edge.predicate === OWL_ANNOTATED_TARGET)?.target;
+    if (annotatedSource && annotatedPredicate && annotatedTarget) {
+      descriptors.push({
+        reifierId: node.id,
+        source: annotatedSource,
+        predicate: annotatedPredicate,
+        target: annotatedTarget,
+        label: 'owl:annotates',
+        structuralPredicates: new Set([OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET]),
+      });
+    }
+  }
+
+  return descriptors;
+}
+
+function decorateEdgeAttachedStructures(graphData, elements, mode) {
+  const descriptors = buildReificationDescriptors(graphData);
+  const structuralPredicatesByReifier = new Map(
+    descriptors.map((descriptor) => [descriptor.reifierId, descriptor.structuralPredicates]),
+  );
+
+  const filteredElements = elements.filter((element) => {
+    const data = element?.data;
+    if (!data?.source) {
+      return true;
+    }
+    const structuralPredicates = structuralPredicatesByReifier.get(data.source);
+    if (structuralPredicates?.has(data.predicate)) {
+      return false;
+    }
+    return true;
+  });
+
+  const nodeIds = new Set(filteredElements.filter((element) => !element?.data?.source).map((element) => element.data.id));
+  const edgeElements = filteredElements.filter((element) => element?.data?.source);
+  const edgeLookup = new Map();
+
+  for (const edgeElement of edgeElements) {
+    const data = edgeElement.data;
+    const key = `${data.source}|${data.predicate}|${data.target}`;
+    const bucket = edgeLookup.get(key) ?? [];
+    bucket.push(edgeElement);
+    edgeLookup.set(key, bucket);
+  }
+
+  const anchorNodes = [];
+  const anchorEdges = [];
   const relationEdges = [];
+  const anchorByEdgeId = new Map();
+  const addedEdgeIds = new Set(edgeElements.map((element) => element.data.id));
+  const addedNodeIds = new Set(nodeIds);
 
-  for (const edge of graphData?.objectEdges ?? []) {
-    if (
-      edge.predicate !== RDFS_SUBPROPERTY_OF &&
-      edge.predicate !== OWL_EQUIVALENT_PROPERTY &&
-      edge.predicate !== OWL_INVERSE_OF
-    ) {
+  const ensureNodeVisible = (nodeId) => {
+    if (addedNodeIds.has(nodeId)) {
+      return;
+    }
+    const node = graphData?.nodeMap?.get(nodeId);
+    const nodeElement = makeNodeElementFromGraphNode(node);
+    if (!nodeElement) {
+      return;
+    }
+    anchorNodes.push(nodeElement);
+    addedNodeIds.add(nodeId);
+  };
+
+  for (const descriptor of descriptors) {
+    const matchingEdges = edgeLookup.get(`${descriptor.source}|${descriptor.predicate}|${descriptor.target}`) ?? [];
+    if (matchingEdges.length === 0) {
       continue;
     }
 
-    const sourceHelpers = helperIdsByPropertyId.get(edge.source) ?? [];
-    const targetHelpers = helperIdsByPropertyId.get(edge.target) ?? [];
-    if (sourceHelpers.length === 0 || targetHelpers.length === 0) {
-      continue;
+    ensureNodeVisible(descriptor.reifierId);
+
+    for (const matchingEdge of matchingEdges) {
+      const anchorId = ensureEdgeAnchor(matchingEdge, anchorNodes, anchorEdges, anchorByEdgeId);
+      const relationId = `edge-attach:${descriptor.reifierId}:${matchingEdge.data.id}:${descriptor.label}`;
+      if (addedEdgeIds.has(relationId)) {
+        continue;
+      }
+      addedEdgeIds.add(relationId);
+      relationEdges.push({
+        data: {
+          id: relationId,
+          source: descriptor.reifierId,
+          target: anchorId,
+          predicate: descriptor.label,
+          predicateLabel: descriptor.label,
+          category: 'object',
+          axiomKind: descriptor.label === 'owl:annotates' ? 'AxiomAnnotation' : 'Reification',
+          restrictionKind: '',
+          edgeAttachedConnector: 1,
+          owlEdgeStyle: 'straight',
+        },
+      });
+    }
+  }
+
+  if (mode === GRAPH_VIEW_MODES.OWL) {
+    const propertyProjectionEdgesByPredicate = new Map();
+    for (const edgeElement of edgeElements) {
+      const data = edgeElement.data;
+      if (data.axiomKind !== 'PropertyProjection') {
+        continue;
+      }
+      const bucket = propertyProjectionEdgesByPredicate.get(data.predicate) ?? [];
+      bucket.push(edgeElement);
+      propertyProjectionEdgesByPredicate.set(data.predicate, bucket);
     }
 
-    const relationLabel =
-      edge.predicate === RDFS_SUBPROPERTY_OF
-        ? '<<subPropertyOf>>'
-        : edge.predicate === OWL_INVERSE_OF
-          ? '<<inverseOf>>'
-          : '<<equivalentProperty>>';
+    for (const edge of graphData?.objectEdges ?? []) {
+      if (
+        edge.predicate !== RDFS_SUBPROPERTY_OF &&
+        edge.predicate !== OWL_EQUIVALENT_PROPERTY &&
+        edge.predicate !== OWL_INVERSE_OF
+      ) {
+        continue;
+      }
 
-    for (const sourceHelper of sourceHelpers) {
-      for (const targetHelper of targetHelpers) {
-        relationEdges.push({
-          data: {
-            id: `owl-prop-rel:${edge.predicate}:${sourceHelper}:${targetHelper}`,
-            source: sourceHelper,
-            target: targetHelper,
-            predicate: edge.predicate,
-            predicateLabel: relationLabel,
-            category: 'object',
-            axiomKind: edge.axiomKind || 'PropertyAxiom',
-            restrictionKind: '',
-            owlEdgeStyle: 'dotted',
-            owlRelationConnector: 1,
-          },
-        });
+      const sourcePropertyEdges = propertyProjectionEdgesByPredicate.get(edge.source) ?? [];
+      const targetPropertyEdges = propertyProjectionEdgesByPredicate.get(edge.target) ?? [];
+      for (const sourceEdge of sourcePropertyEdges) {
+        for (const targetEdge of targetPropertyEdges) {
+          const sourceAnchorId = ensureEdgeAnchor(sourceEdge, anchorNodes, anchorEdges, anchorByEdgeId);
+          const targetAnchorId = ensureEdgeAnchor(targetEdge, anchorNodes, anchorEdges, anchorByEdgeId);
+          const relationId = `owl-prop-rel:${edge.predicate}:${sourceEdge.data.id}:${targetEdge.data.id}`;
+          if (addedEdgeIds.has(relationId)) {
+            continue;
+          }
+          addedEdgeIds.add(relationId);
+          relationEdges.push({
+            data: {
+              id: relationId,
+              source: sourceAnchorId,
+              target: targetAnchorId,
+              predicate: edge.predicate,
+              predicateLabel:
+                edge.predicate === RDFS_SUBPROPERTY_OF
+                  ? 'subPropertyOf'
+                  : edge.predicate === OWL_INVERSE_OF
+                    ? 'inverseOf'
+                    : 'equivalentProperty',
+              category: 'object',
+              axiomKind: edge.axiomKind || 'PropertyAxiom',
+              restrictionKind: '',
+              owlEdgeStyle: edge.predicate === RDFS_SUBPROPERTY_OF ? 'dashed' : 'dotted',
+              owlRelationConnector: 1,
+              edgeAttachedConnector: 1,
+            },
+          });
+        }
       }
     }
   }
 
-  return relationEdges;
+  return [...filteredElements, ...anchorNodes, ...anchorEdges, ...relationEdges];
 }
 
 function applyOwlProjection(graphData, elements) {
@@ -1066,7 +1310,11 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
     projectionMode: GRAPH_VIEW_MODES.RDF,
   });
 
-  return applyRdfLabels(suppressMetadataEdges(elements));
+  return decorateEdgeAttachedStructures(
+    graphData,
+    applyRdfLabels(suppressMetadataEdges(elements)),
+    GRAPH_VIEW_MODES.RDF,
+  );
 }
 
 export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
@@ -1078,7 +1326,11 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
   const baseElements = suppressMetadataEdges(elements);
 
   try {
-    return applyOwlProjection(graphData, baseElements);
+    return decorateEdgeAttachedStructures(
+      graphData,
+      applyOwlProjection(graphData, baseElements),
+      GRAPH_VIEW_MODES.OWL,
+    );
   } catch (error) {
     console.error('OWL projection failed; falling back to base ontology graph.', error);
     return baseElements;

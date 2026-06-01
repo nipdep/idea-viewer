@@ -1,0 +1,151 @@
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sko: <http://www.w3.org/2004/02/skos/core#> .
+@prefix sudo: <https://purl.org/twc/sudo/ontology#> .
+@prefix sudo-kg-concept: <https://purl.org/twc/sudo/kg/concept/> .
+@prefix sudo-kg-proposition: <https://purl.org/twc/sudo/kg/proposition/> .
+
+sudo-kg-proposition:25b65817-a4de-44d5-b763-0e23c52578fd a sudo:Argument,
+        sudo:Evidence ;
+    rdfs:label "As a result, we construct a large-scale eventuality entailment graph (EEG), which has 10 million eventuality nodes and 103 million entailment edges."@en ;
+    prov:derivedFrom "As a result, we construct a large-scale eventuality entailment graph (EEG), which has 10 million eventuality nodes and 103 million entailment edges."@en ;
+    sudo:mentions sudo-kg-concept:890f0e67-e40e-46f6-869c-ee5bcad26408 ;
+    sudo:supports sudo-kg-concept:4f062739-fabe-4b54-ba2e-0f1557f9b2cb,
+        sudo-kg-concept:9f9e7708-01a7-48e3-a740-428954afc3fa,
+        sudo-kg-concept:fd947771-3ec2-442a-8687-8e3a552ea122 .
+
+sudo-kg-proposition:605876cc-b374-46f7-8416-0bb0f7a913b4 a sudo:Approach,
+        sudo:Argument ;
+    rdfs:label "In this paper, we propose a scalable approach to model the entailment relations between eventualities (\"eat an apple\" entails \"eat fruit."@en ;
+    prov:derivedFrom "In this paper, we propose a scalable approach to model the entailment relations between eventualities (\"eat an apple\" entails \"eat fruit."@en ;
+    sudo:enables sudo-kg-concept:e0541b78-491d-48ab-8521-9772e1c4bc16 ;
+    sudo:mentions sudo-kg-concept:152be2f9-0d86-4ed3-9d77-372b95dbc814,
+        sudo-kg-concept:52ff129d-67cf-4df8-89ad-8b316568561a,
+        sudo-kg-concept:67b3c7f1-3b0a-4bce-9cc2-4d2c8c42ad19,
+        sudo-kg-concept:8becc5dc-fe86-41d6-9898-851d0343acf9,
+        sudo-kg-concept:f5465c00-b04a-4d73-821e-9a4ab1eeb049 .
+
+sudo-kg-proposition:8664774c-d3d9-431e-840b-d8885fd4b31f a sudo:Circumstance,
+        sudo:Descriptor ;
+    rdfs:label "Computational and cognitive studies suggest that the abstraction of eventualities (activities, states, and events) is crucial for humans to understand daily eventualities."@en ;
+    prov:derivedFrom "Computational and cognitive studies suggest that the abstraction of eventualities (activities, states, and events) is crucial for humans to understand daily eventualities."@en ;
+    sudo:contextualizes sudo-kg-concept:27da0963-75a2-4bb7-891e-186b5f210bc1 ;
+    sudo:mentions sudo-kg-concept:0f52a05f-2c2d-4955-badf-b1f1095aada7,
+        sudo-kg-concept:52ff129d-67cf-4df8-89ad-8b316568561a,
+        sudo-kg-concept:60836387-0ad4-49ab-bb66-39bb8921b62f,
+        sudo-kg-concept:a6dce770-c793-4c6a-a1d7-004c6a4e231d,
+        sudo-kg-concept:ad954fa9-54b1-4005-8f77-a80a900a700c,
+        sudo-kg-concept:bf3ff099-31d0-4f85-b6da-1f5f4916b97a .
+
+sudo-kg-proposition:bc7ff716-717e-474f-a2d5-3343a59b1711 a sudo:Argument,
+        sudo:Evidence ;
+    rdfs:label "Detailed experiments and analysis demonstrate the effectiveness of the proposed approach and quality of the resulting knowledge graph."@en ;
+    prov:derivedFrom "Detailed experiments and analysis demonstrate the effectiveness of the proposed approach and quality of the resulting knowledge graph."@en ;
+    sudo:supports sudo-kg-concept:45a686b1-ec04-49bf-9180-92fd8a6cafb1 .
+
+sudo-kg-proposition:e1e7c654-1b4a-4839-bd5a-8f8b3d01ac1e a sudo:Descriptor,
+        sudo:Elaboration ;
+    rdfs:label "Our datasets and code are available at https://github.com/HKUST-KnowComp/ASER-EEG."@en ;
+    prov:derivedFrom "Our datasets and code are available at https://github.com/HKUST-KnowComp/ASER-EEG."@en ;
+    sudo:elaborates sudo-kg-concept:7fb00bc4-d8e7-43f2-bff4-a4340c085481 .
+
+sudo-kg-concept:0f52a05f-2c2d-4955-badf-b1f1095aada7 a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "event"@en ;
+    prov:derivedFrom "events"@en ;
+    sudo:HyponymOf sudo-kg-concept:52ff129d-67cf-4df8-89ad-8b316568561a .
+
+sudo-kg-concept:152be2f9-0d86-4ed3-9d77-372b95dbc814 a sudo:Material,
+        sudo:Artifact ;
+    rdfs:label "an apple"@en ;
+    prov:derivedFrom "an apple"@en ;
+    sudo:HyponymOf sudo-kg-concept:8becc5dc-fe86-41d6-9898-851d0343acf9 .
+
+sudo-kg-concept:27da0963-75a2-4bb7-891e-186b5f210bc1 a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "daily eventuality"@en ;
+    prov:derivedFrom "daily eventualities"@en ;
+    sudo:HyponymOf sudo-kg-concept:52ff129d-67cf-4df8-89ad-8b316568561a .
+
+sudo-kg-concept:45a686b1-ec04-49bf-9180-92fd8a6cafb1 a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "knowledge graph"@en ;
+    prov:derivedFrom "knowledge graph"@en .
+
+sudo-kg-concept:4f062739-fabe-4b54-ba2e-0f1557f9b2cb a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "eventuality node"@en ;
+    prov:derivedFrom "eventuality nodes"@en ;
+    sudo:PartOf sudo-kg-concept:9f9e7708-01a7-48e3-a740-428954afc3fa .
+
+sudo-kg-concept:60836387-0ad4-49ab-bb66-39bb8921b62f a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "activity"@en ;
+    prov:derivedFrom "activities"@en ;
+    sudo:HyponymOf sudo-kg-concept:52ff129d-67cf-4df8-89ad-8b316568561a .
+
+sudo-kg-concept:7fb00bc4-d8e7-43f2-bff4-a4340c085481 a sudo:Material,
+        sudo:Artifact ;
+    rdfs:label "https://github.com/HKUST-KnowComp/ASER-EEG"@en ;
+    prov:derivedFrom "https://github.com/HKUST-KnowComp/ASER-EEG"@en .
+
+sudo-kg-concept:890f0e67-e40e-46f6-869c-ee5bcad26408 a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "EEG"@en ;
+    sko:altLabel sudo-kg-concept:9f9e7708-01a7-48e3-a740-428954afc3fa ;
+    prov:derivedFrom "EEG"@en .
+
+sudo-kg-concept:a6dce770-c793-4c6a-a1d7-004c6a4e231d a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "abstraction"@en ;
+    prov:derivedFrom "abstraction"@en ;
+    sudo:usedFor sudo-kg-concept:52ff129d-67cf-4df8-89ad-8b316568561a .
+
+sudo-kg-concept:ad954fa9-54b1-4005-8f77-a80a900a700c a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "cognitive study"@en ;
+    prov:derivedFrom "cognitive studies"@en .
+
+sudo-kg-concept:bf3ff099-31d0-4f85-b6da-1f5f4916b97a a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "state"@en ;
+    prov:derivedFrom "states"@en ;
+    sudo:HyponymOf sudo-kg-concept:52ff129d-67cf-4df8-89ad-8b316568561a .
+
+sudo-kg-concept:e0541b78-491d-48ab-8521-9772e1c4bc16 a sudo:Method,
+        sudo:Artifact ;
+    rdfs:label "scalable approach"@en ;
+    prov:derivedFrom "scalable approach"@en ;
+    sudo:usedFor sudo-kg-concept:67b3c7f1-3b0a-4bce-9cc2-4d2c8c42ad19 .
+
+sudo-kg-concept:f5465c00-b04a-4d73-821e-9a4ab1eeb049 a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "this paper"@en ;
+    prov:derivedFrom "this paper"@en .
+
+sudo-kg-concept:fd947771-3ec2-442a-8687-8e3a552ea122 a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "entailment edge"@en ;
+    prov:derivedFrom "entailment edges"@en ;
+    sudo:PartOf sudo-kg-concept:9f9e7708-01a7-48e3-a740-428954afc3fa .
+
+sudo-kg-concept:67b3c7f1-3b0a-4bce-9cc2-4d2c8c42ad19 a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "the entailment relation"@en ;
+    prov:derivedFrom "the entailment relations"@en .
+
+sudo-kg-concept:8becc5dc-fe86-41d6-9898-851d0343acf9 a sudo:Material,
+        sudo:Artifact ;
+    rdfs:label "fruit"@en ;
+    prov:derivedFrom "fruit"@en .
+
+sudo-kg-concept:9f9e7708-01a7-48e3-a740-428954afc3fa a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "eventuality entailment graph"@en ;
+    prov:derivedFrom "eventuality entailment graph"@en .
+
+sudo-kg-concept:52ff129d-67cf-4df8-89ad-8b316568561a a sudo:Term,
+        sudo:Artifact ;
+    rdfs:label "eventuality"@en ;
+    prov:derivedFrom "eventualities"@en .
+

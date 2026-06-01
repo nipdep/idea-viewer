@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
 import { DataFactory, Writer } from 'n3';
-import { buildFocusedSubset, buildGraphData, compactIri, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
+import { buildGraphData, compactIri, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
+import {
+  buildProjectedElements,
+  createViewOptions,
+  getProjectedNodeMetadataRows,
+  GRAPH_VIEW_MODES,
+} from './lib/view-projections';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -34,18 +40,12 @@ const FIXED_SPARQL_PREFIXES = Object.freeze([
 ]);
 const DEFAULT_STATUS = 'Upload KG and/or ontology files to initialize the graph.';
 const GRAPH_PROJECTION_MODES = {
-  ONTOLOGY: 'ontology',
-  KG: 'kg',
+  OWL: GRAPH_VIEW_MODES.OWL,
+  RDF: GRAPH_VIEW_MODES.RDF,
 };
 const PROJECTION_MODE_LABELS = {
-  [GRAPH_PROJECTION_MODES.ONTOLOGY]: 'Ontology Full Detailed View',
-  [GRAPH_PROJECTION_MODES.KG]: 'KG View',
-};
-const ONTOLOGY_VIEW_MODES = {
-  CLASS_ONLY: 'class-only',
-  CLASS_AND_OBJECT: 'class-and-object',
-  CLASS_OBJECT_DATA: 'class-object-data',
-  FULL: 'full',
+  [GRAPH_PROJECTION_MODES.OWL]: 'OWL View',
+  [GRAPH_PROJECTION_MODES.RDF]: 'RDF View',
 };
 const RDFS_LABEL_IRI = 'http://www.w3.org/2000/01/rdf-schema#label';
 const XSD_BOOLEAN_IRI = 'http://www.w3.org/2001/XMLSchema#boolean';
@@ -110,18 +110,18 @@ function downloadDataUrl(filename, dataUrl) {
   link.remove();
 }
 
-function getCurrentViewKey(projectionMode, isLightOntologyViewActive) {
-  if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
-    return 'kg-view';
+function getCurrentViewKey(projectionMode) {
+  if (projectionMode === GRAPH_PROJECTION_MODES.RDF) {
+    return 'rdf-view';
   }
-  return isLightOntologyViewActive ? 'ontology-light-view' : 'ontology-full-view';
+  return 'owl-view';
 }
 
-function getCurrentViewLabel(projectionMode, isLightOntologyViewActive) {
-  if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
-    return 'KG view';
+function getCurrentViewLabel(projectionMode) {
+  if (projectionMode === GRAPH_PROJECTION_MODES.RDF) {
+    return 'RDF view';
   }
-  return isLightOntologyViewActive ? 'Ontology light view' : 'Ontology full detailed view';
+  return 'OWL view';
 }
 
 function normalizeFocusedNodeIds(nodeIds) {
@@ -883,57 +883,28 @@ function orderClassesSubToSuper(classIris, graphData) {
   });
 }
 
-function toViewFlags(filterMode) {
-  switch (filterMode) {
-    case ONTOLOGY_VIEW_MODES.CLASS_ONLY:
-      return {
-        showDataProperties: false,
-        showAnnotationProperties: false,
-        showObjectProperties: false,
-        showNamedIndividuals: true,
-      };
-    case ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA:
-      return {
-        showDataProperties: true,
-        showAnnotationProperties: false,
-        showObjectProperties: true,
-        showNamedIndividuals: true,
-      };
-    case ONTOLOGY_VIEW_MODES.FULL:
-      return {
-        showDataProperties: true,
-        showAnnotationProperties: true,
-        showObjectProperties: true,
-        showNamedIndividuals: true,
-      };
-    case ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT:
-    default:
-      return {
-        showDataProperties: false,
-        showAnnotationProperties: false,
-        showObjectProperties: true,
-        showNamedIndividuals: true,
-      };
-  }
+function toViewFlags() {
+  return {
+    showDataProperties: true,
+    showAnnotationProperties: false,
+    showObjectProperties: true,
+    showNamedIndividuals: true,
+  };
 }
 
-function toViewOptions(projectionMode, filterMode, graphData, lightOntologyMode = false) {
-  const flags = toViewFlags(filterMode);
-  if (projectionMode === GRAPH_PROJECTION_MODES.KG) {
-    return {
-      projectionMode: GRAPH_PROJECTION_MODES.KG,
+function toViewOptions(projectionMode, graphData) {
+  const flags = toViewFlags();
+  if (projectionMode === GRAPH_PROJECTION_MODES.RDF) {
+    return createViewOptions(GRAPH_PROJECTION_MODES.RDF, {
       ...flags,
       showTypeLinks: Boolean(graphData?.hasOntology),
-      lightOntologyMode: false,
-    };
+    });
   }
 
-  return {
-    projectionMode: GRAPH_PROJECTION_MODES.ONTOLOGY,
+  return createViewOptions(GRAPH_PROJECTION_MODES.OWL, {
     ...flags,
     showTypeLinks: Boolean(graphData?.hasOntology),
-    lightOntologyMode: Boolean(lightOntologyMode),
-  };
+  });
 }
 
 function modelHasOntologySchema(model) {
@@ -982,8 +953,7 @@ export default function App() {
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
-  const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.ONTOLOGY);
-  const [ontologyViewMode, setOntologyViewMode] = useState(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
+  const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.OWL);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
@@ -1010,7 +980,6 @@ export default function App() {
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
-  const [isLightOntologyView, setIsLightOntologyView] = useState(false);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
@@ -1023,8 +992,20 @@ export default function App() {
   const [isFiltering, setIsFiltering] = useState(false);
 
   const selectedNode = useMemo(
-    () => (selectedNodeId && graphData ? graphData.nodeMap.get(selectedNodeId) : null),
-    [selectedNodeId, graphData],
+    () => {
+      if (!selectedNodeId) {
+        return null;
+      }
+
+      const mappedNode = graphData?.nodeMap.get(selectedNodeId);
+      if (mappedNode) {
+        return mappedNode;
+      }
+
+      const nodeElement = visibleElements.find((entry) => !entry.data.source && entry.data.id === selectedNodeId);
+      return nodeElement?.data ?? null;
+    },
+    [selectedNodeId, graphData, visibleElements],
   );
   const selectedEdge = useMemo(
     () => {
@@ -1102,7 +1083,7 @@ export default function App() {
       return null;
     }
 
-    const modeLabel = getCurrentViewLabel(graphProjectionMode, isLightOntologyViewActive);
+    const modeLabel = getCurrentViewLabel(graphProjectionMode);
     const exportTimestamp = new Date();
     const nodes = cy.nodes().map((node) => {
       const modelNode = graphData?.nodeMap.get(node.id());
@@ -1143,7 +1124,7 @@ export default function App() {
       metadata: {
         title: 'IDEA* Viewer export',
         viewLabel: modeLabel,
-        viewKey: getCurrentViewKey(graphProjectionMode, isLightOntologyViewActive),
+        viewKey: getCurrentViewKey(graphProjectionMode),
         exportedAtIso: exportTimestamp.toISOString(),
         exportedAtLabel: exportTimestamp.toLocaleString(),
       },
@@ -1205,11 +1186,54 @@ export default function App() {
     });
   }
 
-  function shouldUseMagneticInitialLayout(projectionMode, isLightOntologyViewActive) {
-    return (
-      projectionMode === GRAPH_PROJECTION_MODES.KG ||
-      (projectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY && !isLightOntologyViewActive)
+  function shouldUseMagneticInitialLayout() {
+    return true;
+  }
+
+  function hasFiniteNodePositions(cy) {
+    return cy.nodes().every((node) => {
+      const position = node.position();
+      return Number.isFinite(position.x) && Number.isFinite(position.y);
+    });
+  }
+
+  function applySpiralSeedLayout(cy) {
+    const nodes = cy.nodes(':visible');
+    if (nodes.length === 0) {
+      return false;
+    }
+
+    const nodeEntries = nodes
+      .map((node) => ({
+        id: node.id(),
+        node,
+        degree: node.degree(false),
+        span: Math.max(node.width(), node.height()),
+      }))
+      .sort((left, right) => right.degree - left.degree || left.id.localeCompare(right.id));
+    const spacing = Math.max(
+      92,
+      Math.round(nodeEntries.reduce((span, entry) => Math.max(span, entry.span), 80) + 28),
     );
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+
+    cy.batch(() => {
+      nodeEntries.forEach((entry, index) => {
+        if (index === 0) {
+          entry.node.position({ x: 0, y: 0 });
+          return;
+        }
+
+        const angle = index * goldenAngle;
+        const radius = spacing * Math.sqrt(index) * (1 + Math.min(entry.degree, 6) * 0.02);
+        entry.node.position({
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
+        });
+      });
+    });
+
+    return true;
   }
 
   function applyMagneticInitialLayout(cy) {
@@ -1240,6 +1264,9 @@ export default function App() {
     edges.forEach((edge) => {
       const sourceId = edge.source().id();
       const targetId = edge.target().id();
+      if (!adjacency.has(sourceId) || !adjacency.has(targetId)) {
+        return;
+      }
       adjacency.get(sourceId)?.add(targetId);
       adjacency.get(targetId)?.add(sourceId);
     });
@@ -1257,8 +1284,8 @@ export default function App() {
     });
 
     const baseSpacing = Math.max(92, Math.round(maxNodeSpan + 36));
-    const idealEdgeLength = Math.max(68, Math.round(baseSpacing * 0.7));
-    const repulsionRadius = Math.max(baseSpacing * 1.15, maxNodeSpan * 1.45);
+    const idealEdgeLength = Math.max(56, Math.round(baseSpacing * 0.58));
+    const repulsionRadius = Math.max(baseSpacing * 0.9, maxNodeSpan * 1.2);
     const goldenAngle = Math.PI * (3 - Math.sqrt(5));
     const positions = new Map();
 
@@ -1331,7 +1358,7 @@ export default function App() {
                 Math.max(entry.width, entry.height) / 2 + Math.max(other.width, other.height) / 2 + 12;
               const closeness = Math.max(0, (repulsionRadius - distance) / repulsionRadius);
               const overlapBoost = distance < overlapDistance ? 1.6 + (overlapDistance - distance) / overlapDistance : 0.55;
-              const repulsion = closeness * closeness * 12 * overlapBoost;
+              const repulsion = closeness * closeness * 9.5 * overlapBoost;
               const unitX = dx / distance;
               const unitY = dy / distance;
               const entryForce = forceById.get(entry.id);
@@ -1350,6 +1377,9 @@ export default function App() {
         const targetId = edge.target().id();
         const sourcePosition = positions.get(sourceId);
         const targetPosition = positions.get(targetId);
+        if (!sourcePosition || !targetPosition) {
+          return;
+        }
         let dx = targetPosition.x - sourcePosition.x;
         let dy = targetPosition.y - sourcePosition.y;
         let distance = Math.hypot(dx, dy);
@@ -1362,9 +1392,12 @@ export default function App() {
         const unitX = dx / distance;
         const unitY = dy / distance;
         const stretch = distance - idealEdgeLength;
-        const attraction = stretch * 0.085;
+        const attraction = stretch * 0.12;
         const sourceForce = forceById.get(sourceId);
         const targetForce = forceById.get(targetId);
+        if (!sourceForce || !targetForce) {
+          return;
+        }
         sourceForce.x += unitX * attraction;
         sourceForce.y += unitY * attraction;
         targetForce.x -= unitX * attraction;
@@ -1385,9 +1418,19 @@ export default function App() {
       nodeMetrics.forEach((entry) => {
         const position = positions.get(entry.id);
         const force = forceById.get(entry.id);
+        if (!position || !force) {
+          return;
+        }
         const gravity = Math.max(0.001, entry.degree > 0 ? 0.0022 : 0.0008);
         position.x += (force.x - (position.x - centroidX) * gravity) * cooling;
         position.y += (force.y - (position.y - centroidY) * gravity) * cooling;
+        if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+          const index = nodeMetrics.findIndex((candidate) => candidate.id === entry.id);
+          const radius = baseSpacing * Math.sqrt(Math.max(1, index));
+          const angle = Math.max(1, index) * goldenAngle;
+          position.x = Math.cos(angle) * radius;
+          position.y = Math.sin(angle) * radius;
+        }
       });
     }
 
@@ -1409,6 +1452,9 @@ export default function App() {
     cy.batch(() => {
       nodeMetrics.forEach((entry) => {
         const position = positions.get(entry.id);
+        if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+          return;
+        }
         entry.node.position({
           x: position.x - offsetX,
           y: position.y - offsetY,
@@ -1416,7 +1462,7 @@ export default function App() {
       });
     });
 
-    return true;
+    return hasFiniteNodePositions(cy);
   }
 
   function resolveNodeOverlaps(cy, maxPasses = 16, spacing = 18) {
@@ -1631,6 +1677,7 @@ export default function App() {
     }
 
     const baseRows = graphData.nodeMetadata.get(selectedNodeId) ?? [];
+    const projectedRows = getProjectedNodeMetadataRows(graphData, selectedNodeId, graphProjectionMode);
     const annotationRows = selectedNodeAllLiteralProperties
       .filter((row) => row.category === 'annotation')
       .map((row) => ({
@@ -1639,7 +1686,7 @@ export default function App() {
         value: row.value,
       }));
 
-    const mergedRows = [...baseRows, ...annotationRows];
+    const mergedRows = [...baseRows, ...annotationRows, ...projectedRows];
     const dedupedRows = [];
     const seen = new Set();
     for (const row of mergedRows) {
@@ -1651,13 +1698,13 @@ export default function App() {
       dedupedRows.push(row);
     }
     return dedupedRows;
-  }, [selectedNodeId, graphData, selectedNodeAllLiteralProperties]);
+  }, [selectedNodeId, graphData, selectedNodeAllLiteralProperties, graphProjectionMode]);
   const selectedNodeDataProperties = useMemo(
     () => selectedNodeAllLiteralProperties.filter((row) => row.category !== 'annotation'),
     [selectedNodeAllLiteralProperties],
   );
   const selectedNodeClasses = useMemo(() => {
-    if (!selectedNode || !graphData || selectedNode.classes.length === 0) {
+    if (!selectedNode || !graphData || !Array.isArray(selectedNode.classes) || selectedNode.classes.length === 0) {
       return [];
     }
 
@@ -1703,15 +1750,10 @@ export default function App() {
 
   const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
-  const isOntologyOnlyDataset = Boolean(graphData?.hasOntology) && !graphData?.hasKg;
-  const hasOntologyUploads = ontologyFiles.length > 0 || Boolean(graphData?.hasOntology);
   const hasNamedIndividuals = Boolean(
     graphData?.nodes?.some((node) => node.isInstanceNode),
   );
-  const showViewFiltering = hasOntologyUploads;
   const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
-  const isLightOntologyViewActive =
-    isLightOntologyView && isOntologyOnlyDataset && graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY;
 
   const isAllClassesSelected =
     allClassIris.length === 0 ||
@@ -1794,6 +1836,12 @@ export default function App() {
         {
           selector: 'node[entityCategory = "class"]',
           style: {
+            shape: 'rectangle',
+          },
+        },
+        {
+          selector: 'node[entityCategory = "thing"]',
+          style: {
             shape: 'ellipse',
           },
         },
@@ -1860,66 +1908,40 @@ export default function App() {
           },
         },
         {
-          selector: 'node[lightOntologyView = 1]',
+          selector: 'node[entityCategory = "class-expression-connector"]',
+          style: {
+            shape: 'ellipse',
+            width: 42,
+            height: 42,
+            'background-color': '#e8f2ef',
+            'border-color': '#2f8a81',
+            'border-width': 2,
+            color: '#1f4f4c',
+            'font-size': 16,
+            'font-weight': 800,
+          },
+        },
+        {
+          selector: 'node[entityCategory = "enumeration-set"]',
           style: {
             shape: 'rectangle',
-            'background-image': 'none',
-            'background-width': 0,
-            'background-height': 0,
-            'background-repeat': 'no-repeat',
-            'bounds-expansion': 6,
-            'border-width': 1.25,
-            color: '#2a231d',
-          },
-        },
-        {
-          selector: 'node[lightOntologyView = 1][entityCategory = "class"]',
-          style: {
-            'background-color': '#d9c4ab',
+            'background-color': '#fffdf9',
+            'background-opacity': 0.55,
             'border-color': '#8d6b4c',
+            'border-style': 'dashed',
+            'border-width': 2,
+            color: '#5a3d24',
           },
         },
         {
-          selector: 'node[lightOntologyView = 1][entityCategory = "object-property"]',
+          selector: 'node[entityCategory = "all-different"]',
           style: {
-            'background-color': '#d4e2f2',
-            'border-color': '#5d7fa8',
-          },
-        },
-        {
-          selector: 'node[lightOntologyView = 1][entityCategory = "data-property"]',
-          style: {
-            'background-color': '#d6ebd9',
-            'border-color': '#5f9067',
-          },
-        },
-        {
-          selector: 'node[lightOntologyView = 1][entityCategory = "annotation-property"]',
-          style: {
-            'background-color': '#f0d9e4',
-            'border-color': '#ab6f8a',
-            'border-style': 'solid',
-          },
-        },
-        {
-          selector: 'node[lightOntologyView = 1][entityCategory = "individual"]',
-          style: {
-            'background-color': '#dfdfdf',
-            'border-color': '#7f7f7f',
-          },
-        },
-        {
-          selector: 'node[lightOntologyView = 1][kind = "literal"]',
-          style: {
+            shape: 'diamond',
             'background-color': '#f5ebbe',
-            'border-color': '#b9a14f',
-          },
-        },
-        {
-          selector: 'node[lightOntologyView = 1][entityCategory = "datatype"]',
-          style: {
-            'background-color': '#d6ebd9',
-            'border-color': '#5f9067',
+            'border-color': '#9b7458',
+            color: '#4f392b',
+            'font-size': 14,
+            'font-weight': 800,
           },
         },
         {
@@ -1940,9 +1962,53 @@ export default function App() {
           },
         },
         {
+          selector: 'node[owlHelper = 1]',
+          style: {
+            label: '',
+            width: 8,
+            height: 8,
+            'background-opacity': 0,
+            'border-width': 0,
+            'events': 'no',
+          },
+        },
+        {
+          selector: 'node[owlExpressionNode = 1]',
+          style: {
+            shape: 'ellipse',
+            'background-color': '#fcfaf6',
+            'border-color': '#8f7b67',
+            'border-width': 1.3,
+            color: '#5c4a39',
+            'font-size': 14,
+            'font-weight': 700,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-wrap': 'none',
+          },
+        },
+        {
+          selector: 'node[owlGroupNode = 1]',
+          style: {
+            shape: 'round-rectangle',
+            'background-opacity': 0,
+            'border-style': 'dashed',
+            'border-width': 1.6,
+            'border-color': '#b59b85',
+            color: '#7b6148',
+            'font-size': 11,
+            'font-weight': 600,
+            'text-valign': 'top',
+            'text-halign': 'center',
+            'text-margin-y': -20,
+            padding: '20px',
+          },
+        },
+        {
           selector: 'edge',
           style: {
             label: 'data(predicateLabel)',
+            'source-label': 'data(sourceCardinality)',
             color: '#5a524a',
             'font-size': 10,
             'font-family': 'Avenir Next, Nunito Sans, Segoe UI, sans-serif',
@@ -1955,6 +2021,9 @@ export default function App() {
             'text-border-color': '#e2d8cb',
             'text-border-opacity': 1,
             'text-rotation': 'autorotate',
+            'source-text-offset': 18,
+            'source-text-margin-y': -12,
+            'source-text-rotation': 'autorotate',
             width: 1.4,
             'line-color': '#c8bfb4',
             'target-arrow-color': '#c8bfb4',
@@ -1964,25 +2033,108 @@ export default function App() {
           },
         },
         {
-          selector: 'edge[lightOntologyView = 1]',
+          selector: 'edge[showSourceCardinality = 1]',
           style: {
-            width: 1.6,
-            'line-color': '#b8afa5',
-            'target-arrow-color': '#b8afa5',
-            color: '#5a524a',
-            'text-max-width': 180,
+            'source-text-background-opacity': 1,
+            'source-text-background-color': '#fffaf2',
+            'source-text-background-padding': 2,
+            'source-text-border-width': 0.5,
+            'source-text-border-color': '#e2d8cb',
+            'source-text-border-opacity': 1,
+            'source-font-size': 10,
+            'source-font-weight': 700,
+            'source-color': '#6c5340',
           },
         },
         {
-          selector: 'edge[lightOntologyView = 1][lightRestrictionEdge = 1]',
+          selector: 'edge[axiomKind = "SubClassOf"]',
           style: {
-            width: 2,
-            'line-color': '#3f8f86',
-            'target-arrow-color': '#3f8f86',
-            color: '#3d665f',
-            'text-background-color': '#f8f5ef',
-            'text-border-color': '#d2cbc2',
-            'text-max-width': 220,
+            'target-arrow-shape': 'hollow-triangle',
+            width: 1.8,
+          },
+        },
+        {
+          selector: 'edge[category = "data"]',
+          style: {
+            'line-style': 'dashed',
+          },
+        },
+        {
+          selector: 'edge[owlEdgeStyle = "straight"]',
+          style: {
+            'line-style': 'solid',
+          },
+        },
+        {
+          selector: 'edge[owlEdgeStyle = "dashed"]',
+          style: {
+            'line-style': 'dashed',
+          },
+        },
+        {
+          selector: 'edge[owlEdgeStyle = "dotted"]',
+          style: {
+            'line-style': 'dotted',
+          },
+        },
+        {
+          selector: 'edge[owlRelationConnector = 1]',
+          style: {
+            'line-color': '#c8bfb4',
+            'target-arrow-color': '#c8bfb4',
+            color: '#6f665d',
+            width: 1.2,
+            opacity: 0.82,
+          },
+        },
+        {
+          selector: 'edge[owlSynthesized = 1]',
+          style: {
+            'line-color': '#9f6f49',
+            'target-arrow-color': '#9f6f49',
+            color: '#7e5433',
+            width: 1.9,
+            opacity: 0.9,
+            'text-background-color': '#fbf4ec',
+            'text-border-color': '#dfc7b2',
+          },
+        },
+        {
+          selector: 'edge[owlSynthesized = 1][owlEdgeStyle = "dashed"]',
+          style: {
+            'line-style': 'dashed',
+          },
+        },
+        {
+          selector: 'edge[lightOntologyView = 1]',
+          style: {
+            'line-style': 'dashed',
+          },
+        },
+        {
+          selector: 'edge[edgeStyle = "dotted"]',
+          style: {
+            'line-style': 'dotted',
+            'target-arrow-shape': 'none',
+          },
+        },
+        {
+          selector: 'edge[edgeStyle = "subclass"]',
+          style: {
+            'target-arrow-shape': 'triangle',
+            'target-arrow-fill': 'hollow',
+            'line-color': '#6f7f86',
+            'target-arrow-color': '#6f7f86',
+            color: '#596970',
+          },
+        },
+        {
+          selector: 'edge[category = "object-property"], edge[category = "data-property"], edge[category = "restriction"]',
+          style: {
+            'line-color': '#9f7a57',
+            'target-arrow-color': '#9f7a57',
+            color: '#684c32',
+            width: 1.8,
           },
         },
         {
@@ -2400,116 +2552,161 @@ export default function App() {
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) {
-      return;
+      return undefined;
     }
 
     const positionCache = layoutPositionCacheRef.current;
-    const previousPan = cy.pan();
-    const previousViewport = {
-      zoom: cy.zoom(),
-      pan: { x: previousPan.x, y: previousPan.y },
-    };
-    cy.nodes().forEach((node) => {
-      positionCache.set(node.id(), {
-        x: node.position('x'),
-        y: node.position('y'),
-      });
-    });
-    const isInitialLayout = !hasAppliedInitialLayoutRef.current;
+    const timeoutIds = [];
+    let animationFrameId = 0;
+    let cancelled = false;
+    let layoutCompleted = false;
+    let layout = null;
+    let layoutAttempts = 0;
 
+    cy.stop(true, true);
     cy.batch(() => {
       cy.elements().remove();
       if (visibleElements.length > 0) {
         cy.add(visibleElements);
       }
     });
+    cy.style().update();
 
     if (visibleElements.length === 0) {
-      return;
+      positionCache.clear();
+      hasAppliedInitialLayoutRef.current = false;
+      return undefined;
     }
 
-    if (isInitialLayout) {
-      const useMagneticInitialLayout = shouldUseMagneticInitialLayout(
-        graphProjectionMode,
-        isLightOntologyViewActive,
-      );
-
-      if (useMagneticInitialLayout) {
-        applyMagneticInitialLayout(cy);
-      }
-
-      cy.layout({
-        name: 'cose',
-        animate: false,
-        fit: true,
-        padding: 42,
-        randomize: !useMagneticInitialLayout,
-        idealEdgeLength: useMagneticInitialLayout ? 72 : 110,
-        edgeElasticity: useMagneticInitialLayout ? 180 : 80,
-        nodeRepulsion: useMagneticInitialLayout ? 9000 : 20000,
-        gravity: useMagneticInitialLayout ? 0.32 : 0.25,
-        numIter: useMagneticInitialLayout ? 140 : 1000,
-        coolingFactor: useMagneticInitialLayout ? 0.96 : 0.99,
-      }).run();
-      resolveNodeOverlaps(cy, useMagneticInitialLayout ? 20 : 12, useMagneticInitialLayout ? 26 : 18);
-      if (isLightOntologyViewActive) {
-        nudgeNodesTowardLandscape(cy, 1.5);
-      }
-      if (useMagneticInitialLayout) {
-        resolveNodeOverlaps(cy, 10, 24);
-      }
+    const cacheCurrentPositions = () => {
+      positionCache.clear();
       cy.nodes().forEach((node) => {
         positionCache.set(node.id(), {
           x: node.position('x'),
           y: node.position('y'),
         });
       });
-      hasAppliedInitialLayoutRef.current = true;
-      return;
-    }
+    };
 
-    const nodes = cy.nodes();
-    let hasUnpositionedNodes = false;
-    cy.batch(() => {
-      nodes.forEach((node) => {
-        const position = positionCache.get(node.id());
-        if (position) {
-          node.position(position);
-        } else {
-          hasUnpositionedNodes = true;
+    const fitGraph = (duration = 0) => {
+      if (cancelled || cy.destroyed() || cy.elements().empty()) {
+        return;
+      }
+      cy.resize();
+      if (duration > 0) {
+        fitCurrentGraphViewport(cy, duration);
+      } else {
+        cy.fit(cy.nodes(), 42);
+      }
+    };
+
+    const runLayout = () => {
+      if (cancelled || cy.destroyed()) {
+        return;
+      }
+
+      cy.resize();
+      const { width, height } = graphContainerRef.current?.getBoundingClientRect() ?? {};
+      if ((width ?? 0) < 20 || (height ?? 0) < 20) {
+        layoutAttempts += 1;
+        if (layoutAttempts < 30) {
+          animationFrameId = requestAnimationFrame(runLayout);
         }
-      });
-    });
+        return;
+      }
 
-    if (hasUnpositionedNodes) {
-      const lockedNodes = nodes.filter((node) => positionCache.has(node.id()));
-      lockedNodes.lock();
-      cy.layout({
+      const useMagneticInitialLayout = shouldUseMagneticInitialLayout();
+      let initialPositionsAreFinite = false;
+
+      if (useMagneticInitialLayout) {
+        initialPositionsAreFinite = applyMagneticInitialLayout(cy);
+      }
+
+      if (!initialPositionsAreFinite || !hasFiniteNodePositions(cy)) {
+        applySpiralSeedLayout(cy);
+        initialPositionsAreFinite = hasFiniteNodePositions(cy);
+      }
+
+      layout = cy.layout({
         name: 'cose',
         animate: false,
-        fit: false,
-        randomize: false,
-        idealEdgeLength: 110,
-        edgeElasticity: 80,
-        nodeRepulsion: 20000,
-      }).run();
-      lockedNodes.unlock();
-    }
-
-    if (isLightOntologyViewActive) {
-      nudgeNodesTowardLandscape(cy, 1.5);
-    }
-
-    cy.nodes().forEach((node) => {
-      positionCache.set(node.id(), {
-        x: node.position('x'),
-        y: node.position('y'),
+        fit: true,
+        padding: 42,
+        randomize: !initialPositionsAreFinite,
+        idealEdgeLength: useMagneticInitialLayout ? 54 : 110,
+        edgeElasticity: useMagneticInitialLayout ? 240 : 80,
+        nodeRepulsion: useMagneticInitialLayout ? 4200 : 20000,
+        gravity: useMagneticInitialLayout ? 0.5 : 0.25,
+        numIter: useMagneticInitialLayout ? 220 : 1000,
+        coolingFactor: useMagneticInitialLayout ? 0.96 : 0.99,
       });
-    });
 
-    cy.zoom(previousViewport.zoom);
-    cy.pan(previousViewport.pan);
-  }, [visibleElements, graphProjectionMode, isLightOntologyViewActive]);
+      layout.one('layoutstop', () => {
+        if (cancelled || cy.destroyed()) {
+          return;
+        }
+        layoutCompleted = true;
+        if (!hasFiniteNodePositions(cy)) {
+          applySpiralSeedLayout(cy);
+        }
+        resolveNodeOverlaps(cy, useMagneticInitialLayout ? 20 : 12, useMagneticInitialLayout ? 26 : 18);
+        if (useMagneticInitialLayout) {
+          resolveNodeOverlaps(cy, 10, 24);
+        }
+        fitGraph(0);
+        cacheCurrentPositions();
+        hasAppliedInitialLayoutRef.current = true;
+        timeoutIds.push(setTimeout(() => fitGraph(120), 80));
+        timeoutIds.push(setTimeout(() => fitGraph(0), 320));
+      });
+
+      layout.run();
+      timeoutIds.push(
+        setTimeout(() => {
+          if (layoutCompleted || cancelled || cy.destroyed()) {
+            return;
+          }
+          layoutCompleted = true;
+          if (!hasFiniteNodePositions(cy)) {
+            applySpiralSeedLayout(cy);
+          }
+          fitGraph(0);
+          cacheCurrentPositions();
+          hasAppliedInitialLayoutRef.current = true;
+        }, 160),
+      );
+    };
+
+    animationFrameId = requestAnimationFrame(runLayout);
+
+    return () => {
+      cancelled = true;
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      if (layout) {
+        layout.stop();
+      }
+      timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
+    };
+  }, [visibleElements, graphProjectionMode]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+    if (visibleElements.length === 0) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      if (!cy.destroyed()) {
+        cy.resize();
+        cy.fit(cy.nodes(), 42);
+      }
+    }, 0);
+    return () => clearTimeout(timeoutId);
+  }, [leftCollapsed, rightCollapsed, leftPanelWidth, rightPanelWidth, isGraphFullscreen, visibleElements.length]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -2628,7 +2825,7 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive);
+        const viewOptions = toViewOptions(graphProjectionMode, graphData);
         const classFilterActive =
           showClassTypeFilter &&
           graphData.classes.length > 0 &&
@@ -2640,7 +2837,7 @@ export default function App() {
 
         if (!classFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
-            setVisibleElements(buildFocusedSubset(graphData, null, viewOptions));
+            setVisibleElements(buildProjectedElements(graphData, null, viewOptions));
           }
           return;
         }
@@ -2671,13 +2868,17 @@ export default function App() {
         }
 
         if (!cancelled) {
-          setVisibleElements(buildFocusedSubset(graphData, selectedEntities, viewOptions));
+          setVisibleElements(buildProjectedElements(graphData, selectedEntities, viewOptions));
         }
       } catch (error) {
         if (!cancelled) {
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
-            buildFocusedSubset(graphData, null, toViewOptions(graphProjectionMode, ontologyViewMode, graphData, isLightOntologyViewActive)),
+            buildProjectedElements(
+              graphData,
+              null,
+              toViewOptions(graphProjectionMode, graphData),
+            ),
           );
         }
       } finally {
@@ -2699,9 +2900,6 @@ export default function App() {
     nodeNameQuery,
     sparqlQuery,
     graphProjectionMode,
-    ontologyViewMode,
-    isOntologyOnlyDataset,
-    isLightOntologyViewActive,
     showClassTypeFilter,
   ]);
 
@@ -2751,8 +2949,6 @@ export default function App() {
     setSelectedEdgeId(null);
     setFocusedNodeId(null);
     setFocusedNodeIds([]);
-    setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT);
-    setIsLightOntologyView(false);
     setIsExportMenuOpen(false);
     setOntologyMetadataRows([]);
     setLoadError('');
@@ -2766,7 +2962,7 @@ export default function App() {
     }
 
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
-      setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG);
+      setGraphProjectionMode(GRAPH_PROJECTION_MODES.RDF);
     }
 
     setKgFiles((current) => mergeSelectedFiles(current, files));
@@ -2778,7 +2974,7 @@ export default function App() {
     }
 
     if (kgFiles.length === 0 && ontologyFiles.length === 0) {
-      setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+      setGraphProjectionMode(GRAPH_PROJECTION_MODES.OWL);
     }
 
     setOntologyFiles((current) => mergeSelectedFiles(current, files));
@@ -2795,7 +2991,6 @@ export default function App() {
       setFocusedNodeId(null);
       setFocusedNodeIds([]);
       setOntologyMetadataRows([]);
-      setIsLightOntologyView(false);
       setLoadError('');
       setFilterError('');
       setIsLoading(false);
@@ -3173,15 +3368,6 @@ export default function App() {
     };
   }, [isGraphFullscreen]);
 
-  useEffect(() => {
-    if (!isLightOntologyView) {
-      return;
-    }
-    if (!isOntologyOnlyDataset || graphProjectionMode !== GRAPH_PROJECTION_MODES.ONTOLOGY) {
-      setIsLightOntologyView(false);
-    }
-  }, [isLightOntologyView, isOntologyOnlyDataset, graphProjectionMode]);
-
   const showLeftPanelContent = isGraphFullscreen ? leftFlyoutOpen : !leftCollapsed;
   const showRightPanelContent = isGraphFullscreen ? rightFlyoutOpen : !rightCollapsed;
 
@@ -3195,9 +3381,7 @@ export default function App() {
   };
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
-  const lightOntologyButtonLabel = isLightOntologyViewActive ? 'Exit light ontology view' : 'Enter light ontology view';
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
-  const showLightOntologyLegend = isLightOntologyViewActive;
   const hasExportableGraph = visibleElements.length > 0;
 
   return (
@@ -3344,60 +3528,9 @@ export default function App() {
                   <div className="section-body">
                     <h3 className="filter-group-title">Projection</h3>
                     <p className="muted">
-                      Active view:{' '}
-                      {graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY
-                        ? isLightOntologyViewActive
-                          ? 'Ontology light view'
-                          : 'Ontology full detailed view'
-                        : 'KG view'}
+                      Active view: {graphProjectionMode === GRAPH_PROJECTION_MODES.OWL ? 'OWL view' : 'RDF view'}
                     </p>
 
-                    {showViewFiltering && (
-                      <>
-                        <h3 className="filter-group-title">View filtering</h3>
-                        <div className="option-list">
-                          <label className="option-item">
-                            <input
-                              type="radio"
-                              name="ontology-view-mode"
-                              checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_ONLY}
-                              onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_ONLY)}
-                            />
-                            <span>Class hierarchy</span>
-                          </label>
-
-                          <label className="option-item">
-                            <input
-                              type="radio"
-                              name="ontology-view-mode"
-                              checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT}
-                              onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_AND_OBJECT)}
-                            />
-                            <span>Classes with object properties</span>
-                          </label>
-
-                          <label className="option-item">
-                            <input
-                              type="radio"
-                              name="ontology-view-mode"
-                              checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA}
-                              onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.CLASS_OBJECT_DATA)}
-                            />
-                            <span>Classes + object properties + data properties</span>
-                          </label>
-
-                          <label className="option-item">
-                            <input
-                              type="radio"
-                              name="ontology-view-mode"
-                              checked={ontologyViewMode === ONTOLOGY_VIEW_MODES.FULL}
-                              onChange={() => setOntologyViewMode(ONTOLOGY_VIEW_MODES.FULL)}
-                            />
-                            <span>All</span>
-                          </label>
-                        </div>
-                      </>
-                    )}
                     {showClassTypeFilter && (
                       <>
                         <h3 className="filter-group-title">Class type</h3>
@@ -3450,7 +3583,7 @@ export default function App() {
                       </button>
                     </div>
 
-                    <h3 className="filter-group-title">Base IRI (ontology)</h3>
+                    <h3 className="filter-group-title">Base IRI</h3>
                     <div className="mini-actions">
                       <button type="button" onClick={selectAllBaseIris} disabled={!graphData || isAllBaseIrisSelected}>
                         Select all
@@ -3625,7 +3758,7 @@ export default function App() {
         </aside>
 
         <main
-          className="graph-area"
+          className={`graph-area ${(loadError || filterError) ? 'has-graph-errors' : ''}`}
           onMouseEnter={
             isGraphFullscreen
               ? () => {
@@ -3644,7 +3777,7 @@ export default function App() {
           <div className="graph-tools graph-tools-left">
             <div
               className={`projection-toggle theme-switch ${
-                graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'mode-kg' : 'mode-ontology'
+                graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'mode-rdf' : 'mode-ontology'
               }`}
               role="tablist"
               aria-label="Graph projection mode"
@@ -3653,12 +3786,12 @@ export default function App() {
               <button
                 type="button"
                 className={`projection-toggle-button ${
-                  graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY ? 'active' : ''
+                  graphProjectionMode === GRAPH_PROJECTION_MODES.OWL ? 'active' : ''
                 }`}
-                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY)}
-                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.ONTOLOGY}
-                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
-                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.ONTOLOGY]}
+                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.OWL)}
+                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.OWL}
+                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.OWL]}
+                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.OWL]}
               >
                 <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
                   <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
@@ -3678,12 +3811,12 @@ export default function App() {
               <button
                 type="button"
                 className={`projection-toggle-button ${
-                  graphProjectionMode === GRAPH_PROJECTION_MODES.KG ? 'active' : ''
+                  graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'active' : ''
                 }`}
-                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG)}
-                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.KG}
-                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
-                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.KG]}
+                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.RDF)}
+                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.RDF}
+                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.RDF]}
+                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.RDF]}
               >
                 <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
                   <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
@@ -3701,29 +3834,6 @@ export default function App() {
           </div>
 
           <div className="graph-tools graph-tools-right">
-            {isOntologyOnlyDataset && (
-              <button
-                type="button"
-                className={`graph-tool-button icon-only ${isLightOntologyViewActive ? 'active' : ''}`}
-                onClick={() => {
-                  const next = !isLightOntologyViewActive;
-                  setIsLightOntologyView(next);
-                  if (next) {
-                    setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
-                  }
-                }}
-                aria-label={lightOntologyButtonLabel}
-                title={lightOntologyButtonLabel}
-                aria-pressed={isLightOntologyViewActive}
-              >
-                <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <rect x="2.4" y="3.4" width="11.2" height="8.2" rx="1.1" stroke="currentColor" strokeWidth="1.2" />
-                  <path d="M4.2 12.8H11.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  <path d="M5.2 6.2H10.8M5.2 8.6H8.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-              </button>
-            )}
-
             <button
               type="button"
               className={`graph-tool-button icon-only ${isLegendOpen ? 'active' : ''}`}
@@ -3819,91 +3929,33 @@ export default function App() {
 
             {isLegendOpen && (
               <div className="graph-legend-popover" role="dialog" aria-label="Graph legend">
-                <div className="graph-legend-title">{showLightOntologyLegend ? 'Light Ontology Legend' : 'Legend'}</div>
+                <div className="graph-legend-title">Legend</div>
                 <div className="graph-legend-list">
-                  {showLightOntologyLegend ? (
-                    <>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-light-class" />
-                        <span>Class</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-light-object-property" />
-                        <span>Object property</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-light-data-property" />
-                        <span>Data property</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-light-annotation-property" />
-                        <span>Annotation property</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-light-individual" />
-                        <span>Named individual</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-light-literal" />
-                        <span>Literal value</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-light-datatype" />
-                        <span>Datatype</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-edge-marker marker-light-edge" />
-                        <span>Labeled relation edge</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-edge-marker marker-light-restriction-edge" />
-                        <span>Restriction bridge edge</span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-class" />
-                        <span>Class</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-individual" />
-                        <span>Named individual or KG instance</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-literal" />
-                        <span>Literal value</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-datatype" />
-                        <span>Datatype</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-object-property" />
-                        <span>Object property</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-data-property" />
-                        <span>Data property</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-annotation-property" />
-                        <span>Annotation property</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-class-expression" />
-                        <span>Restriction or class expression (hover for details)</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-edge-marker" />
-                        <span>Labeled relation edge</span>
-                      </div>
-                    </>
-                  )}
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-class" />
+                    <span>Class</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-individual" />
+                    <span>Named individual or KG instance</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-literal" />
+                    <span>Literal value</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-datatype" />
+                    <span>Datatype</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-marker marker-class-expression" />
+                    <span>OWL connector or set</span>
+                  </div>
+                  <div className="graph-legend-item">
+                    <span className="graph-legend-edge-marker" />
+                    <span>Labeled relation edge</span>
+                  </div>
                 </div>
-                {showLightOntologyLegend && (
-                  <p className="graph-legend-note">Restriction nodes are collapsed and shown as labeled bridge edges.</p>
-                )}
               </div>
             )}
           </div>

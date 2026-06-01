@@ -705,6 +705,10 @@ textarea {
   z-index: 5;
 }
 
+.graph-area.has-graph-errors .graph-tools {
+  top: 86px;
+}
+
 .graph-tools-left {
   left: 18px;
   right: auto;
@@ -750,7 +754,7 @@ textarea {
   pointer-events: none;
 }
 
-.projection-toggle.theme-switch.mode-kg .projection-switch-thumb {
+.projection-toggle.theme-switch.mode-rdf .projection-switch-thumb {
   transform: translateX(100%);
 }
 
@@ -931,7 +935,7 @@ textarea {
 }
 
 .graph-legend-marker.marker-class {
-  border-radius: 999px;
+  border-radius: 0;
 }
 
 .graph-legend-marker.marker-individual {
@@ -984,62 +988,13 @@ textarea {
 }
 
 .graph-legend-marker.marker-class-expression {
-  width: 24px;
-  height: 16px;
-  border-radius: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
   background: #e8f2ef;
   border-color: #2f8a81;
   border-width: 2px;
-  clip-path: polygon(22% 4%, 78% 4%, 97% 50%, 78% 96%, 22% 96%, 3% 50%);
-}
-
-.graph-legend-marker.marker-light-class,
-.graph-legend-marker.marker-light-object-property,
-.graph-legend-marker.marker-light-data-property,
-.graph-legend-marker.marker-light-annotation-property,
-.graph-legend-marker.marker-light-individual,
-.graph-legend-marker.marker-light-literal,
-.graph-legend-marker.marker-light-datatype {
-  width: 24px;
-  height: 16px;
-  border-radius: 4px;
   clip-path: none;
-  transform: none;
-}
-
-.graph-legend-marker.marker-light-class {
-  background: #d9c4ab;
-  border-color: #8d6b4c;
-}
-
-.graph-legend-marker.marker-light-object-property {
-  background: #d4e2f2;
-  border-color: #5d7fa8;
-}
-
-.graph-legend-marker.marker-light-data-property {
-  background: #d6ebd9;
-  border-color: #5f9067;
-}
-
-.graph-legend-marker.marker-light-annotation-property {
-  background: #f0d9e4;
-  border-color: #ab6f8a;
-}
-
-.graph-legend-marker.marker-light-individual {
-  background: #dfdfdf;
-  border-color: #7f7f7f;
-}
-
-.graph-legend-marker.marker-light-literal {
-  background: #f5ebbe;
-  border-color: #b9a14f;
-}
-
-.graph-legend-marker.marker-light-datatype {
-  background: #d6ebd9;
-  border-color: #5f9067;
 }
 
 .graph-legend-edge-marker {
@@ -1070,22 +1025,6 @@ textarea {
   border-bottom: 4px solid transparent;
   border-left: 6px solid #c8bfb4;
   transform: translateY(-50%);
-}
-
-.graph-legend-edge-marker.marker-light-edge::before {
-  border-top-color: #b8afa5;
-}
-
-.graph-legend-edge-marker.marker-light-edge::after {
-  border-left-color: #b8afa5;
-}
-
-.graph-legend-edge-marker.marker-light-restriction-edge::before {
-  border-top-color: #3f8f86;
-}
-
-.graph-legend-edge-marker.marker-light-restriction-edge::after {
-  border-left-color: #3f8f86;
 }
 
 .graph-legend-note {
@@ -1195,9 +1134,10 @@ textarea {
   top: 14px;
   left: 14px;
   right: 14px;
-  z-index: 4;
+  z-index: 7;
   display: grid;
   gap: 6px;
+  padding-right: 14px;
 }
 
 .error {
@@ -1205,9 +1145,11 @@ textarea {
   border-radius: 8px;
   background: rgba(192, 86, 53, 0.14);
   color: #6e2f1d;
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
   font-size: 0.86rem;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .details-card {

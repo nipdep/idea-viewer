@@ -518,6 +518,69 @@ function restrictionPredicateSuffix(predicate) {
   return '';
 }
 
+function buildRestrictionTargetSpecs(graphData, restrictionNodeId, visibleNodeIds, propertyDeclarations) {
+  const outgoingBySource = buildOutgoingEdgeIndex(graphData);
+  const outgoingLiteralBySource = buildOutgoingLiteralEdgeIndex(graphData);
+  const outgoing = outgoingBySource.get(restrictionNodeId) ?? [];
+  const outgoingLiteral = outgoingLiteralBySource.get(restrictionNodeId) ?? [];
+  const onPropertyEdge = outgoing.find((edge) => edge.predicate === OWL_ON_PROPERTY);
+  if (!onPropertyEdge) {
+    return null;
+  }
+
+  const propertyDeclaration = propertyDeclarations.get(onPropertyEdge.target);
+  const propertyBaseLabel =
+    formatPropertyLabelWithCharacteristics(
+      propertyDeclaration?.label || graphData.nodeMap.get(onPropertyEdge.target)?.fullLabel || compactIri(onPropertyEdge.target),
+      propertyDeclaration,
+    );
+
+  const targetObjectEdges = outgoing.filter((edge) => RESTRICTION_VALUE_PREDICATES.has(edge.predicate));
+  const targetLiteralEdges = outgoingLiteral.filter((edge) => RESTRICTION_CARDINALITY_PREDICATES.has(edge.predicate));
+  const hasSelfEdge = outgoingLiteral.find((edge) => edge.predicate === OWL_HAS_SELF);
+  const cardinalityMarkers = targetLiteralEdges
+    .map((edge) => {
+      const literalNode = graphData.nodeMap.get(edge.target);
+      return toCardinalityMarker(edge.predicate, literalNode?.fullLabel || literalNode?.literalValue || '');
+    })
+    .filter(Boolean);
+  const combinedCardinality = cardinalityMarkers[0] ?? '';
+
+  const targetSpecs = [];
+  for (const edge of targetObjectEdges) {
+    targetSpecs.push({
+      targetId: edge.target,
+      predicate: edge.predicate,
+      sourceCardinality: combinedCardinality,
+    });
+  }
+  if (targetObjectEdges.length === 0 && combinedCardinality && propertyDeclaration?.ranges?.size > 0) {
+    const inferredRangeTargets = Array.from(propertyDeclaration.ranges).filter((targetId) => visibleNodeIds.has(targetId));
+    for (const targetId of inferredRangeTargets) {
+      targetSpecs.push({
+        targetId,
+        predicate: targetLiteralEdges[0]?.predicate || OWL_CARDINALITY,
+        sourceCardinality: combinedCardinality,
+      });
+    }
+  }
+  if (hasSelfEdge) {
+    targetSpecs.push({
+      targetId: '__self__',
+      predicate: OWL_HAS_SELF,
+      sourceCardinality: '',
+    });
+  }
+
+  return {
+    onPropertyId: onPropertyEdge.target,
+    propertyKind: propertyDeclaration?.propertyKind ?? 'object-property',
+    propertyBaseLabel,
+    restrictionKind: graphData.nodeMap.get(restrictionNodeId)?.restrictionKind || '',
+    targetSpecs,
+  };
+}
+
 function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDeclarations) {
   const outgoingBySource = buildOutgoingEdgeIndex(graphData);
   const incomingByTarget = buildIncomingEdgeIndex(graphData);
@@ -544,11 +607,6 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
 
     hiddenNodeIds.add(node.id);
     const propertyDeclaration = propertyDeclarations.get(onPropertyEdge.target);
-    const propertyBaseLabel =
-      formatPropertyLabelWithCharacteristics(
-        propertyDeclaration?.label || graphData.nodeMap.get(onPropertyEdge.target)?.fullLabel || compactIri(onPropertyEdge.target),
-        propertyDeclaration,
-      );
     const anchorEdges = incoming.filter(
       (edge) =>
         edge.predicate === RDFS_SUBCLASS_OF ||
@@ -556,36 +614,13 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
         edge.predicate === OWL_DISJOINT_WITH,
     );
 
-    const targetObjectEdges = outgoing.filter((edge) => RESTRICTION_VALUE_PREDICATES.has(edge.predicate));
+    const restrictionProjection = buildRestrictionTargetSpecs(graphData, node.id, visibleNodeIds, propertyDeclarations);
+    if (!restrictionProjection) {
+      continue;
+    }
+    const { propertyBaseLabel, targetSpecs } = restrictionProjection;
     const targetLiteralEdges = outgoingLiteral.filter((edge) => RESTRICTION_CARDINALITY_PREDICATES.has(edge.predicate));
-    const hasSelfEdge = outgoingLiteral.find((edge) => edge.predicate === OWL_HAS_SELF);
-    const cardinalityMarkers = targetLiteralEdges
-      .map((edge) => {
-        const literalNode = graphData.nodeMap.get(edge.target);
-        return toCardinalityMarker(edge.predicate, literalNode?.fullLabel || literalNode?.literalValue || '');
-      })
-      .filter(Boolean);
-    const combinedCardinality = cardinalityMarkers[0] ?? '';
-
-    const targetSpecs = [];
-    for (const edge of targetObjectEdges) {
-      targetSpecs.push({
-        targetId: edge.target,
-        predicate: edge.predicate,
-        sourceCardinality: combinedCardinality,
-      });
-    }
-    if (targetObjectEdges.length === 0 && combinedCardinality && propertyDeclaration?.ranges?.size > 0) {
-      const inferredRangeTargets = Array.from(propertyDeclaration.ranges).filter((targetId) => visibleNodeIds.has(targetId));
-      for (const targetId of inferredRangeTargets) {
-        targetSpecs.push({
-          targetId,
-          predicate: targetLiteralEdges[0]?.predicate || OWL_CARDINALITY,
-          sourceCardinality: combinedCardinality,
-        });
-      }
-    }
-    if (targetObjectEdges.length === 0 && targetSpecs.length === 0) {
+    if (targetSpecs.length === 0) {
       for (const edge of targetLiteralEdges) {
         const literalNode = graphData.nodeMap.get(edge.target);
         const sourceCardinality = toCardinalityMarker(edge.predicate, literalNode?.fullLabel || literalNode?.literalValue || '');
@@ -601,30 +636,22 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
         hiddenNodeIds.add(edge.target);
       }
     }
-    if (hasSelfEdge) {
-      for (const anchorEdge of anchorEdges) {
-        targetSpecs.push({
-          targetId: anchorEdge.source,
-          predicate: OWL_HAS_SELF,
-          sourceCardinality: '',
-        });
-      }
-    }
 
     for (const anchorEdge of anchorEdges) {
       if (!visibleNodeIds.has(anchorEdge.source)) {
         continue;
       }
       for (const targetSpec of targetSpecs) {
-        if (!visibleNodeIds.has(targetSpec.targetId) && !String(targetSpec.targetId).startsWith('owl-card:')) {
+        const resolvedTargetId = targetSpec.targetId === '__self__' ? anchorEdge.source : targetSpec.targetId;
+        if (!visibleNodeIds.has(resolvedTargetId) && !String(resolvedTargetId).startsWith('owl-card:')) {
           continue;
         }
         const predicateLabel = `${restrictionPredicatePrefix(targetSpec.predicate)}${propertyBaseLabel}${restrictionPredicateSuffix(targetSpec.predicate)}`;
         synthesizedEdges.push({
           data: {
-            id: `owl-restr:${node.id}:${anchorEdge.id}:${targetSpec.targetId}:${targetSpec.predicate}`,
+            id: `owl-restr:${node.id}:${anchorEdge.id}:${resolvedTargetId}:${targetSpec.predicate}`,
             source: anchorEdge.source,
-            target: targetSpec.targetId,
+            target: resolvedTargetId,
             predicate: onPropertyEdge.target,
             predicateLabel,
             category: propertyDeclaration?.propertyKind === 'data-property' ? 'data' : 'object',
@@ -748,7 +775,7 @@ function synthesizeCollectionProjection(graphData, visibleNodeIds) {
   };
 }
 
-function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
+function synthesizeClassExpressionProjection(graphData, visibleNodeIds, propertyDeclarations) {
   const outgoingBySource = buildOutgoingEdgeIndex(graphData);
   const incomingByTarget = buildIncomingEdgeIndex(graphData);
   const synthesizedNodes = [];
@@ -758,7 +785,7 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
   const expressionConfig = new Map([
     [OWL_INTERSECTION_OF, { label: '∩', kind: 'Intersection' }],
     [OWL_UNION_OF, { label: '∪', kind: 'Union' }],
-    [OWL_ONE_OF, { label: 'OneOf', kind: 'OneOf' }],
+    [OWL_ONE_OF, { label: '{}', kind: 'OneOf' }],
     [OWL_COMPLEMENT_OF, { label: '¬', kind: 'Complement' }],
   ]);
 
@@ -805,8 +832,34 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
       continue;
     }
 
-    const visibleMembers = memberIds.filter((memberId) => visibleNodeIds.has(memberId));
-    if (visibleMembers.length === 0) {
+    const projectedMembers = memberIds
+      .map((memberId) => {
+        const memberNode = graphData?.nodeMap?.get(memberId);
+        if (visibleNodeIds.has(memberId)) {
+          return {
+            kind: 'node',
+            targetId: memberId,
+          };
+        }
+        const isRestrictionNode =
+          memberNode?.termType === 'BlankNode' &&
+          (memberNode.blankExpressionType === 'Restriction' || memberNode.restrictionKind || memberNode.iri === OWL_RESTRICTION);
+        if (!isRestrictionNode) {
+          return null;
+        }
+        hiddenNodeIds.add(memberId);
+        const restrictionProjection = buildRestrictionTargetSpecs(graphData, memberId, visibleNodeIds, propertyDeclarations);
+        if (!restrictionProjection || restrictionProjection.targetSpecs.length === 0) {
+          return null;
+        }
+        return {
+          kind: 'restriction',
+          ...restrictionProjection,
+        };
+      })
+      .filter(Boolean);
+
+    if (projectedMembers.length === 0) {
       continue;
     }
 
@@ -828,20 +881,46 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds) {
           owlSynthesized: 1,
         },
       });
-      for (const memberId of visibleMembers) {
-        synthesizedEdges.push({
-          data: {
-            id: `${helperNodeId}:member:${memberId}`,
-            source: helperNodeId,
-            target: memberId,
-            predicate: edge.predicate,
-            predicateLabel: '',
-            category: 'object',
-            axiomKind: 'ClassExpression',
-            owlEdgeStyle: 'dotted',
-            owlSynthesized: 1,
-          },
-        });
+      for (const member of projectedMembers) {
+        if (member.kind === 'node') {
+          synthesizedEdges.push({
+            data: {
+              id: `${helperNodeId}:member:${member.targetId}`,
+              source: helperNodeId,
+              target: member.targetId,
+              predicate: RDFS_SUBCLASS_OF,
+              predicateLabel: '',
+              category: 'object',
+              axiomKind: 'ClassExpression',
+              owlEdgeStyle: 'dotted',
+              owlSynthesized: 1,
+            },
+          });
+          continue;
+        }
+
+        for (const targetSpec of member.targetSpecs) {
+          const resolvedTargetId = targetSpec.targetId === '__self__' ? helperNodeId : targetSpec.targetId;
+          if (!visibleNodeIds.has(resolvedTargetId) && resolvedTargetId !== helperNodeId) {
+            continue;
+          }
+          synthesizedEdges.push({
+            data: {
+              id: `${helperNodeId}:member-restr:${member.onPropertyId}:${resolvedTargetId}:${targetSpec.predicate}`,
+              source: helperNodeId,
+              target: resolvedTargetId,
+              predicate: member.onPropertyId,
+              predicateLabel: `${restrictionPredicatePrefix(targetSpec.predicate)}${member.propertyBaseLabel}${restrictionPredicateSuffix(targetSpec.predicate)}`,
+              category: member.propertyKind === 'data-property' ? 'data' : 'object',
+              axiomKind: 'ClassExpressionRestriction',
+              restrictionKind: member.restrictionKind || compactIri(targetSpec.predicate),
+              sourceCardinality: targetSpec.sourceCardinality,
+              showSourceCardinality: targetSpec.sourceCardinality ? 1 : 0,
+              owlEdgeStyle: 'dotted',
+              owlSynthesized: 1,
+            },
+          });
+        }
       }
     }
   }
@@ -1151,7 +1230,7 @@ function applyOwlProjection(graphData, elements) {
     Array.from(visibleNodeIds).filter((id) => !propertyNodeIds.has(id)),
   );
   const { synthesizedNodes: classExpressionNodes, synthesizedEdges: classExpressionEdges, hiddenNodeIds: classExpressionHiddenNodeIds } =
-    synthesizeClassExpressionProjection(graphData, visibleNodeIds);
+    synthesizeClassExpressionProjection(graphData, visibleNodeIds, propertyDeclarations);
   const { synthesizedNodes: restrictionNodes, synthesizedEdges: restrictionEdges, hiddenNodeIds: restrictionHiddenNodeIds } =
     synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDeclarations);
   const { synthesizedNodes: collectionNodes, synthesizedEdges: collectionEdges, hiddenNodeIds: collectionHiddenNodeIds } =

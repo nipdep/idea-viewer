@@ -513,7 +513,17 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
         sourceCardinality: combinedCardinality,
       });
     }
-    if (targetObjectEdges.length === 0) {
+    if (targetObjectEdges.length === 0 && combinedCardinality && propertyDeclaration?.ranges?.size > 0) {
+      const inferredRangeTargets = Array.from(propertyDeclaration.ranges).filter((targetId) => visibleNodeIds.has(targetId));
+      for (const targetId of inferredRangeTargets) {
+        targetSpecs.push({
+          targetId,
+          predicate: targetLiteralEdges[0]?.predicate || OWL_CARDINALITY,
+          sourceCardinality: combinedCardinality,
+        });
+      }
+    }
+    if (targetObjectEdges.length === 0 && targetSpecs.length === 0) {
       for (const edge of targetLiteralEdges) {
         const literalNode = graphData.nodeMap.get(edge.target);
         const sourceCardinality = toCardinalityMarker(edge.predicate, literalNode?.fullLabel || literalNode?.literalValue || '');

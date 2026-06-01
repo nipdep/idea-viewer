@@ -2439,6 +2439,19 @@ export default function App() {
           },
         },
         {
+          selector: 'edge[isSelfLoop = 1]',
+          style: {
+            'curve-style': 'bezier',
+            'source-endpoint': '180deg',
+            'target-endpoint': '-90deg',
+            'control-point-step-size': 'data(selfLoopStepSize)',
+            'loop-direction': '-135deg',
+            'loop-sweep': '34deg',
+            'text-rotation': 'none',
+            'text-margin-y': -12,
+          },
+        },
+        {
           selector: 'edge[lightOntologyView = 1]',
           style: {
             'line-style': 'dashed',

@@ -166,6 +166,33 @@ function applyRdfLabels(elements) {
   });
 }
 
+function computeSelfLoopStepSize(node) {
+  const width = Number(node?.nodeWidth ?? 0);
+  const height = Number(node?.nodeHeight ?? 0);
+  if (!width && !height) {
+    return 42;
+  }
+
+  const widthDriven = width * 0.4;
+  const heightDriven = height * 0.2;
+  return Math.max(42, Math.min(110, Math.round(Math.max(widthDriven, heightDriven))));
+}
+
+function applySelfLoopGeometry(graphData, elements) {
+  return elements.map((element) => {
+    const data = element?.data;
+    if (!data?.source || (data.isSelfLoop !== 1 && data.source !== data.target)) {
+      return element;
+    }
+
+    const sourceNode = graphData?.nodeMap?.get(data.source);
+    const next = cloneElement(element);
+    next.data.isSelfLoop = 1;
+    next.data.selfLoopStepSize = computeSelfLoopStepSize(sourceNode);
+    return next;
+  });
+}
+
 function collectPropertyDeclarations(graphData) {
   const declarations = new Map();
   const outgoingBySource = buildOutgoingEdgeIndex(graphData);
@@ -501,6 +528,15 @@ function toCardinalityMarker(predicate, value) {
   return '';
 }
 
+function isTruthyBooleanLiteral(graphData, nodeId) {
+  const node = graphData?.nodeMap?.get(nodeId);
+  if (!node || node.termType !== 'Literal') {
+    return false;
+  }
+  const rawValue = String(node.literalValue || node.fullLabel || node.label || '').trim().toLowerCase();
+  return rawValue === 'true' || rawValue === '1';
+}
+
 function restrictionPredicatePrefix(predicate) {
   if (predicate === OWL_SOME_VALUES_FROM) {
     return '(some) ';
@@ -620,11 +656,12 @@ function buildRestrictionTargetSpecs(graphData, restrictionNodeId, visibleNodeId
       });
     }
   }
-  if (hasSelfEdge) {
+  if (hasSelfEdge && isTruthyBooleanLiteral(graphData, hasSelfEdge.target)) {
     targetSpecs.push({
       targetId: '__self__',
       predicate: OWL_HAS_SELF,
       sourceCardinality: '',
+      isSelfLoop: true,
       projectedMetadataRows: [],
     });
   }
@@ -737,6 +774,7 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
             showSourceCardinality: targetSpec.sourceCardinality ? 1 : 0,
             owlSynthesized: 1,
             owlEdgeStyle: propertyDeclaration?.propertyKind === 'data-property' ? 'dashed' : 'straight',
+            isSelfLoop: resolvedTargetId === anchorEdge.source || targetSpec.isSelfLoop ? 1 : 0,
             projectedMetadataRows: targetSpec.projectedMetadataRows,
           },
         });
@@ -1013,6 +1051,7 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
               showSourceCardinality: targetSpec.sourceCardinality ? 1 : 0,
               owlEdgeStyle: 'dotted',
               owlSynthesized: 1,
+              isSelfLoop: resolvedTargetId === helperNodeId || targetSpec.isSelfLoop ? 1 : 0,
               projectedMetadataRows: targetSpec.projectedMetadataRows,
             },
           });
@@ -1057,6 +1096,7 @@ function synthesizeOwlPropertyProjection(graphData, visibleNodeIds) {
           restrictionKind: '',
           owlSynthesized: 1,
           owlEdgeStyle: declaration.propertyKind === 'data-property' ? 'dashed' : 'straight',
+          isSelfLoop: domainId === rangeId ? 1 : 0,
         });
       }
     }
@@ -1537,10 +1577,13 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
     projectionMode: GRAPH_VIEW_MODES.RDF,
   });
 
-  return decorateEdgeAttachedStructures(
+  return applySelfLoopGeometry(
     graphData,
-    applyRdfLabels(suppressMetadataEdges(elements)),
-    GRAPH_VIEW_MODES.RDF,
+    decorateEdgeAttachedStructures(
+      graphData,
+      applyRdfLabels(suppressMetadataEdges(elements)),
+      GRAPH_VIEW_MODES.RDF,
+    ),
   );
 }
 
@@ -1553,14 +1596,17 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
   const baseElements = suppressMetadataEdges(elements);
 
   try {
-    return decorateEdgeAttachedStructures(
+    return applySelfLoopGeometry(
       graphData,
-      applyOwlProjection(graphData, baseElements),
-      GRAPH_VIEW_MODES.OWL,
+      decorateEdgeAttachedStructures(
+        graphData,
+        applyOwlProjection(graphData, baseElements),
+        GRAPH_VIEW_MODES.OWL,
+      ),
     );
   } catch (error) {
     console.error('OWL projection failed; falling back to base ontology graph.', error);
-    return baseElements;
+    return applySelfLoopGeometry(graphData, baseElements);
   }
 }
 

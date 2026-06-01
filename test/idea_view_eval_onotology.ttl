@@ -346,6 +346,12 @@
 [] a owl:AllDisjointClasses ;
    owl:members ( :Dataset :Method :Task ) .
 
+:Paper 
+    owl:disjoinUnionOf (
+        :ConferencePaper 
+        :JournalPaper
+    ) .
+
 # Keys
 :Paper owl:hasKey ( :doi ) .
 :Author owl:hasKey ( :orcid ) .

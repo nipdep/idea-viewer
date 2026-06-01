@@ -2078,6 +2078,15 @@ export default function App() {
           },
         },
         {
+          selector: 'edge[category = "class-axiom"], edge[category = "individual-identity"], edge[category = "type"], edge[edgeStyle = "owl-rdf"]',
+          style: {
+            'line-color': '#6f7f86',
+            'target-arrow-color': '#6f7f86',
+            color: '#596970',
+            width: 1.6,
+          },
+        },
+        {
           selector: 'edge[owlRelationConnector = 1]',
           style: {
             'line-color': '#c8bfb4',

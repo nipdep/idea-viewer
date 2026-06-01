@@ -1954,7 +1954,9 @@ export function toElements(nodes, edges) {
         category: edge.category ?? 'object',
         axiomKind: edge.axiomKind ?? '',
         restrictionKind: edge.restrictionKind ?? '',
+        sourceCardinality: edge.cardinalityLabel ?? '',
         edgeStyle: edge.edgeStyle ?? '',
+        owlEdgeStyle: edge.edgeStyle ?? '',
         cardinalityLabel: edge.cardinalityLabel ?? '',
         owlView: edge.owlView ?? 0,
       },
@@ -2238,6 +2240,10 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
   const edges = [];
   const edgeKeys = new Set();
   let syntheticCounter = 0;
+  const isNamedIndividualLike = (node) =>
+    Boolean(node) &&
+    node.termType === 'NamedNode' &&
+    Boolean(node.isInstanceNode || node.ontologyKind === 'individual');
 
   const hasFocus = focusedNodeIds instanceof Set;
   const includeByFocus = (ids) => !hasFocus || ids.some((id) => focusedNodeIds.has(id));
@@ -2402,7 +2408,26 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
   }
 
   for (const edge of graphData.objectEdges) {
-    if (edge.predicate === RDFS_SUBCLASS_OF) {
+    if (edge.predicate === RDF_TYPE) {
+      const sourceNode = graphData.nodeMap.get(edge.source);
+      const targetNode = graphData.nodeMap.get(edge.target);
+      if (
+        options.showNamedIndividuals &&
+        isNamedIndividualLike(sourceNode) &&
+        targetNode &&
+        graphData.classNodeIds.has(edge.target) &&
+        !isHiddenBackgroundClassIri(edge.target)
+      ) {
+        addNodeById(edge.source, {
+          entityCategory: sourceNode.iri === OWL_THING ? 'thing' : 'individual',
+        });
+        addNodeById(edge.target, { entityCategory: 'class', ontologyKind: 'class' });
+        addEdge(edge.source, edge.target, edge.predicate, '', 'type', {
+          axiomKind: 'ClassAssertion',
+          edgeStyle: 'owl-rdf',
+        });
+      }
+    } else if (edge.predicate === RDFS_SUBCLASS_OF) {
       const sourceIsClassLike = graphData.classNodeIds.has(edge.source) || graphData.blankExpressionNodeIds?.has(edge.source);
       const targetIsClassLike = graphData.classNodeIds.has(edge.target) || graphData.blankExpressionNodeIds?.has(edge.target);
       if (sourceIsClassLike && targetIsClassLike && !graphData.nodeMap.get(edge.target)?.blankExpressionType) {
@@ -2437,23 +2462,46 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
       edge.predicate === OWL_EQUIVALENT_PROPERTY ||
       edge.predicate === OWL_INVERSE_OF
     ) {
-      const left = propertyInfo.get(edge.source);
-      const right = propertyInfo.get(edge.target);
-      if (!left || !right) {
-        continue;
-      }
-      for (const sourceDomainId of left.domains) {
-        for (const targetDomainId of right.domains) {
-          addNodeById(sourceDomainId);
-          addNodeById(targetDomainId);
-          const label = edge.predicate === RDFS_SUBPROPERTY_OF ? '<<subPropertyOf>>' : `<<${compactIri(edge.predicate)}>>`;
-          addEdge(sourceDomainId, targetDomainId, edge.predicate, label, 'property-meta', {
-            axiomKind: edge.axiomKind,
-            edgeStyle: 'dotted',
-          });
-        }
+      // The OWL view spec defines these as connectors between property edges.
+      // Rendering them as class-to-class edges via property domains creates
+      // misleading duplicates and long synthetic arrows, so skip them here
+      // until we have a real edge-center representation.
+      continue;
+    } else if (edge.category === 'object') {
+      const sourceNode = graphData.nodeMap.get(edge.source);
+      const targetNode = graphData.nodeMap.get(edge.target);
+      if (options.showNamedIndividuals && isNamedIndividualLike(sourceNode) && isNamedIndividualLike(targetNode)) {
+        addNodeById(edge.source, {
+          entityCategory: sourceNode?.iri === OWL_THING ? 'thing' : 'individual',
+        });
+        addNodeById(edge.target, {
+          entityCategory: targetNode?.iri === OWL_THING ? 'thing' : 'individual',
+        });
+        const property = propertyInfo.get(edge.predicate) ?? ensureProperty(edge.predicate);
+        const propertyLabel = `${getPropertyPrefix(property?.characteristics)}${property?.label || edge.predicateLabel || compactIri(edge.predicate)}`;
+        addEdge(edge.source, edge.target, edge.predicate, propertyLabel, 'object-property', {
+          axiomKind: 'ObjectPropertyAssertion',
+          edgeStyle: 'solid',
+        });
       }
     }
+  }
+
+  for (const edge of graphData.literalEdges) {
+    const sourceNode = graphData.nodeMap.get(edge.source);
+    if (!options.showDataProperties || !isNamedIndividualLike(sourceNode)) {
+      continue;
+    }
+    addNodeById(edge.source, {
+      entityCategory: sourceNode?.iri === OWL_THING ? 'thing' : 'individual',
+    });
+    addNodeById(edge.target, { entityCategory: 'literal', ontologyKind: '' });
+    const property = propertyInfo.get(edge.predicate) ?? ensureProperty(edge.predicate, 'data');
+    const propertyLabel = `${getPropertyPrefix(property?.characteristics)}${property?.label || edge.predicateLabel || compactIri(edge.predicate)}`;
+    addEdge(edge.source, edge.target, edge.predicate, propertyLabel, 'data-property', {
+      axiomKind: 'DatatypePropertyAssertion',
+      edgeStyle: 'dashed',
+    });
   }
 
   const restrictionIds = new Set();

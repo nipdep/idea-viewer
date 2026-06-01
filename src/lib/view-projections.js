@@ -140,6 +140,28 @@ function suppressMetadataEdges(elements) {
   });
 }
 
+function relationPaletteCategory(predicate) {
+  if (
+    predicate &&
+    (predicate.startsWith(RDF_NS) || predicate.startsWith('http://www.w3.org/2000/01/rdf-schema#') || predicate.startsWith('http://www.w3.org/2002/07/owl#'))
+  ) {
+    return 'base';
+  }
+  return 'property';
+}
+
+function applyRelationPalette(elements) {
+  return elements.map((element) => {
+    const data = element?.data;
+    if (!data?.source || !data.predicate) {
+      return element;
+    }
+    const next = cloneElement(element);
+    next.data.paletteCategory = relationPaletteCategory(data.predicate);
+    return next;
+  });
+}
+
 function applyRdfLabels(elements) {
   return elements.map((element) => {
     if (element?.data?.source) {
@@ -1510,7 +1532,7 @@ function decorateEdgeAttachedStructures(graphData, elements, mode) {
               category: 'object',
               axiomKind: edge.axiomKind || 'PropertyAxiom',
               restrictionKind: '',
-              owlEdgeStyle: edge.predicate === RDFS_SUBPROPERTY_OF ? 'dashed' : 'dotted',
+              owlEdgeStyle: 'dotted',
               owlRelationConnector: 1,
               edgeAttachedConnector: 1,
             },
@@ -1726,10 +1748,12 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
 
   return applySelfLoopGeometry(
     graphData,
-    decorateEdgeAttachedStructures(
-      graphData,
-      applyRdfLabels(suppressMetadataEdges(elements)),
-      GRAPH_VIEW_MODES.RDF,
+    applyRelationPalette(
+      decorateEdgeAttachedStructures(
+        graphData,
+        applyRdfLabels(suppressMetadataEdges(elements)),
+        GRAPH_VIEW_MODES.RDF,
+      ),
     ),
   );
 }
@@ -1745,15 +1769,17 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
   try {
     return applySelfLoopGeometry(
       graphData,
-      decorateEdgeAttachedStructures(
-        graphData,
-        applyOwlProjection(graphData, baseElements),
-        GRAPH_VIEW_MODES.OWL,
+      applyRelationPalette(
+        decorateEdgeAttachedStructures(
+          graphData,
+          applyOwlProjection(graphData, baseElements),
+          GRAPH_VIEW_MODES.OWL,
+        ),
       ),
     );
   } catch (error) {
     console.error('OWL projection failed; falling back to base ontology graph.', error);
-    return applySelfLoopGeometry(graphData, baseElements);
+    return applySelfLoopGeometry(graphData, applyRelationPalette(baseElements));
   }
 }
 

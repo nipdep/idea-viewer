@@ -2353,7 +2353,16 @@ export default function App() {
           selector: 'edge[axiomKind = "SubClassOf"]',
           style: {
             'target-arrow-shape': 'hollow-triangle',
+            'target-arrow-fill': 'hollow',
+            'arrow-scale': 1.3,
             width: 1.8,
+          },
+        },
+        {
+          selector: 'edge[category = "type"], edge[axiomKind = "ClassAssertion"]',
+          style: {
+            'target-arrow-shape': 'triangle-backcurve',
+            'arrow-scale': 1.15,
           },
         },
         {
@@ -2391,31 +2400,15 @@ export default function App() {
           },
         },
         {
-          selector: 'edge[category = "class-axiom"], edge[category = "individual-identity"], edge[category = "type"], edge[edgeStyle = "owl-rdf"]',
+          selector:
+            'edge[category = "class-axiom"], edge[category = "individual-identity"], edge[category = "type"], edge[edgeStyle = "owl-rdf"], edge[owlRelationConnector = 1], edge[owlSynthesized = 1][owlEdgeStyle = "dotted"]',
           style: {
-            'line-color': '#6f7f86',
-            'target-arrow-color': '#6f7f86',
-            color: '#596970',
             width: 1.6,
           },
         },
         {
-          selector: 'edge[owlRelationConnector = 1]',
+          selector: 'edge[owlSynthesized = 1][owlEdgeStyle = "straight"], edge[owlSynthesized = 1][owlEdgeStyle = "dashed"]',
           style: {
-            'line-color': '#c8bfb4',
-            'target-arrow-color': '#c8bfb4',
-            color: '#6f665d',
-            width: 1.2,
-            opacity: 0.82,
-            'curve-style': 'straight',
-          },
-        },
-        {
-          selector: 'edge[owlSynthesized = 1]',
-          style: {
-            'line-color': '#9f6f49',
-            'target-arrow-color': '#9f6f49',
-            color: '#7e5433',
             width: 1.9,
             opacity: 0.9,
             'text-background-color': '#fbf4ec',
@@ -2459,18 +2452,29 @@ export default function App() {
           style: {
             'target-arrow-shape': 'triangle',
             'target-arrow-fill': 'hollow',
-            'line-color': '#6f7f86',
-            'target-arrow-color': '#6f7f86',
-            color: '#596970',
           },
         },
         {
           selector: 'edge[category = "object-property"], edge[category = "data-property"], edge[category = "restriction"]',
           style: {
+            width: 1.8,
+            'curve-style': 'straight',
+          },
+        },
+        {
+          selector: 'edge[paletteCategory = "base"]',
+          style: {
+            'line-color': '#bdb5aa',
+            'target-arrow-color': '#bdb5aa',
+            color: '#7a736b',
+          },
+        },
+        {
+          selector: 'edge[paletteCategory = "property"]',
+          style: {
             'line-color': '#9f7a57',
             'target-arrow-color': '#9f7a57',
             color: '#684c32',
-            width: 1.8,
           },
         },
         {
@@ -2483,8 +2487,8 @@ export default function App() {
           selector: '.focus-node',
           style: {
             'border-width': 4,
-            'border-color': '#1e6b6a',
-            'background-color': '#d8eeeb',
+            'border-color': '#8f6a47',
+            'background-color': '#f6eee4',
             color: '#1e1b16',
           },
         },
@@ -2492,15 +2496,15 @@ export default function App() {
           selector: '.focus-neighbor',
           style: {
             'border-width': 3,
-            'border-color': '#3a8f86',
+            'border-color': '#b08a66',
           },
         },
         {
           selector: '.focus-edge',
           style: {
             width: 3,
-            'line-color': '#3a8f86',
-            'target-arrow-color': '#3a8f86',
+            'line-color': '#8f6a47',
+            'target-arrow-color': '#8f6a47',
             opacity: 1,
           },
         },
@@ -2508,10 +2512,10 @@ export default function App() {
           selector: '.selected-relation',
           style: {
             width: 3.2,
-            'line-color': '#1e6b6a',
-            'target-arrow-color': '#1e6b6a',
-            'text-background-color': '#f0fff8',
-            'text-border-color': '#9fd5cb',
+            'line-color': '#8f6a47',
+            'target-arrow-color': '#8f6a47',
+            'text-background-color': '#f8f0e7',
+            'text-border-color': '#d4b79b',
             opacity: 1,
           },
         },

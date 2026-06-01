@@ -913,20 +913,16 @@ function applyEdgeCurveOverrides(elements, edgeCurveOverrides) {
 }
 
 const EDGE_BEND_DISTANCE_GAIN = 1.35;
+const EDGE_BEND_HANDLE_RENDER_SIZE = 24;
+const EDGE_BEND_HANDLE_ICON_RENDER_SIZE = 18;
 const EDGE_BEND_HANDLE_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-    <g fill="none" stroke="#a77b59" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 4.5v15"/>
-      <path d="M4.5 12h15"/>
-      <path d="M12 4.5l-2.6 2.6"/>
-      <path d="M12 4.5l2.6 2.6"/>
-      <path d="M12 19.5l-2.6-2.6"/>
-      <path d="M12 19.5l2.6-2.6"/>
-      <path d="M4.5 12l2.6-2.6"/>
-      <path d="M4.5 12l2.6 2.6"/>
-      <path d="M19.5 12l-2.6-2.6"/>
-      <path d="M19.5 12l-2.6 2.6"/>
-    </g>
+    <path fill="#000000" d="M11 2h2v6h2.7L12 11.7 8.3 8H11V2Z"/>
+    <path fill="#000000" d="M11 22h2v-6h2.7L12 12.3 8.3 16H11v6Z"/>
+    <path fill="#000000" d="M2 11v2h6v2.7L11.7 12 8 8.3V11H2Z"/>
+    <path fill="#000000" d="M22 11v2h-6v2.7L12.3 12 16 8.3V11h6Z"/>
+    <rect x="10" y="7" width="4" height="10" fill="#000000"/>
+    <rect x="7" y="10" width="10" height="4" fill="#000000"/>
   </svg>
 `)}`;
 
@@ -1395,6 +1391,22 @@ export default function App() {
     }
   }
 
+  function synchronizeEdgeBendHandleVisuals(cy) {
+    const handle = cy.$id('__edge-bend-handle__');
+    if (handle.empty()) {
+      return;
+    }
+
+    const zoom = Math.max(cy.zoom() || 1, 0.0001);
+    handle.style({
+      width: `${EDGE_BEND_HANDLE_RENDER_SIZE / zoom}px`,
+      height: `${EDGE_BEND_HANDLE_RENDER_SIZE / zoom}px`,
+      'background-width': `${EDGE_BEND_HANDLE_ICON_RENDER_SIZE / zoom}px`,
+      'background-height': `${EDGE_BEND_HANDLE_ICON_RENDER_SIZE / zoom}px`,
+      padding: `${1 / zoom}px`,
+    });
+  }
+
   function synchronizeEdgeBendHandle(cy, activeEdgeId = selectedEdgeId) {
     const handleId = '__edge-bend-handle__';
     const existingHandle = cy.$id(handleId);
@@ -1432,11 +1444,13 @@ export default function App() {
         },
         position,
       });
+      synchronizeEdgeBendHandleVisuals(cy);
       return;
     }
 
     existingHandle.data('ownerEdgeId', activeEdgeId);
     existingHandle.position(position);
+    synchronizeEdgeBendHandleVisuals(cy);
   }
 
   function applySpiralSeedLayout(cy) {
@@ -2234,21 +2248,23 @@ export default function App() {
           selector: 'node[edgeBendHandle = 1]',
           style: {
             label: '',
-            shape: 'ellipse',
-            width: 18,
-            height: 18,
-            'background-color': '#fffaf2',
-            'background-opacity': 0.18,
+            shape: 'round-rectangle',
+            width: `${EDGE_BEND_HANDLE_RENDER_SIZE}px`,
+            height: `${EDGE_BEND_HANDLE_RENDER_SIZE}px`,
+            'background-color': '#ffffff',
+            'background-opacity': 0.96,
             'background-image': EDGE_BEND_HANDLE_ICON,
-            'background-image-opacity': 0.92,
-            'background-width': 14,
-            'background-height': 14,
+            'background-image-opacity': 1,
+            'background-width': `${EDGE_BEND_HANDLE_ICON_RENDER_SIZE}px`,
+            'background-height': `${EDGE_BEND_HANDLE_ICON_RENDER_SIZE}px`,
             'background-fit': 'contain',
             'background-repeat': 'no-repeat',
             'background-position-x': '50%',
             'background-position-y': '50%',
-            'border-width': 0,
-            opacity: 0.82,
+            'border-width': 0.8,
+            'border-color': '#d8d8d8',
+            opacity: 1,
+            'padding': '2px',
             'overlay-opacity': 0,
             'z-index-compare': 'manual',
             'z-compound-depth': 'top',
@@ -2743,6 +2759,7 @@ export default function App() {
     cy.on('pan zoom', () => {
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
+      synchronizeEdgeBendHandleVisuals(cy);
     });
 
     const container = cy.container();

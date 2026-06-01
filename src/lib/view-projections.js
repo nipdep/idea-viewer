@@ -512,10 +512,16 @@ function restrictionPredicatePrefix(predicate) {
 }
 
 function restrictionPredicateSuffix(predicate) {
-  if (predicate === OWL_HAS_VALUE) {
-    return ' *';
-  }
   return '';
+}
+
+function stripRelationDecorationSuffixes(label) {
+  return String(label || '').replace(/(?:\*|\.\.)+$/u, '').trimEnd();
+}
+
+function decorateRelationLabel(label, { isRestriction = false, hasDetailRows = false } = {}) {
+  const baseLabel = stripRelationDecorationSuffixes(label);
+  return `${baseLabel}${isRestriction ? '*' : ''}${hasDetailRows ? '..' : ''}`;
 }
 
 function buildRestrictionTargetSpecs(graphData, restrictionNodeId, visibleNodeIds, propertyDeclarations) {
@@ -710,9 +716,13 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
         ) {
           continue;
         }
-        const predicateLabel = targetSpec.forceStarSuffix
-          ? `${propertyBaseLabel}*`
+        const basePredicateLabel = targetSpec.forceStarSuffix
+          ? propertyBaseLabel
           : `${restrictionPredicatePrefix(targetSpec.predicate)}${propertyBaseLabel}${restrictionPredicateSuffix(targetSpec.predicate)}`;
+        const predicateLabel = decorateRelationLabel(basePredicateLabel, {
+          isRestriction: true,
+          hasDetailRows: Array.isArray(targetSpec.projectedMetadataRows) && targetSpec.projectedMetadataRows.length > 0,
+        });
         synthesizedEdges.push({
           data: {
             id: `owl-restr:${node.id}:${anchorEdge.id}:${resolvedTargetId}:${targetSpec.predicate}`,
@@ -986,9 +996,16 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
               source: helperNodeId,
               target: resolvedTargetId,
               predicate: member.onPropertyId,
-              predicateLabel: targetSpec.forceStarSuffix
-                ? `${member.propertyBaseLabel}*`
-                : `${restrictionPredicatePrefix(targetSpec.predicate)}${member.propertyBaseLabel}${restrictionPredicateSuffix(targetSpec.predicate)}`,
+              predicateLabel: decorateRelationLabel(
+                targetSpec.forceStarSuffix
+                  ? member.propertyBaseLabel
+                  : `${restrictionPredicatePrefix(targetSpec.predicate)}${member.propertyBaseLabel}${restrictionPredicateSuffix(targetSpec.predicate)}`,
+                {
+                  isRestriction: true,
+                  hasDetailRows:
+                    Array.isArray(targetSpec.projectedMetadataRows) && targetSpec.projectedMetadataRows.length > 0,
+                },
+              ),
               category: member.propertyKind === 'data-property' ? 'data' : 'object',
               axiomKind: 'ClassExpressionRestriction',
               restrictionKind: member.restrictionKind || compactIri(targetSpec.predicate),
@@ -1328,14 +1345,14 @@ function decorateEdgeAttachedStructures(graphData, elements, mode) {
     }
 
     const next = cloneElement(element);
-    const label = next.data.predicateLabel || '';
-    if (!label.endsWith('*')) {
-      next.data.predicateLabel = label ? `${label}*` : '*';
-    }
     next.data.hasAxiomAnnotation = 1;
     if (Array.isArray(data.projectedMetadataRows)) {
       next.data.projectedMetadataRows = data.projectedMetadataRows;
     }
+    next.data.predicateLabel = decorateRelationLabel(next.data.predicateLabel || '', {
+      isRestriction: data.axiomKind === 'Restriction' || data.axiomKind === 'ClassExpressionRestriction',
+      hasDetailRows: Array.isArray(next.data.projectedMetadataRows) && next.data.projectedMetadataRows.length > 0,
+    });
     return next;
   });
 

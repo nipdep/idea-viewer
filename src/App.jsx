@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
 import { DataFactory, Writer } from 'n3';
-import { buildGraphData, compactIri, extractOntologyModel, getTermId, parseRdfText } from './lib/rdf';
+import { buildGraphData, compactIri, extractOntologyModel, getNodeStatementBuckets, getTermId, parseRdfText } from './lib/rdf';
 import {
   buildProjectedElements,
   createViewOptions,
@@ -1022,6 +1022,7 @@ export default function App() {
   const [ontologyMetadataRows, setOntologyMetadataRows] = useState([]);
   const [multiClassBadgeTooltip, setMultiClassBadgeTooltip] = useState(null);
   const [restrictionNodeTooltip, setRestrictionNodeTooltip] = useState(null);
+  const [hoverTooltip, setHoverTooltip] = useState(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
@@ -2193,6 +2194,35 @@ export default function App() {
     };
   }
 
+  function buildHoverTooltipPayload(event) {
+    const target = event.target;
+    if (!target || !event.renderedPosition) {
+      return null;
+    }
+
+    const text = String(target.data('hoverText') ?? '').trim();
+    if (!text) {
+      return null;
+    }
+
+    const cursor = event.renderedPosition;
+    const container = graphContainerRef.current;
+    const maxWidth = container?.clientWidth ?? 1200;
+    const maxHeight = container?.clientHeight ?? 800;
+    const tooltipWidth = Math.min(520, Math.max(180, Math.round(Math.min(text.length, 220) * 4.6)));
+    const lineCount = text.split('\n').length;
+    const tooltipHeight = Math.min(360, Math.max(44, 24 + lineCount * 18));
+    const left = Math.min(Math.max(8, cursor.x + 14), Math.max(8, maxWidth - tooltipWidth - 8));
+    const top = Math.min(Math.max(8, cursor.y + 12), Math.max(8, maxHeight - tooltipHeight - 8));
+
+    return {
+      left,
+      top,
+      text,
+      width: tooltipWidth,
+    };
+  }
+
   const selectedNodeAllLiteralProperties = useMemo(
     () => (selectedNodeId && graphData ? graphData.dataProperties.get(selectedNodeId) ?? [] : []),
     [selectedNodeId, graphData],
@@ -2228,6 +2258,10 @@ export default function App() {
   const selectedNodeDataProperties = useMemo(
     () => selectedNodeAllLiteralProperties.filter((row) => row.category !== 'annotation'),
     [selectedNodeAllLiteralProperties],
+  );
+  const selectedNodeStatements = useMemo(
+    () => (selectedNodeId && graphData ? getNodeStatementBuckets(graphData, selectedNodeId) : { processed: [], unprocessed: [] }),
+    [selectedNodeId, graphData],
   );
   const selectedNodeClasses = useMemo(() => {
     if (!selectedNode || !graphData || !Array.isArray(selectedNode.classes) || selectedNode.classes.length === 0) {
@@ -2815,6 +2849,7 @@ export default function App() {
       groupDragArmRef.current = null;
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
+      setHoverTooltip(null);
       const nodeId = event.target.id();
       if (event.originalEvent instanceof MouseEvent && event.originalEvent.shiftKey) {
         extendFocusedNodes(nodeId);
@@ -2831,6 +2866,7 @@ export default function App() {
       groupDragArmRef.current = null;
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
+      setHoverTooltip(null);
       const edgeId = event.target.id();
       setSelectedNodeId(null);
       setFocusedNodeId(null);
@@ -2846,6 +2882,7 @@ export default function App() {
       groupDragArmRef.current = null;
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
+      setHoverTooltip(null);
       if (event.target === cy) {
         clearFocusState();
       }
@@ -3037,17 +3074,29 @@ export default function App() {
     const updateNodeHoverTooltips = (event) => {
       setMultiClassBadgeTooltip(buildClassBadgeTooltipPayload(event));
       setRestrictionNodeTooltip(buildRestrictionTooltipPayload(event));
+      setHoverTooltip(buildHoverTooltipPayload(event));
     };
 
     cy.on('mouseover', 'node', updateNodeHoverTooltips);
     cy.on('mousemove', 'node', updateNodeHoverTooltips);
+    cy.on('mouseover', 'edge', (event) => {
+      setHoverTooltip(buildHoverTooltipPayload(event));
+    });
+    cy.on('mousemove', 'edge', (event) => {
+      setHoverTooltip(buildHoverTooltipPayload(event));
+    });
     cy.on('mouseout', 'node', () => {
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
+      setHoverTooltip(null);
+    });
+    cy.on('mouseout', 'edge', () => {
+      setHoverTooltip(null);
     });
     cy.on('pan zoom', () => {
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
+      setHoverTooltip(null);
     });
 
     const container = cy.container();
@@ -4708,6 +4757,15 @@ export default function App() {
             </div>
           )}
 
+          {hoverTooltip && (
+            <div
+              className="restriction-tooltip hover-tooltip"
+              style={{ left: hoverTooltip.left, top: hoverTooltip.top, maxWidth: hoverTooltip.width, whiteSpace: 'pre-wrap' }}
+            >
+              {hoverTooltip.text}
+            </div>
+          )}
+
           <div className="status-bar overlay">
             <span>{status}</span>
             <span>
@@ -4913,6 +4971,34 @@ export default function App() {
                         >
                           <div className="property-name">{row.predicateLabel}</div>
                           <div className="property-value breakable">{row.value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <h4>Processed statements ({selectedNodeStatements.processed.length})</h4>
+                    <div className="property-list">
+                      {selectedNodeStatements.processed.length === 0 && (
+                        <p className="muted">No processed OWL statements available for this node.</p>
+                      )}
+                      {selectedNodeStatements.processed.map((row) => (
+                        <div key={row.id} className="property-row">
+                          <div className="property-name">Manchester</div>
+                          <div className="property-value breakable">{row.manchester}</div>
+                          <div className="property-name">Natural language</div>
+                          <div className="property-value breakable">{row.naturalLanguage}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <h4>Couldn&apos;t process ({selectedNodeStatements.unprocessed.length})</h4>
+                    <div className="property-list">
+                      {selectedNodeStatements.unprocessed.length === 0 && (
+                        <p className="muted">No unprocessed source/property statements for this node.</p>
+                      )}
+                      {selectedNodeStatements.unprocessed.map((row) => (
+                        <div key={row.id} className="property-row">
+                          <div className="property-name">Statement</div>
+                          <div className="property-value breakable">{row.statement}</div>
                         </div>
                       ))}
                     </div>

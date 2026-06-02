@@ -1,4 +1,4 @@
-import { buildFocusedSubset, compactIri, DEFAULT_VIEW_OPTIONS, getTermId } from './rdf';
+import { buildFocusedSubset, compactIri, DEFAULT_VIEW_OPTIONS, getNodeStatementBuckets, getTermId } from './rdf';
 
 export const GRAPH_VIEW_MODES = Object.freeze({
   OWL: 'owl',
@@ -212,6 +212,60 @@ function applySelfLoopGeometry(graphData, elements) {
     const next = cloneElement(element);
     next.data.isSelfLoop = 1;
     next.data.selfLoopStepSize = computeSelfLoopStepSize(sourceNode);
+    return next;
+  });
+}
+
+function connectorHoverLabel(data) {
+  const blankExpressionType = String(data?.blankExpressionType || '');
+  if (blankExpressionType === 'Intersection') {
+    return 'Intersection connector';
+  }
+  if (blankExpressionType === 'Union') {
+    return 'Union connector';
+  }
+  if (blankExpressionType === 'Complement') {
+    return 'Complement connector';
+  }
+  if (blankExpressionType === 'OneOf') {
+    return 'Enumeration connector';
+  }
+  if (data?.entityCategory === 'all-different' && data?.label === '≠') {
+    return 'AllDifferent connector';
+  }
+  if (data?.entityCategory === 'all-different' && data?.label === '≢') {
+    return 'AllDisjointClasses connector';
+  }
+  if (data?.entityCategory === 'all-different' && data?.label === '⊎') {
+    return 'DisjointUnion connector';
+  }
+  return data?.fullLabel || data?.label || '';
+}
+
+function applyHoverMetadata(graphData, elements) {
+  return elements.map((element) => {
+    const data = element?.data;
+    if (!data) {
+      return element;
+    }
+
+    const next = cloneElement(element);
+    if (data.source) {
+      next.data.hoverText = data.predicateLabel || compactIri(data.predicate) || '';
+      return next;
+    }
+
+    if (data.owlExpressionNode || data.entityCategory === 'all-different') {
+      next.data.hoverText = connectorHoverLabel(data);
+      return next;
+    }
+
+    const buckets = getNodeStatementBuckets(graphData, data.id);
+    if (buckets.processed.length > 0) {
+      next.data.hoverText = buckets.processed.map((row) => row.manchester).join('\n');
+    } else {
+      next.data.hoverText = data.fullLabel || data.label || '';
+    }
     return next;
   });
 }
@@ -1755,13 +1809,16 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
     projectionMode: GRAPH_VIEW_MODES.RDF,
   });
 
-  return applySelfLoopGeometry(
+  return applyHoverMetadata(
     graphData,
-    applyRelationPalette(
-      decorateEdgeAttachedStructures(
-        graphData,
-        applyRdfLabels(suppressMetadataEdges(elements)),
-        GRAPH_VIEW_MODES.RDF,
+    applySelfLoopGeometry(
+      graphData,
+      applyRelationPalette(
+        decorateEdgeAttachedStructures(
+          graphData,
+          applyRdfLabels(suppressMetadataEdges(elements)),
+          GRAPH_VIEW_MODES.RDF,
+        ),
       ),
     ),
   );
@@ -1776,19 +1833,22 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
   const baseElements = suppressMetadataEdges(elements);
 
   try {
-    return applySelfLoopGeometry(
+    return applyHoverMetadata(
       graphData,
-      applyRelationPalette(
-        decorateEdgeAttachedStructures(
-          graphData,
-          applyOwlProjection(graphData, baseElements),
-          GRAPH_VIEW_MODES.OWL,
+      applySelfLoopGeometry(
+        graphData,
+        applyRelationPalette(
+          decorateEdgeAttachedStructures(
+            graphData,
+            applyOwlProjection(graphData, baseElements),
+            GRAPH_VIEW_MODES.OWL,
+          ),
         ),
       ),
     );
   } catch (error) {
     console.error('OWL projection failed; falling back to base ontology graph.', error);
-    return applySelfLoopGeometry(graphData, applyRelationPalette(baseElements));
+    return applyHoverMetadata(graphData, applySelfLoopGeometry(graphData, applyRelationPalette(baseElements)));
   }
 }
 

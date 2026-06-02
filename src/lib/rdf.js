@@ -14,6 +14,7 @@ const RDF_REST = `${RDF_NS}rest`;
 const RDF_NIL = `${RDF_NS}nil`;
 const RDFS_CLASS = `${RDFS_NS}Class`;
 const RDFS_COMMENT = `${RDFS_NS}comment`;
+const RDFS_LABEL = `${RDFS_NS}label`;
 const RDFS_DATATYPE = `${RDFS_NS}Datatype`;
 const RDFS_DOMAIN = `${RDFS_NS}domain`;
 const RDFS_RANGE = `${RDFS_NS}range`;
@@ -28,6 +29,9 @@ const OWL_THING = `${OWL_NS}Thing`;
 const OWL_ALL_DIFFERENT = `${OWL_NS}AllDifferent`;
 const OWL_ALL_DISJOINT_CLASSES = `${OWL_NS}AllDisjointClasses`;
 const OWL_AXIOM = `${OWL_NS}Axiom`;
+const OWL_ANNOTATED_SOURCE = `${OWL_NS}annotatedSource`;
+const OWL_ANNOTATED_PROPERTY = `${OWL_NS}annotatedProperty`;
+const OWL_ANNOTATED_TARGET = `${OWL_NS}annotatedTarget`;
 const OWL_DISTINCT_MEMBERS = `${OWL_NS}distinctMembers`;
 const OWL_MEMBERS = `${OWL_NS}members`;
 const OWL_IMPORTS = `${OWL_NS}imports`;
@@ -68,6 +72,10 @@ const OWL_TRANSITIVE_PROPERTY = `${OWL_NS}TransitiveProperty`;
 const OWL_SYMMETRIC_PROPERTY = `${OWL_NS}SymmetricProperty`;
 const PROV_WAS_DERIVED_FROM = 'http://www.w3.org/ns/prov#wasDerivedFrom';
 const DCT_SOURCE = 'http://purl.org/dc/terms/source';
+const RDF_STATEMENT = `${RDF_NS}Statement`;
+const RDF_SUBJECT = `${RDF_NS}subject`;
+const RDF_PREDICATE = `${RDF_NS}predicate`;
+const RDF_OBJECT = `${RDF_NS}object`;
 
 const CLASS_TYPE_IRIS = new Set([RDFS_CLASS, OWL_CLASS]);
 const DATATYPE_TYPE_IRIS = new Set([RDFS_DATATYPE, OWL_DATATYPE]);
@@ -1180,6 +1188,530 @@ function annotationObjectToLiteralValue(term) {
   return term.value ?? '';
 }
 
+function makeQuadKey(quad) {
+  const graphId =
+    quad.graph && quad.graph.termType !== 'DefaultGraph'
+      ? getTermId(quad.graph)
+      : 'default';
+  return `${getTermId(quad.subject)}|${quad.predicate.value}|${getTermId(quad.object)}|${graphId}`;
+}
+
+function formatLiteralForManchester(term) {
+  if (!term || term.termType !== 'Literal') {
+    return '';
+  }
+
+  const escaped = String(term.value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  if (term.language) {
+    return `"${escaped}"@${term.language}`;
+  }
+
+  const datatype = term.datatype?.value ?? '';
+  if (datatype && datatype !== `${XSD_NS}string`) {
+    return `"${escaped}"^^${compactIri(datatype)}`;
+  }
+
+  return `"${escaped}"`;
+}
+
+function formatTermForManchester(term, labelIndex) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'NamedNode') {
+    return compactIri(term.value);
+  }
+
+  if (term.termType === 'Literal') {
+    return formatLiteralForManchester(term);
+  }
+
+  if (term.termType === 'BlankNode') {
+    return `[Blank ${term.value}]`;
+  }
+
+  return term.value ?? '';
+}
+
+function formatTermForNl(term, labelIndex) {
+  if (!term) {
+    return '';
+  }
+
+  if (term.termType === 'Literal') {
+    return term.value;
+  }
+
+  if (term.termType === 'NamedNode') {
+    return labelIndex.get(getTermId(term)) ?? compactIri(term.value);
+  }
+
+  return formatTermForManchester(term, labelIndex);
+}
+
+function buildStatementAnalysis(quads, store, labelIndex) {
+  const quadsBySubjectId = new Map();
+
+  for (const quad of quads) {
+    const subjectId = getTermId(quad.subject);
+    const bucket = quadsBySubjectId.get(subjectId) ?? [];
+    bucket.push(quad);
+    quadsBySubjectId.set(subjectId, bucket);
+  }
+
+  const consumedQuadKeys = new Set();
+  const statements = [];
+  const processedBySource = new Map();
+  const processedByPredicate = new Map();
+  const unprocessedBySource = new Map();
+  const unprocessedByPredicate = new Map();
+
+  const addIndexedRow = (index, key, value) => {
+    if (!key) {
+      return;
+    }
+    const bucket = index.get(key) ?? [];
+    bucket.push(value);
+    index.set(key, bucket);
+  };
+
+  const serializeClassExpression = (term, seen = new Set()) => {
+    if (!term) {
+      return null;
+    }
+
+    if (term.termType === 'NamedNode') {
+      return {
+        manchester: formatTermForManchester(term, labelIndex),
+        nl: formatTermForNl(term, labelIndex),
+        consumedKeys: [],
+      };
+    }
+
+    if (term.termType === 'Literal') {
+      return {
+        manchester: formatLiteralForManchester(term),
+        nl: term.value,
+        consumedKeys: [],
+      };
+    }
+
+    if (term.termType !== 'BlankNode') {
+      return null;
+    }
+
+    const termId = getTermId(term);
+    if (seen.has(termId)) {
+      return null;
+    }
+    seen.add(termId);
+
+    const outgoing = quadsBySubjectId.get(termId) ?? [];
+    const consumedKeys = [];
+    const consumeQuad = (quad) => {
+      const key = makeQuadKey(quad);
+      consumedKeys.push(key);
+      return key;
+    };
+
+    const findObjectQuad = (predicateIri) =>
+      outgoing.find((quad) => quad.predicate.value === predicateIri && quad.object.termType !== 'Literal');
+    const findLiteralQuad = (predicateIri) =>
+      outgoing.find((quad) => quad.predicate.value === predicateIri && quad.object.termType === 'Literal');
+
+    const onPropertyQuad = findObjectQuad(OWL_ON_PROPERTY);
+    if (onPropertyQuad) {
+      consumeQuad(onPropertyQuad);
+      const propertyLabel = formatTermForManchester(onPropertyQuad.object, labelIndex);
+      const propertyNl = formatTermForNl(onPropertyQuad.object, labelIndex);
+
+      const valuePredicates = [
+        [OWL_SOME_VALUES_FROM, 'some', 'has some'],
+        [OWL_ALL_VALUES_FROM, 'only', 'has only'],
+        [OWL_HAS_VALUE, 'value', 'has value'],
+        [OWL_ON_CLASS, 'only', 'is restricted to class'],
+        [OWL_ON_DATA_RANGE, 'only', 'is restricted to data range'],
+      ];
+      for (const [predicateIri, operator, nlOperator] of valuePredicates) {
+        const valueQuad = findObjectQuad(predicateIri);
+        if (!valueQuad) {
+          continue;
+        }
+        consumeQuad(valueQuad);
+        const nested = serializeClassExpression(valueQuad.object, seen);
+        if (!nested) {
+          return null;
+        }
+        return {
+          manchester: `${propertyLabel} ${operator} ${nested.manchester}`,
+          nl: `${propertyNl} ${nlOperator} ${nested.nl}`,
+          consumedKeys: [...consumedKeys, ...nested.consumedKeys],
+        };
+      }
+
+      const cardPredicates = [
+        [OWL_MIN_CARDINALITY, 'min', 'has at least'],
+        [OWL_MAX_CARDINALITY, 'max', 'has at most'],
+        [OWL_CARDINALITY, 'exactly', 'has exactly'],
+        [OWL_MIN_QUALIFIED_CARDINALITY, 'min', 'has at least'],
+        [OWL_MAX_QUALIFIED_CARDINALITY, 'max', 'has at most'],
+        [OWL_QUALIFIED_CARDINALITY, 'exactly', 'has exactly'],
+      ];
+      for (const [predicateIri, operator, nlOperator] of cardPredicates) {
+        const literalQuad = findLiteralQuad(predicateIri);
+        if (!literalQuad) {
+          continue;
+        }
+        consumeQuad(literalQuad);
+        const count = literalQuad.object.value;
+        const qualifierQuad = findObjectQuad(OWL_ON_CLASS) ?? findObjectQuad(OWL_ON_DATA_RANGE);
+        if (qualifierQuad) {
+          consumeQuad(qualifierQuad);
+          const qualifier = serializeClassExpression(qualifierQuad.object, seen);
+          if (!qualifier) {
+            return null;
+          }
+          return {
+            manchester: `${propertyLabel} ${operator} ${count} ${qualifier.manchester}`,
+            nl: `${propertyNl} ${nlOperator} ${count} ${qualifier.nl}`,
+            consumedKeys: [...consumedKeys, ...qualifier.consumedKeys],
+          };
+        }
+        return {
+          manchester: `${propertyLabel} ${operator} ${count}`,
+          nl: `${propertyNl} ${nlOperator} ${count}`,
+          consumedKeys,
+        };
+      }
+
+      const hasSelfQuad = findLiteralQuad(OWL_HAS_SELF);
+      if (hasSelfQuad && ['true', '1'].includes(String(hasSelfQuad.object.value).trim().toLowerCase())) {
+        consumeQuad(hasSelfQuad);
+        return {
+          manchester: `${propertyLabel} Self`,
+          nl: `${propertyNl} relates to itself`,
+          consumedKeys,
+        };
+      }
+    }
+
+    const booleanExpressions = [
+      [OWL_INTERSECTION_OF, ' and ', ' and '],
+      [OWL_UNION_OF, ' or ', ' or '],
+    ];
+    for (const [predicateIri, joiner, nlJoiner] of booleanExpressions) {
+      const expressionQuad = findObjectQuad(predicateIri);
+      if (!expressionQuad) {
+        continue;
+      }
+      consumeQuad(expressionQuad);
+      const members = readRdfListFromStore(store, expressionQuad.object)
+        .map((member) => serializeClassExpression(member, new Set(seen)))
+        .filter(Boolean);
+      if (members.length === 0) {
+        return null;
+      }
+      return {
+        manchester: members.map((entry) => entry.manchester).join(joiner),
+        nl: members.map((entry) => entry.nl).join(nlJoiner),
+        consumedKeys: [...consumedKeys, ...members.flatMap((entry) => entry.consumedKeys)],
+      };
+    }
+
+    const complementQuad = findObjectQuad(OWL_COMPLEMENT_OF);
+    if (complementQuad) {
+      consumeQuad(complementQuad);
+      const nested = serializeClassExpression(complementQuad.object, seen);
+      if (!nested) {
+        return null;
+      }
+      return {
+        manchester: `not ${nested.manchester}`,
+        nl: `not ${nested.nl}`,
+        consumedKeys: [...consumedKeys, ...nested.consumedKeys],
+      };
+    }
+
+    const oneOfQuad = findObjectQuad(OWL_ONE_OF);
+    if (oneOfQuad) {
+      consumeQuad(oneOfQuad);
+      const members = readRdfListFromStore(store, oneOfQuad.object)
+        .map((member) => serializeClassExpression(member, new Set(seen)) ?? {
+          manchester: formatTermForManchester(member, labelIndex),
+          nl: formatTermForNl(member, labelIndex),
+          consumedKeys: [],
+        });
+      if (members.length === 0) {
+        return null;
+      }
+      return {
+        manchester: `{ ${members.map((entry) => entry.manchester).join(', ')} }`,
+        nl: `one of ${members.map((entry) => entry.nl).join(', ')}`,
+        consumedKeys: [...consumedKeys, ...members.flatMap((entry) => entry.consumedKeys)],
+      };
+    }
+
+    const onDatatypeQuad = findObjectQuad(OWL_ON_DATATYPE);
+    if (onDatatypeQuad) {
+      consumeQuad(onDatatypeQuad);
+      const datatypeLabel = formatTermForManchester(onDatatypeQuad.object, labelIndex);
+      const restrictionQuad = findObjectQuad(OWL_WITH_RESTRICTIONS);
+      if (!restrictionQuad) {
+        return {
+          manchester: datatypeLabel,
+          nl: datatypeLabel,
+          consumedKeys,
+        };
+      }
+      consumeQuad(restrictionQuad);
+      const members = readRdfListFromStore(store, restrictionQuad.object).map((member) => {
+        const memberQuads = quadsBySubjectId.get(getTermId(member)) ?? [];
+        const parts = memberQuads
+          .filter((quad) => quad.object.termType === 'Literal')
+          .map((quad) => {
+            consumedKeys.push(makeQuadKey(quad));
+            return `${compactIri(quad.predicate.value)} ${quad.object.value}`;
+          });
+        return parts.join(', ');
+      }).filter(Boolean);
+      return {
+        manchester: members.length > 0 ? `${datatypeLabel}[${members.join(', ')}]` : datatypeLabel,
+        nl: members.length > 0 ? `${datatypeLabel} with restrictions ${members.join(', ')}` : datatypeLabel,
+        consumedKeys,
+      };
+    }
+
+    return null;
+  };
+
+  const serializeTopLevelStatement = (quad) => {
+    const subjectLabel = formatTermForManchester(quad.subject, labelIndex);
+    const subjectNl = formatTermForNl(quad.subject, labelIndex);
+    const predicateLabel = compactIri(quad.predicate.value);
+    const objectExpression = serializeClassExpression(quad.object);
+    const objectLabel = objectExpression?.manchester ?? formatTermForManchester(quad.object, labelIndex);
+    const objectNl = objectExpression?.nl ?? formatTermForNl(quad.object, labelIndex);
+    const consumedKeys = [makeQuadKey(quad), ...(objectExpression?.consumedKeys ?? [])];
+
+    if (quad.predicate.value === RDF_TYPE && quad.object.termType === 'NamedNode') {
+      if (CLASS_TYPE_IRIS.has(quad.object.value)) {
+        return {
+          manchester: `Class: ${subjectLabel}`,
+          nl: `${subjectNl} is a class`,
+          consumedKeys,
+        };
+      }
+      if (quad.object.value === OWL_OBJECT_PROPERTY) {
+        return {
+          manchester: `ObjectProperty: ${subjectLabel}`,
+          nl: `${subjectNl} is an object property`,
+          consumedKeys,
+        };
+      }
+      if (quad.object.value === OWL_DATATYPE_PROPERTY) {
+        return {
+          manchester: `DataProperty: ${subjectLabel}`,
+          nl: `${subjectNl} is a data property`,
+          consumedKeys,
+        };
+      }
+      if (quad.object.value === OWL_ANNOTATION_PROPERTY) {
+        return {
+          manchester: `AnnotationProperty: ${subjectLabel}`,
+          nl: `${subjectNl} is an annotation property`,
+          consumedKeys,
+        };
+      }
+      if (quad.object.value === OWL_NAMED_INDIVIDUAL) {
+        return {
+          manchester: `Individual: ${subjectLabel}`,
+          nl: `${subjectNl} is a named individual`,
+          consumedKeys,
+        };
+      }
+      if (quad.object.value === OWL_ONTOLOGY) {
+        return {
+          manchester: `Ontology: ${subjectLabel}`,
+          nl: `${subjectNl} is an ontology`,
+          consumedKeys,
+        };
+      }
+
+      return {
+        manchester: `${subjectLabel} type ${objectLabel}`,
+        nl: `${subjectNl} is a ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === RDFS_SUBCLASS_OF) {
+      return {
+        manchester: `${subjectLabel} SubClassOf ${objectLabel}`,
+        nl: `${subjectNl} is a subclass of ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === OWL_EQUIVALENT_CLASS) {
+      return {
+        manchester: `${subjectLabel} EquivalentTo ${objectLabel}`,
+        nl: `${subjectNl} is equivalent to ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === OWL_DISJOINT_WITH) {
+      return {
+        manchester: `${subjectLabel} DisjointWith ${objectLabel}`,
+        nl: `${subjectNl} is disjoint with ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === RDFS_DOMAIN) {
+      return {
+        manchester: `Domain(${subjectLabel}) = ${objectLabel}`,
+        nl: `the domain of ${subjectNl} is ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === RDFS_RANGE) {
+      return {
+        manchester: `Range(${subjectLabel}) = ${objectLabel}`,
+        nl: `the range of ${subjectNl} is ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === RDFS_SUBPROPERTY_OF) {
+      return {
+        manchester: `${subjectLabel} SubPropertyOf ${objectLabel}`,
+        nl: `${subjectNl} is a subproperty of ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === OWL_EQUIVALENT_PROPERTY) {
+      return {
+        manchester: `${subjectLabel} EquivalentTo ${objectLabel}`,
+        nl: `${subjectNl} is equivalent to property ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === OWL_INVERSE_OF) {
+      return {
+        manchester: `${subjectLabel} InverseOf ${objectLabel}`,
+        nl: `${subjectNl} is the inverse of ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === OWL_SAME_AS) {
+      return {
+        manchester: `${subjectLabel} SameAs ${objectLabel}`,
+        nl: `${subjectNl} is the same as ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === OWL_DIFFERENT_FROM) {
+      return {
+        manchester: `${subjectLabel} DifferentFrom ${objectLabel}`,
+        nl: `${subjectNl} is different from ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    if (quad.predicate.value === OWL_HAS_KEY) {
+      const members = readRdfListFromStore(store, quad.object).map((term) => formatTermForManchester(term, labelIndex));
+      return {
+        manchester: `${subjectLabel} HasKey (${members.join(', ')})`,
+        nl: `${subjectNl} has key ${members.join(', ')}`,
+        consumedKeys,
+      };
+    }
+
+    if (
+      quad.subject.termType === 'NamedNode' &&
+      quad.predicate.value !== RDFS_LABEL &&
+      quad.predicate.value !== RDFS_COMMENT &&
+      quad.predicate.value !== OWL_IMPORTS &&
+      quad.predicate.value !== OWL_VERSION_IRI &&
+      quad.predicate.value !== OWL_VERSION_INFO &&
+      quad.predicate.value !== OWL_ANNOTATED_SOURCE &&
+      quad.predicate.value !== OWL_ANNOTATED_PROPERTY &&
+      quad.predicate.value !== OWL_ANNOTATED_TARGET &&
+      quad.predicate.value !== RDF_SUBJECT &&
+      quad.predicate.value !== RDF_PREDICATE &&
+      quad.predicate.value !== RDF_OBJECT
+    ) {
+      return {
+        manchester: `${subjectLabel} ${predicateLabel} ${objectLabel}`,
+        nl: `${subjectNl} ${predicateLabel} ${objectNl}`,
+        consumedKeys,
+      };
+    }
+
+    return null;
+  };
+
+  for (const quad of quads) {
+    if (quad.subject.termType === 'BlankNode') {
+      continue;
+    }
+
+    const serialized = serializeTopLevelStatement(quad);
+    if (!serialized?.manchester) {
+      continue;
+    }
+
+    const statement = {
+      id: `stmt:${statements.length}`,
+      sourceId: getTermId(quad.subject),
+      predicateId: quad.predicate.value,
+      targetId: isEntityTerm(quad.object) ? getTermId(quad.object) : '',
+      manchester: serialized.manchester,
+      naturalLanguage: serialized.nl,
+      quadKeys: serialized.consumedKeys,
+    };
+    statements.push(statement);
+    for (const key of serialized.consumedKeys) {
+      consumedQuadKeys.add(key);
+    }
+    addIndexedRow(processedBySource, statement.sourceId, statement);
+    addIndexedRow(processedByPredicate, statement.predicateId, statement);
+  }
+
+  for (const quad of quads) {
+    const quadKey = makeQuadKey(quad);
+    if (consumedQuadKeys.has(quadKey)) {
+      continue;
+    }
+
+    const row = {
+      id: `raw:${quadKey}`,
+      sourceId: getTermId(quad.subject),
+      predicateId: quad.predicate.value,
+      targetId: isEntityTerm(quad.object) ? getTermId(quad.object) : '',
+      statement: `${formatTermForManchester(quad.subject, labelIndex)} ${compactIri(quad.predicate.value)} ${formatTermForManchester(quad.object, labelIndex)}`,
+    };
+    addIndexedRow(unprocessedBySource, row.sourceId, row);
+    addIndexedRow(unprocessedByPredicate, row.predicateId, row);
+  }
+
+  return {
+    statements,
+    consumedQuadKeys,
+    processedBySource,
+    processedByPredicate,
+    unprocessedBySource,
+    unprocessedByPredicate,
+  };
+}
+
 function isHiddenBackgroundClassIri(iri) {
   return HIDDEN_BACKGROUND_CLASS_IRIS.has(iri);
 }
@@ -1408,6 +1940,7 @@ export function extractOntologyClassIds(quads) {
 export function buildGraphData(quads, options = {}) {
   const store = new Store(quads);
   const labelIndex = buildLabelIndex(quads);
+  const statementAnalysis = buildStatementAnalysis(quads, store, labelIndex);
   const hasOntology = Boolean(options.hasOntology);
   const hasKg = Boolean(options.hasKg);
   const ontologyModel = options.ontologyModel ?? {};
@@ -1963,6 +2496,7 @@ export function buildGraphData(quads, options = {}) {
     dataProperties,
     nodeMetadata,
     edgeMetadata,
+    statementAnalysis,
     nodeMap,
     edgeMap,
     elements: [],
@@ -1970,6 +2504,41 @@ export function buildGraphData(quads, options = {}) {
 
   graphData.elements = buildFocusedSubset(graphData, null, DEFAULT_VIEW_OPTIONS);
   return graphData;
+}
+
+export function getNodeStatementBuckets(graphData, nodeId) {
+  if (!graphData?.statementAnalysis || !nodeId) {
+    return {
+      processed: [],
+      unprocessed: [],
+    };
+  }
+
+  const { processedBySource, processedByPredicate, unprocessedBySource, unprocessedByPredicate } = graphData.statementAnalysis;
+  const processed = [
+    ...(processedBySource.get(nodeId) ?? []),
+    ...(processedByPredicate.get(nodeId) ?? []),
+  ];
+  const unprocessed = [
+    ...(unprocessedBySource.get(nodeId) ?? []),
+    ...(unprocessedByPredicate.get(nodeId) ?? []),
+  ];
+
+  const dedupeById = (rows) => {
+    const seen = new Set();
+    return rows.filter((row) => {
+      if (!row?.id || seen.has(row.id)) {
+        return false;
+      }
+      seen.add(row.id);
+      return true;
+    });
+  };
+
+  return {
+    processed: dedupeById(processed),
+    unprocessed: dedupeById(unprocessed),
+  };
 }
 
 export function toElements(nodes, edges) {

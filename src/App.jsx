@@ -1467,6 +1467,10 @@ export default function App() {
         span: Math.max(node.width(), node.height()),
       }))
       .sort((left, right) => right.degree - left.degree || left.id.localeCompare(right.id));
+    const maxDegree = Math.max(1, ...nodeEntries.map((entry) => entry.degree));
+    nodeEntries.forEach((entry) => {
+      entry.rank = Math.min(1, Math.max(0, entry.degree / maxDegree));
+    });
     const spacing = Math.max(
       92,
       Math.round(nodeEntries.reduce((span, entry) => Math.max(span, entry.span), 80) + 28),
@@ -1481,7 +1485,7 @@ export default function App() {
         }
 
         const angle = index * goldenAngle;
-        const radius = spacing * Math.sqrt(index) * (1 + Math.min(entry.degree, 6) * 0.02);
+        const radius = spacing * Math.sqrt(index) * (0.82 + (1 - entry.rank) * 0.42);
         entry.node.position({
           x: Math.cos(angle) * radius,
           y: Math.sin(angle) * radius,
@@ -1497,6 +1501,8 @@ export default function App() {
     if (nodes.length < 2) {
       return false;
     }
+
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
     const edges = cy
       .edges(':visible')
@@ -1518,6 +1524,11 @@ export default function App() {
         width,
         height,
         degree: 0,
+        rank: 0,
+        repulsionStrength: 1,
+        attractionStrength: 1,
+        mass: 1,
+        mobility: 1,
       });
     });
 
@@ -1535,6 +1546,16 @@ export default function App() {
       entry.degree = adjacency.get(entry.id)?.size ?? 0;
     });
 
+    const maxDegree = Math.max(1, ...nodeMetrics.map((entry) => entry.degree));
+    nodeMetrics.forEach((entry) => {
+      const normalizedRank = clamp(Math.sqrt(entry.degree / maxDegree), 0, 1);
+      entry.rank = normalizedRank;
+      entry.repulsionStrength = 0.8 + normalizedRank * 1.7;
+      entry.attractionStrength = 1.18 - normalizedRank * 0.52;
+      entry.mass = 1.05 + normalizedRank * 2.35;
+      entry.mobility = 1 / entry.mass;
+    });
+
     nodeMetrics.sort((left, right) => {
       const degreeDiff = right.degree - left.degree;
       if (degreeDiff !== 0) {
@@ -1542,6 +1563,7 @@ export default function App() {
       }
       return left.id.localeCompare(right.id);
     });
+    const nodeMetricById = new Map(nodeMetrics.map((entry) => [entry.id, entry]));
 
     const baseSpacing = Math.max(92, Math.round(maxNodeSpan + 36));
     const idealEdgeLength = Math.max(56, Math.round(baseSpacing * 0.58));
@@ -1558,8 +1580,8 @@ export default function App() {
       const radius = baseSpacing * Math.sqrt(index);
       const angle = index * goldenAngle;
       positions.set(entry.id, {
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
+        x: Math.cos(angle) * radius * (0.72 + (1 - entry.rank) * 0.56),
+        y: Math.sin(angle) * radius * (0.72 + (1 - entry.rank) * 0.56),
       });
     });
 
@@ -1617,8 +1639,15 @@ export default function App() {
               const overlapDistance =
                 Math.max(entry.width, entry.height) / 2 + Math.max(other.width, other.height) / 2 + 12;
               const closeness = Math.max(0, (repulsionRadius - distance) / repulsionRadius);
-              const overlapBoost = distance < overlapDistance ? 1.6 + (overlapDistance - distance) / overlapDistance : 0.55;
-              const repulsion = closeness * closeness * 9.5 * overlapBoost;
+              const rankCrowdingBoost = 1 + Math.max(entry.rank, other.rank) * 0.95;
+              const overlapBoost =
+                distance < overlapDistance
+                  ? 1.7 + (overlapDistance - distance) / overlapDistance + rankCrowdingBoost * 0.2
+                  : 0.55 + rankCrowdingBoost * 0.12;
+              const pairRepulsionScale =
+                ((entry.repulsionStrength + other.repulsionStrength) / 2) *
+                (1 + ((entry.rank + other.rank) / 2) * 0.55);
+              const repulsion = closeness * closeness * 9.5 * overlapBoost * pairRepulsionScale;
               const unitX = dx / distance;
               const unitY = dy / distance;
               const entryForce = forceById.get(entry.id);
@@ -1652,7 +1681,10 @@ export default function App() {
         const unitX = dx / distance;
         const unitY = dy / distance;
         const stretch = distance - idealEdgeLength;
-        const attraction = stretch * 0.12;
+        const sourceEntry = nodeMetricById.get(sourceId);
+        const targetEntry = nodeMetricById.get(targetId);
+        const attractionScale = ((sourceEntry?.attractionStrength ?? 1) + (targetEntry?.attractionStrength ?? 1)) / 2;
+        const attraction = stretch * 0.12 * attractionScale;
         const sourceForce = forceById.get(sourceId);
         const targetForce = forceById.get(targetId);
         if (!sourceForce || !targetForce) {
@@ -1681,9 +1713,9 @@ export default function App() {
         if (!position || !force) {
           return;
         }
-        const gravity = Math.max(0.001, entry.degree > 0 ? 0.0022 : 0.0008);
-        position.x += (force.x - (position.x - centroidX) * gravity) * cooling;
-        position.y += (force.y - (position.y - centroidY) * gravity) * cooling;
+        const gravity = 0.0012 + (1 - entry.rank) * 0.0018;
+        position.x += (force.x * entry.mobility - (position.x - centroidX) * gravity) * cooling;
+        position.y += (force.y * entry.mobility - (position.y - centroidY) * gravity) * cooling;
         if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) {
           const index = nodeMetrics.findIndex((candidate) => candidate.id === entry.id);
           const radius = baseSpacing * Math.sqrt(Math.max(1, index));
@@ -1732,6 +1764,14 @@ export default function App() {
     }
 
     let movedAny = false;
+    const clamp01 = (value) => Math.max(0, Math.min(1, value));
+    const degreeById = new Map();
+    let maxDegree = 1;
+    nodes.forEach((node) => {
+      const degree = node.degree(false);
+      degreeById.set(node.id(), degree);
+      maxDegree = Math.max(maxDegree, degree);
+    });
 
     for (let pass = 0; pass < maxPasses; pass += 1) {
       let movedThisPass = false;
@@ -1742,6 +1782,7 @@ export default function App() {
         y: node.position('y'),
         halfWidth: Math.max(20, node.width() / 2) + spacing / 2,
         halfHeight: Math.max(16, node.height() / 2) + spacing / 2,
+        rank: clamp01(Math.sqrt((degreeById.get(node.id()) ?? 0) / Math.max(1, maxDegree))),
       }));
 
       cy.batch(() => {
@@ -1770,13 +1811,19 @@ export default function App() {
             if (overlapX < overlapY) {
               const shift = overlapX / 2 + 1.5;
               const direction = dx >= 0 ? 1 : -1;
-              current.x -= direction * shift;
-              other.x += direction * shift;
+              const currentMobility = 1 - current.rank * 0.55;
+              const otherMobility = 1 - other.rank * 0.55;
+              const mobilityTotal = currentMobility + otherMobility || 1;
+              current.x -= direction * shift * (currentMobility / mobilityTotal);
+              other.x += direction * shift * (otherMobility / mobilityTotal);
             } else {
               const shift = overlapY / 2 + 1.5;
               const direction = dy >= 0 ? 1 : -1;
-              current.y -= direction * shift;
-              other.y += direction * shift;
+              const currentMobility = 1 - current.rank * 0.55;
+              const otherMobility = 1 - other.rank * 0.55;
+              const mobilityTotal = currentMobility + otherMobility || 1;
+              current.y -= direction * shift * (currentMobility / mobilityTotal);
+              other.y += direction * shift * (otherMobility / mobilityTotal);
             }
           }
         }

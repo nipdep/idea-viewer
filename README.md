@@ -8,6 +8,17 @@
 
 ## Features
 
+### New feature
+-[x] edge bending and moving feature
+-[ ] updated full OWL view
+-[ ] updated RDF view
+-[ ] area selection and moving feature 
+-[ ] updated side panel
+-[ ] node description pop-up at hovering 
+-[ ] theme update for space optimization
+-[ ] Full OWL and RDF view documentation page  
+
+### All features
 - Upload KG file (`.ttl`, `.rdf`, `.n3`, `.nt`, `.nq`, `.trig`)
 - Upload optional ontology file (`.owl`, `.rdf`, `.ttl`, `.n3`, `.nt`, `.nq`, `.trig`)
 - Merge KG + ontology into one base graph

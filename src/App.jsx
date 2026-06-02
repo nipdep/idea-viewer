@@ -913,18 +913,9 @@ function applyEdgeCurveOverrides(elements, edgeCurveOverrides) {
 }
 
 const EDGE_BEND_DISTANCE_GAIN = 1.35;
-const EDGE_BEND_HANDLE_RENDER_SIZE = 24;
-const EDGE_BEND_HANDLE_ICON_RENDER_SIZE = 18;
-const EDGE_BEND_HANDLE_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-    <path fill="#000000" d="M11 2h2v6h2.7L12 11.7 8.3 8H11V2Z"/>
-    <path fill="#000000" d="M11 22h2v-6h2.7L12 12.3 8.3 16H11v6Z"/>
-    <path fill="#000000" d="M2 11v2h6v2.7L11.7 12 8 8.3V11H2Z"/>
-    <path fill="#000000" d="M22 11v2h-6v2.7L12.3 12 16 8.3V11h6Z"/>
-    <rect x="10" y="7" width="4" height="10" fill="#000000"/>
-    <rect x="7" y="10" width="10" height="4" fill="#000000"/>
-  </svg>
-`)}`;
+const EDGE_BEND_HANDLE_RENDER_SIZE = 10;
+const EDGE_BEND_HANDLE_GLYPH = '✥';
+const EDGE_BEND_HANDLE_CENTER_OFFSET = 12;
 
 function toViewFlags() {
   return {
@@ -1335,7 +1326,6 @@ export default function App() {
   }
 
   function computeCurveHandlePosition(edge) {
-    const override = edgeCurveOverridesRef.current.get(edge.id());
     const sourcePosition = edge.source().position();
     const targetPosition = edge.target().position();
     const dx = targetPosition.x - sourcePosition.x;
@@ -1348,23 +1338,16 @@ export default function App() {
       };
     }
 
-    if (!override) {
-      return edge.midpoint?.() ?? {
-        x: (sourcePosition.x + targetPosition.x) / 2,
-        y: (sourcePosition.y + targetPosition.y) / 2,
-      };
-    }
-
+    const midpoint = edge.midpoint?.() ?? {
+      x: (sourcePosition.x + targetPosition.x) / 2,
+      y: (sourcePosition.y + targetPosition.y) / 2,
+    };
     const length = Math.sqrt(lengthSquared);
-    const weight = override.weight;
-    const distance = override.distance;
-    const baseX = sourcePosition.x + dx * weight;
-    const baseY = sourcePosition.y + dy * weight;
     const normalX = -dy / length;
     const normalY = dx / length;
     return {
-      x: baseX + normalX * distance,
-      y: baseY + normalY * distance,
+      x: midpoint.x + normalX * EDGE_BEND_HANDLE_CENTER_OFFSET,
+      y: midpoint.y + normalY * EDGE_BEND_HANDLE_CENTER_OFFSET,
     };
   }
 
@@ -1389,22 +1372,6 @@ export default function App() {
       edge.removeData('segmentWeights');
       edge.removeData('segmentDistances');
     }
-  }
-
-  function synchronizeEdgeBendHandleVisuals(cy) {
-    const handle = cy.$id('__edge-bend-handle__');
-    if (handle.empty()) {
-      return;
-    }
-
-    const zoom = Math.max(cy.zoom() || 1, 0.0001);
-    handle.style({
-      width: `${EDGE_BEND_HANDLE_RENDER_SIZE / zoom}px`,
-      height: `${EDGE_BEND_HANDLE_RENDER_SIZE / zoom}px`,
-      'background-width': `${EDGE_BEND_HANDLE_ICON_RENDER_SIZE / zoom}px`,
-      'background-height': `${EDGE_BEND_HANDLE_ICON_RENDER_SIZE / zoom}px`,
-      padding: `${1 / zoom}px`,
-    });
   }
 
   function synchronizeEdgeBendHandle(cy, activeEdgeId = selectedEdgeId) {
@@ -1438,19 +1405,17 @@ export default function App() {
         group: 'nodes',
         data: {
           id: handleId,
-          label: '',
+          label: EDGE_BEND_HANDLE_GLYPH,
           edgeBendHandle: 1,
           ownerEdgeId: activeEdgeId,
         },
         position,
       });
-      synchronizeEdgeBendHandleVisuals(cy);
       return;
     }
 
     existingHandle.data('ownerEdgeId', activeEdgeId);
     existingHandle.position(position);
-    synchronizeEdgeBendHandleVisuals(cy);
   }
 
   function applySpiralSeedLayout(cy) {
@@ -1458,18 +1423,19 @@ export default function App() {
     if (nodes.length === 0) {
       return false;
     }
+    const degreeById = buildVisibleIncidentEdgeCounts(cy, nodes);
 
     const nodeEntries = nodes
       .map((node) => ({
         id: node.id(),
         node,
-        degree: node.degree(false),
+        degree: degreeById.get(node.id()) ?? 0,
         span: Math.max(node.width(), node.height()),
       }))
       .sort((left, right) => right.degree - left.degree || left.id.localeCompare(right.id));
-    const maxDegree = Math.max(1, ...nodeEntries.map((entry) => entry.degree));
+    const normalizeRank = buildMinMaxRankNormalizer(nodeEntries.map((entry) => entry.degree));
     nodeEntries.forEach((entry) => {
-      entry.rank = Math.min(1, Math.max(0, entry.degree / maxDegree));
+      entry.rank = normalizeRank(entry.degree);
     });
     const spacing = Math.max(
       92,
@@ -1496,13 +1462,53 @@ export default function App() {
     return true;
   }
 
-  function applyMagneticInitialLayout(cy) {
+  function buildVisibleIncidentEdgeCounts(cy, nodes = cy.nodes(':visible').not('[edgeAnchor = 1]')) {
+    const degreeById = new Map();
+    nodes.forEach((node) => {
+      degreeById.set(node.id(), 0);
+    });
+
+    cy.edges(':visible')
+      .not('[edgeAnchorTether = 1]')
+      .not('[edgeAttachedConnector = 1]')
+      .not('[owlRelationConnector = 1]')
+      .forEach((edge) => {
+        const sourceId = edge.source().id();
+        const targetId = edge.target().id();
+        if (degreeById.has(sourceId)) {
+          degreeById.set(sourceId, (degreeById.get(sourceId) ?? 0) + 1);
+        }
+        if (degreeById.has(targetId) && targetId !== sourceId) {
+          degreeById.set(targetId, (degreeById.get(targetId) ?? 0) + 1);
+        }
+      });
+
+    return degreeById;
+  }
+
+  function buildMinMaxRankNormalizer(values) {
+    const numericValues = Array.from(values).filter((value) => Number.isFinite(value));
+    const minValue = numericValues.length > 0 ? Math.min(...numericValues) : 0;
+    const maxValue = numericValues.length > 0 ? Math.max(...numericValues) : 0;
+    const span = maxValue - minValue;
+
+    if (!Number.isFinite(span) || span <= 0) {
+      return () => 0;
+    }
+
+    return (value) => Math.max(0, Math.min(1, (value - minValue) / span));
+  }
+
+  function applyMagneticInitialLayout(cy, options = {}) {
     const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
     if (nodes.length < 2) {
       return false;
     }
 
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const preserveCurrentPositions = Boolean(options.preserveCurrentPositions);
+    const compactness = Number.isFinite(options.compactness) ? options.compactness : 1;
+    const iterationBoost = Number.isFinite(options.iterationBoost) ? options.iterationBoost : 1;
 
     const edges = cy
       .edges(':visible')
@@ -1532,6 +1538,11 @@ export default function App() {
       });
     });
 
+    const edgeCountById = new Map();
+    nodes.forEach((node) => {
+      edgeCountById.set(node.id(), 0);
+    });
+
     edges.forEach((edge) => {
       const sourceId = edge.source().id();
       const targetId = edge.target().id();
@@ -1540,20 +1551,28 @@ export default function App() {
       }
       adjacency.get(sourceId)?.add(targetId);
       adjacency.get(targetId)?.add(sourceId);
+      edgeCountById.set(sourceId, (edgeCountById.get(sourceId) ?? 0) + 1);
+      if (targetId !== sourceId) {
+        edgeCountById.set(targetId, (edgeCountById.get(targetId) ?? 0) + 1);
+      }
     });
 
     nodeMetrics.forEach((entry) => {
-      entry.degree = adjacency.get(entry.id)?.size ?? 0;
+      entry.degree = edgeCountById.get(entry.id) ?? 0;
     });
 
-    const maxDegree = Math.max(1, ...nodeMetrics.map((entry) => entry.degree));
+    const normalizeRank = buildMinMaxRankNormalizer(nodeMetrics.map((entry) => entry.degree));
     nodeMetrics.forEach((entry) => {
-      const normalizedRank = clamp(Math.sqrt(entry.degree / maxDegree), 0, 1);
+      const normalizedRank = clamp(normalizeRank(entry.degree), 0, 1);
       entry.rank = normalizedRank;
-      entry.repulsionStrength = 0.8 + normalizedRank * 1.7;
-      entry.attractionStrength = 1.18 - normalizedRank * 0.52;
+      entry.repulsionStrength = 1.2 + normalizedRank * 2.35;
+      entry.attractionStrength = 1.18 - normalizedRank * 0.9;
       entry.mass = 1.05 + normalizedRank * 2.35;
       entry.mobility = 1 / entry.mass;
+      entry.completelyRepulsiveRadius = Math.max(
+        44,
+        Math.max(entry.width, entry.height) * 0.62 + 0.25 * normalizedRank * maxNodeSpan,
+      );
     });
 
     nodeMetrics.sort((left, right) => {
@@ -1566,12 +1585,24 @@ export default function App() {
     const nodeMetricById = new Map(nodeMetrics.map((entry) => [entry.id, entry]));
 
     const baseSpacing = Math.max(92, Math.round(maxNodeSpan + 36));
-    const idealEdgeLength = Math.max(56, Math.round(baseSpacing * 0.58));
-    const repulsionRadius = Math.max(baseSpacing * 0.9, maxNodeSpan * 1.2);
+    const idealEdgeLength = Math.max(48, Math.round(baseSpacing * 0.58 * compactness));
+    const repulsionRadius = Math.max(
+      baseSpacing * 0.9,
+      maxNodeSpan * 1.2,
+      ...nodeMetrics.map((entry) => entry.completelyRepulsiveRadius * 2 + maxNodeSpan * 0.85),
+    );
     const goldenAngle = Math.PI * (3 - Math.sqrt(5));
     const positions = new Map();
 
     nodeMetrics.forEach((entry, index) => {
+      if (preserveCurrentPositions) {
+        const currentPosition = entry.node.position();
+        if (Number.isFinite(currentPosition.x) && Number.isFinite(currentPosition.y)) {
+          positions.set(entry.id, { x: currentPosition.x, y: currentPosition.y });
+          return;
+        }
+      }
+
       if (index === 0) {
         positions.set(entry.id, { x: 0, y: 0 });
         return;
@@ -1585,7 +1616,7 @@ export default function App() {
       });
     });
 
-    const iterationCount = nodes.length > 160 ? 85 : 115;
+    const iterationCount = Math.max(40, Math.round((nodes.length > 160 ? 85 : 115) * iterationBoost));
     const bucketSize = repulsionRadius;
 
     for (let iteration = 0; iteration < iterationCount; iteration += 1) {
@@ -1632,22 +1663,38 @@ export default function App() {
                 distance = Math.hypot(dx, dy);
               }
 
+              const completeRepulsionDistance =
+                entry.completelyRepulsiveRadius + other.completelyRepulsiveRadius;
+              const repulsionStartDistance = Math.max(completeRepulsionDistance + 1, completeRepulsionDistance + maxNodeSpan * 0.1);
+
               if (distance > repulsionRadius) {
                 continue;
               }
 
               const overlapDistance =
                 Math.max(entry.width, entry.height) / 2 + Math.max(other.width, other.height) / 2 + 12;
-              const closeness = Math.max(0, (repulsionRadius - distance) / repulsionRadius);
+              const closeness = Math.max(
+                0,
+                (repulsionRadius - Math.max(distance, repulsionStartDistance)) /
+                  Math.max(1, repulsionRadius - repulsionStartDistance),
+              );
               const rankCrowdingBoost = 1 + Math.max(entry.rank, other.rank) * 0.95;
+              const exclusionIntrusion = Math.max(0, completeRepulsionDistance - distance);
+              const exclusionBoost =
+                exclusionIntrusion > 0
+                  ? 3.8 + exclusionIntrusion / Math.max(1, completeRepulsionDistance * 0.22)
+                  : 0;
               const overlapBoost =
                 distance < overlapDistance
                   ? 1.7 + (overlapDistance - distance) / overlapDistance + rankCrowdingBoost * 0.2
                   : 0.55 + rankCrowdingBoost * 0.12;
               const pairRepulsionScale =
                 ((entry.repulsionStrength + other.repulsionStrength) / 2) *
-                (1 + ((entry.rank + other.rank) / 2) * 0.55);
-              const repulsion = closeness * closeness * 9.5 * overlapBoost * pairRepulsionScale;
+                (1 + ((entry.rank + other.rank) / 2) * 0.95);
+              const distanceFromRepulsionStart = Math.max(0, distance - repulsionStartDistance);
+              const repulsion =
+                (closeness * closeness * 9.5 * overlapBoost + exclusionBoost + 1 / (1 + distanceFromRepulsionStart * 0.018)) *
+                pairRepulsionScale;
               const unitX = dx / distance;
               const unitY = dy / distance;
               const entryForce = forceById.get(entry.id);
@@ -1680,11 +1727,12 @@ export default function App() {
 
         const unitX = dx / distance;
         const unitY = dy / distance;
-        const stretch = distance - idealEdgeLength;
         const sourceEntry = nodeMetricById.get(sourceId);
         const targetEntry = nodeMetricById.get(targetId);
+        const targetEdgeLength = idealEdgeLength * (0.92 + ((sourceEntry?.rank ?? 0) + (targetEntry?.rank ?? 0)) * 0.18);
+        const stretch = distance - targetEdgeLength;
         const attractionScale = ((sourceEntry?.attractionStrength ?? 1) + (targetEntry?.attractionStrength ?? 1)) / 2;
-        const attraction = stretch * 0.12 * attractionScale;
+        const attraction = stretch * 0.16 * attractionScale;
         const sourceForce = forceById.get(sourceId);
         const targetForce = forceById.get(targetId);
         if (!sourceForce || !targetForce) {
@@ -1765,13 +1813,8 @@ export default function App() {
 
     let movedAny = false;
     const clamp01 = (value) => Math.max(0, Math.min(1, value));
-    const degreeById = new Map();
-    let maxDegree = 1;
-    nodes.forEach((node) => {
-      const degree = node.degree(false);
-      degreeById.set(node.id(), degree);
-      maxDegree = Math.max(maxDegree, degree);
-    });
+    const degreeById = buildVisibleIncidentEdgeCounts(cy, nodes);
+    const normalizeRank = buildMinMaxRankNormalizer(degreeById.values());
 
     for (let pass = 0; pass < maxPasses; pass += 1) {
       let movedThisPass = false;
@@ -1782,7 +1825,7 @@ export default function App() {
         y: node.position('y'),
         halfWidth: Math.max(20, node.width() / 2) + spacing / 2,
         halfHeight: Math.max(16, node.height() / 2) + spacing / 2,
-        rank: clamp01(Math.sqrt((degreeById.get(node.id()) ?? 0) / Math.max(1, maxDegree))),
+        rank: clamp01(normalizeRank(degreeById.get(node.id()) ?? 0)),
       }));
 
       cy.batch(() => {
@@ -1840,6 +1883,182 @@ export default function App() {
         break;
       }
     }
+
+    return movedAny;
+  }
+
+  function enforceRankAwareSpacing(cy, maxPasses = 10, basePadding = 14) {
+    const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
+    if (nodes.length < 2) {
+      return false;
+    }
+
+    const clamp01 = (value) => Math.max(0, Math.min(1, value));
+    const degreeById = buildVisibleIncidentEdgeCounts(cy, nodes);
+    const normalizeRank = buildMinMaxRankNormalizer(degreeById.values());
+    const maxNodeSpan = nodes.reduce((largest, node) => Math.max(largest, Math.max(node.width(), node.height())), 44);
+
+    let movedAny = false;
+
+    for (let pass = 0; pass < maxPasses; pass += 1) {
+      let movedThisPass = false;
+      const nodeEntries = nodes.map((node) => ({
+        id: node.id(),
+        node,
+        x: node.position('x'),
+        y: node.position('y'),
+        halfWidth: Math.max(20, node.width() / 2),
+        halfHeight: Math.max(16, node.height() / 2),
+        rank: clamp01(normalizeRank(degreeById.get(node.id()) ?? 0)),
+        completelyRepulsiveRadius:
+          Math.max(
+            44,
+            Math.max(node.width(), node.height()) * 0.62 + clamp01(normalizeRank(degreeById.get(node.id()) ?? 0)) * maxNodeSpan,
+          ),
+      }));
+
+      cy.batch(() => {
+        for (let index = 0; index < nodeEntries.length; index += 1) {
+          const current = nodeEntries[index];
+
+          for (let otherIndex = index + 1; otherIndex < nodeEntries.length; otherIndex += 1) {
+            const other = nodeEntries[otherIndex];
+            let dx = other.x - current.x;
+            let dy = other.y - current.y;
+            let distance = Math.hypot(dx, dy);
+            if (distance < 0.001) {
+              dx = 0.01;
+              dy = 0.01;
+              distance = Math.hypot(dx, dy);
+            }
+
+            const pairRank = Math.max(current.rank, other.rank);
+            const desiredDistance =
+              Math.max(
+                current.completelyRepulsiveRadius + other.completelyRepulsiveRadius,
+                Math.max(current.halfWidth + other.halfWidth, current.halfHeight + other.halfHeight) +
+                  basePadding +
+                  pairRank * 42,
+              );
+            if (distance >= desiredDistance) {
+              continue;
+            }
+
+            movedThisPass = true;
+            movedAny = true;
+            const unitX = dx / distance;
+            const unitY = dy / distance;
+            const shift = (desiredDistance - distance) / 2;
+            const currentMobility = 1 - current.rank * 0.65;
+            const otherMobility = 1 - other.rank * 0.65;
+            const mobilityTotal = currentMobility + otherMobility || 1;
+            current.x -= unitX * shift * (currentMobility / mobilityTotal);
+            current.y -= unitY * shift * (currentMobility / mobilityTotal);
+            other.x += unitX * shift * (otherMobility / mobilityTotal);
+            other.y += unitY * shift * (otherMobility / mobilityTotal);
+          }
+        }
+
+        nodeEntries.forEach((entry) => {
+          entry.node.position({
+            x: entry.x,
+            y: entry.y,
+          });
+        });
+      });
+
+      if (!movedThisPass) {
+        break;
+      }
+    }
+
+    return movedAny;
+  }
+
+  function expandHighRankCore(cy, options = {}) {
+    const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
+    if (nodes.length < 4) {
+      return false;
+    }
+
+    const degreeById = buildVisibleIncidentEdgeCounts(cy, nodes);
+    const clamp01 = (value) => Math.max(0, Math.min(1, value));
+    const normalizeRank = buildMinMaxRankNormalizer(degreeById.values());
+    const maxNodes = Number.isFinite(options.maxNodes) ? options.maxNodes : 8;
+    const rankThreshold = Number.isFinite(options.rankThreshold) ? options.rankThreshold : 0.72;
+    const blend = Number.isFinite(options.blend) ? options.blend : 0.42;
+    const minSpacing = Number.isFinite(options.minSpacing) ? options.minSpacing : 124;
+
+    const ranked = nodes
+      .map((node) => {
+        const degree = degreeById.get(node.id()) ?? 0;
+        const rank = clamp01(normalizeRank(degree));
+        return {
+          id: node.id(),
+          node,
+          degree,
+          rank,
+          x: node.position('x'),
+          y: node.position('y'),
+          span: Math.max(node.width(), node.height()),
+        };
+      })
+      .sort((left, right) => right.degree - left.degree || left.id.localeCompare(right.id));
+
+    const topNodes = ranked
+      .filter((entry, index) => entry.rank >= rankThreshold || index < Math.min(maxNodes, 5))
+      .slice(0, maxNodes);
+
+    if (topNodes.length < 3) {
+      return false;
+    }
+
+    let centroidX = 0;
+    let centroidY = 0;
+    topNodes.forEach((entry) => {
+      centroidX += entry.x;
+      centroidY += entry.y;
+    });
+    centroidX /= topNodes.length;
+    centroidY /= topNodes.length;
+
+    const maxSpan = Math.max(...topNodes.map((entry) => entry.span));
+    const ringRadius = Math.max(
+      140,
+      (topNodes.length * minSpacing) / (2 * Math.PI),
+      maxSpan * 1.15,
+    );
+
+    const withAngles = topNodes.map((entry, index) => {
+      const dx = entry.x - centroidX;
+      const dy = entry.y - centroidY;
+      const angle = Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001 ? (index / topNodes.length) * Math.PI * 2 : Math.atan2(dy, dx);
+      return {
+        ...entry,
+        angle,
+      };
+    });
+
+    withAngles.sort((left, right) => left.angle - right.angle);
+
+    let movedAny = false;
+    cy.batch(() => {
+      withAngles.forEach((entry, index) => {
+        const targetAngle = (index / withAngles.length) * Math.PI * 2;
+        const targetRadius = ringRadius * (0.96 + entry.rank * 0.28);
+        const targetX = centroidX + Math.cos(targetAngle) * targetRadius;
+        const targetY = centroidY + Math.sin(targetAngle) * targetRadius;
+        const nextX = entry.x + (targetX - entry.x) * blend;
+        const nextY = entry.y + (targetY - entry.y) * blend;
+        if (Math.abs(nextX - entry.x) > 0.5 || Math.abs(nextY - entry.y) > 0.5) {
+          movedAny = true;
+        }
+        entry.node.position({
+          x: nextX,
+          y: nextY,
+        });
+      });
+    });
 
     return movedAny;
   }
@@ -2290,24 +2509,23 @@ export default function App() {
         {
           selector: 'node[edgeBendHandle = 1]',
           style: {
-            label: '',
+            label: 'data(label)',
             shape: 'round-rectangle',
             width: `${EDGE_BEND_HANDLE_RENDER_SIZE}px`,
             height: `${EDGE_BEND_HANDLE_RENDER_SIZE}px`,
-            'background-color': '#ffffff',
-            'background-opacity': 0.96,
-            'background-image': EDGE_BEND_HANDLE_ICON,
-            'background-image-opacity': 1,
-            'background-width': `${EDGE_BEND_HANDLE_ICON_RENDER_SIZE}px`,
-            'background-height': `${EDGE_BEND_HANDLE_ICON_RENDER_SIZE}px`,
-            'background-fit': 'contain',
-            'background-repeat': 'no-repeat',
-            'background-position-x': '50%',
-            'background-position-y': '50%',
+            'background-color': '#fffdf9',
+            'background-opacity': 0.72,
             'border-width': 0.8,
-            'border-color': '#d8d8d8',
+            'border-color': '#d7d2ca',
+            color: '#1c1814',
+            'font-size': 11,
+            'font-family': '"Avenir Next", "Segoe UI Symbol", "Arial Unicode MS", sans-serif',
+            'font-weight': 700,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-margin-x': 0,
+            'text-margin-y': 0,
             opacity: 1,
-            'padding': '2px',
             'overlay-opacity': 0,
             'z-index-compare': 'manual',
             'z-compound-depth': 'top',
@@ -2819,7 +3037,6 @@ export default function App() {
     cy.on('pan zoom', () => {
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
-      synchronizeEdgeBendHandleVisuals(cy);
     });
 
     const container = cy.container();
@@ -3077,8 +3294,28 @@ export default function App() {
         if (!hasFiniteNodePositions(cy)) {
           applySpiralSeedLayout(cy);
         }
+        if (useMagneticInitialLayout) {
+          applyMagneticInitialLayout(cy, {
+            preserveCurrentPositions: true,
+            compactness: 0.96,
+            iterationBoost: 0.82,
+          });
+          enforceRankAwareSpacing(cy, 12, 16);
+          applyMagneticInitialLayout(cy, {
+            preserveCurrentPositions: true,
+            compactness: 0.9,
+            iterationBoost: 0.62,
+          });
+          expandHighRankCore(cy, {
+            maxNodes: 9,
+            rankThreshold: 0.7,
+            blend: 0.46,
+            minSpacing: 128,
+          });
+        }
         resolveNodeOverlaps(cy, useMagneticInitialLayout ? 20 : 12, useMagneticInitialLayout ? 26 : 18);
         if (useMagneticInitialLayout) {
+          enforceRankAwareSpacing(cy, 8, 14);
           resolveNodeOverlaps(cy, 10, 24);
         }
         synchronizeEdgeAnchorPositions(cy);
@@ -3099,6 +3336,26 @@ export default function App() {
           layoutCompleted = true;
           if (!hasFiniteNodePositions(cy)) {
             applySpiralSeedLayout(cy);
+          }
+          if (useMagneticInitialLayout) {
+            applyMagneticInitialLayout(cy, {
+              preserveCurrentPositions: true,
+              compactness: 0.96,
+              iterationBoost: 0.82,
+            });
+            enforceRankAwareSpacing(cy, 12, 16);
+            applyMagneticInitialLayout(cy, {
+              preserveCurrentPositions: true,
+              compactness: 0.9,
+              iterationBoost: 0.62,
+            });
+            expandHighRankCore(cy, {
+              maxNodes: 9,
+              rankThreshold: 0.7,
+              blend: 0.46,
+              minSpacing: 128,
+            });
+            resolveNodeOverlaps(cy, 20, 26);
           }
           synchronizeEdgeAnchorPositions(cy);
           synchronizeEdgeBendHandle(cy);

@@ -1330,8 +1330,6 @@ function buildStatementAnalysis(quads, store, labelIndex) {
         [OWL_SOME_VALUES_FROM, 'some', 'has some'],
         [OWL_ALL_VALUES_FROM, 'only', 'has only'],
         [OWL_HAS_VALUE, 'value', 'has value'],
-        [OWL_ON_CLASS, 'only', 'is restricted to class'],
-        [OWL_ON_DATA_RANGE, 'only', 'is restricted to data range'],
       ];
       for (const [predicateIri, operator, nlOperator] of valuePredicates) {
         const valueQuad = findObjectQuad(predicateIri);

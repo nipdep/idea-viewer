@@ -2717,6 +2717,13 @@ export default function App() {
           },
         },
         {
+          selector: 'edge[owlSynthesized = 1][owlEdgeStyle = "dotted"]',
+          style: {
+            label: '',
+            'source-label': '',
+          },
+        },
+        {
           selector: 'edge[owlSynthesized = 1][owlEdgeStyle = "straight"], edge[owlSynthesized = 1][owlEdgeStyle = "dashed"]',
           style: {
             width: 1.9,

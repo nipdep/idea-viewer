@@ -217,29 +217,127 @@ function applySelfLoopGeometry(graphData, elements) {
 }
 
 function connectorHoverLabel(data) {
+  const statementText = String(data?.connectorAxiomText || '').trim();
+  if (statementText) {
+    return statementText;
+  }
+
   const blankExpressionType = String(data?.blankExpressionType || '');
   if (blankExpressionType === 'Intersection') {
-    return 'Intersection connector';
+    return 'Intersection';
   }
   if (blankExpressionType === 'Union') {
-    return 'Union connector';
+    return 'Union';
   }
   if (blankExpressionType === 'Complement') {
-    return 'Complement connector';
+    return 'Complement';
   }
   if (blankExpressionType === 'OneOf') {
-    return 'Enumeration connector';
+    return 'Enumeration';
   }
   if (data?.entityCategory === 'all-different' && data?.label === '≠') {
-    return 'AllDifferent connector';
+    return 'AllDifferent';
   }
   if (data?.entityCategory === 'all-different' && data?.label === '≢') {
-    return 'AllDisjointClasses connector';
+    return 'AllDisjointClasses';
   }
   if (data?.entityCategory === 'all-different' && data?.label === '⊎') {
-    return 'DisjointUnion connector';
+    return 'DisjointUnion';
   }
   return data?.fullLabel || data?.label || '';
+}
+
+function findProcessedStatements(graphData, nodeIds, predicateFilter = null, textIncludes = []) {
+  const seen = new Set();
+  const rows = [];
+
+  for (const nodeId of nodeIds) {
+    const buckets = getNodeStatementBuckets(graphData, nodeId);
+    for (const row of buckets.processed) {
+      if (seen.has(row.id)) {
+        continue;
+      }
+      if (predicateFilter && !predicateFilter.has(row.predicateId)) {
+        continue;
+      }
+      if (textIncludes.length > 0 && !textIncludes.every((needle) => row.manchester.includes(needle))) {
+        continue;
+      }
+      seen.add(row.id);
+      rows.push(row.manchester);
+    }
+  }
+
+  return rows;
+}
+
+function manchesterNodeText(graphData, nodeId) {
+  const node = graphData?.nodeMap?.get(nodeId);
+  if (!node) {
+    return compactIri(nodeId);
+  }
+  return compactIri(node.iri || node.id || node.fullLabel || node.label || nodeId);
+}
+
+function relationManchesterKeyword(predicate) {
+  if (predicate === RDFS_SUBCLASS_OF) {
+    return 'SubClassOf';
+  }
+  if (predicate === OWL_EQUIVALENT_CLASS) {
+    return 'EquivalentTo';
+  }
+  if (predicate === OWL_DISJOINT_WITH) {
+    return 'DisjointWith';
+  }
+  return compactIri(predicate);
+}
+
+function expressionMembersManchester(graphData, memberIds, operator) {
+  return memberIds.map((memberId) => manchesterNodeText(graphData, memberId)).join(` ${operator} `);
+}
+
+function edgeHoverText(graphData, data) {
+  const defaultText = data?.predicateLabel || compactIri(data?.predicate) || '';
+  if (!data?.source) {
+    return defaultText;
+  }
+
+  const compactPredicate = compactIri(data.predicate);
+  const sourceBuckets = getNodeStatementBuckets(graphData, data.source);
+  const predicateBuckets = getNodeStatementBuckets(graphData, data.predicate);
+
+  if (data.axiomKind === 'Restriction' || data.axiomKind === 'ClassExpressionRestriction') {
+    const matches = sourceBuckets.processed.filter(
+      (row) =>
+        row.predicateId !== RDFS_DOMAIN &&
+        row.predicateId !== RDFS_RANGE &&
+        (row.predicateId === data.predicate || row.manchester.includes(compactPredicate)),
+    );
+    if (matches.length > 0) {
+      return matches.map((row) => row.manchester).join('\n');
+    }
+  }
+
+  const directSourceMatches = sourceBuckets.processed.filter(
+    (row) =>
+      row.predicateId === data.predicate &&
+      (!data.target || !row.targetId || row.targetId === data.target),
+  );
+  if (directSourceMatches.length > 0) {
+    return directSourceMatches.map((row) => row.manchester).join('\n');
+  }
+
+  const directPredicateMatches = predicateBuckets.processed.filter(
+    (row) =>
+      row.predicateId !== RDFS_DOMAIN &&
+      row.predicateId !== RDFS_RANGE &&
+      (!data.target || !row.targetId || row.targetId === data.target),
+  );
+  if (directPredicateMatches.length > 0) {
+    return directPredicateMatches.map((row) => row.manchester).join('\n');
+  }
+
+  return defaultText;
 }
 
 function applyHoverMetadata(graphData, elements) {
@@ -251,7 +349,7 @@ function applyHoverMetadata(graphData, elements) {
 
     const next = cloneElement(element);
     if (data.source) {
-      next.data.hoverText = data.predicateLabel || compactIri(data.predicate) || '';
+      next.data.hoverText = edgeHoverText(graphData, data);
       return next;
     }
 
@@ -261,8 +359,12 @@ function applyHoverMetadata(graphData, elements) {
     }
 
     const buckets = getNodeStatementBuckets(graphData, data.id);
-    if (buckets.processed.length > 0) {
-      next.data.hoverText = buckets.processed.map((row) => row.manchester).join('\n');
+    const hoverStatements =
+      data.ontologyKind === 'object-property' || data.ontologyKind === 'data-property' || data.ontologyKind === 'annotation-property'
+        ? buckets.processed.filter((row) => row.predicateId !== RDFS_DOMAIN && row.predicateId !== RDFS_RANGE)
+        : buckets.processed;
+    if (hoverStatements.length > 0) {
+      next.data.hoverText = hoverStatements.map((row) => row.manchester).join('\n');
     } else {
       next.data.hoverText = data.fullLabel || data.label || '';
     }
@@ -1005,8 +1107,12 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
       hiddenNodeIds.add(sourceId);
       hiddenNodeIds.add(membersEdge.target);
       const markerId = `owl-all-different:${sourceId}`;
+      const markerData = makeAxiomMarkerNodeData(markerId, '≠');
+      markerData.connectorAxiomText = `DifferentIndividuals(${members
+        .map((memberId) => manchesterNodeText(graphData, memberId))
+        .join(', ')})`;
       synthesizedNodes.push({
-        data: makeAxiomMarkerNodeData(markerId, '≠'),
+        data: markerData,
       });
       for (const memberId of members) {
         synthesizedEdges.push({
@@ -1044,8 +1150,12 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
       hiddenNodeIds.add(sourceId);
       hiddenNodeIds.add(membersEdge.target);
       const markerId = `owl-all-disjoint-classes:${sourceId}`;
+      const markerData = makeAxiomMarkerNodeData(markerId, '≢');
+      markerData.connectorAxiomText = `DisjointClasses(${members
+        .map((memberId) => manchesterNodeText(graphData, memberId))
+        .join(', ')})`;
       synthesizedNodes.push({
-        data: makeAxiomMarkerNodeData(markerId, '≢'),
+        data: markerData,
       });
       for (const memberId of members) {
         synthesizedEdges.push({
@@ -1077,8 +1187,14 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
 
     hiddenNodeIds.add(edge.target);
     const markerId = `owl-disjoint-union:${edge.source}:${edge.target}`;
+    const markerData = makeAxiomMarkerNodeData(markerId, '⊎');
+    markerData.connectorAxiomText = `${manchesterNodeText(graphData, edge.source)} DisjointUnionOf ${expressionMembersManchester(
+      graphData,
+      members,
+      'or',
+    )}`;
     synthesizedNodes.push({
-      data: makeAxiomMarkerNodeData(markerId, '⊎'),
+      data: markerData,
     });
     synthesizedEdges.push({
       data: {
@@ -1138,8 +1254,13 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
     }
 
     const sourceNode = graphData?.nodeMap?.get(edge.source);
-    const anchorSourceIds = visibleNodeIds.has(edge.source)
-      ? [edge.source]
+    const anchorDescriptors = visibleNodeIds.has(edge.source)
+      ? [
+          {
+            sourceId: edge.source,
+            relationPredicate: OWL_EQUIVALENT_CLASS,
+          },
+        ]
       : sourceNode?.termType === 'BlankNode'
         ? (incomingByTarget.get(edge.source) ?? [])
             .filter(
@@ -1149,10 +1270,13 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
                   incomingEdge.predicate === RDFS_SUBCLASS_OF ||
                   incomingEdge.predicate === OWL_DISJOINT_WITH),
             )
-            .map((incomingEdge) => incomingEdge.source)
+            .map((incomingEdge) => ({
+              sourceId: incomingEdge.source,
+              relationPredicate: incomingEdge.predicate,
+            }))
         : [];
 
-    if (anchorSourceIds.length === 0) {
+    if (anchorDescriptors.length === 0) {
       continue;
     }
 
@@ -1210,10 +1334,37 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
       }
     }
 
-    for (const anchorSourceId of anchorSourceIds) {
+    for (const anchorDescriptor of anchorDescriptors) {
+      const anchorSourceId = anchorDescriptor.sourceId;
       const helperNodeId = `owl-expr:${config.kind}:${anchorSourceId}:${edge.source}:${edge.target}`;
+      const expressionNodeData = makeExpressionNodeData(helperNodeId, config.label, config.kind);
+      const relationKeyword = relationManchesterKeyword(anchorDescriptor.relationPredicate);
+      const sourceText = manchesterNodeText(graphData, anchorSourceId);
+      if (config.kind === 'Intersection') {
+        expressionNodeData.connectorAxiomText = `${sourceText} ${relationKeyword} ${expressionMembersManchester(
+          graphData,
+          memberIds,
+          'and',
+        )}`;
+      } else if (config.kind === 'Union') {
+        expressionNodeData.connectorAxiomText = `${sourceText} ${relationKeyword} ${expressionMembersManchester(
+          graphData,
+          memberIds,
+          'or',
+        )}`;
+      } else if (config.kind === 'Complement') {
+        expressionNodeData.connectorAxiomText = `${sourceText} ${relationKeyword} not ${expressionMembersManchester(
+          graphData,
+          memberIds,
+          'or',
+        )}`;
+      } else if (config.kind === 'OneOf') {
+        expressionNodeData.connectorAxiomText = `${sourceText} ${relationKeyword} { ${memberIds
+          .map((memberId) => manchesterNodeText(graphData, memberId))
+          .join(', ')} }`;
+      }
       synthesizedNodes.push({
-        data: makeExpressionNodeData(helperNodeId, config.label, config.kind),
+        data: expressionNodeData,
       });
       synthesizedEdges.push({
         data: {

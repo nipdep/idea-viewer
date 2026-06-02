@@ -38,7 +38,7 @@ const FIXED_SPARQL_PREFIXES = Object.freeze([
   { id: 'fixed-foaf', prefix: 'foaf', iri: 'http://xmlns.com/foaf/0.1/' },
   { id: 'fixed-dct', prefix: 'dct', iri: 'http://purl.org/dc/terms/' },
 ]);
-const DEFAULT_STATUS = 'Upload KG and/or ontology files to initialize the graph.';
+const DEFAULT_STATUS = 'Upload RDF/OWL files to initialize the graph.';
 const GRAPH_PROJECTION_MODES = {
   OWL: GRAPH_VIEW_MODES.OWL,
   RDF: GRAPH_VIEW_MODES.RDF,
@@ -977,8 +977,7 @@ export default function App() {
   const suppressNextTapRef = useRef(false);
   const edgeCurveOverridesRef = useRef(new Map());
 
-  const [kgFiles, setKgFiles] = useState([]);
-  const [ontologyFiles, setOntologyFiles] = useState([]);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [graphData, setGraphData] = useState(null);
   const [visibleElements, setVisibleElements] = useState([]);
 
@@ -2526,6 +2525,15 @@ export default function App() {
           },
         },
         {
+          selector: 'node[kind = "blank"][blankExpressionType != ""]',
+          style: {
+            'background-color': '#fcfaf6',
+            'border-color': '#9aa0a4',
+            'border-width': 1.2,
+            color: '#5c4a39',
+          },
+        },
+        {
           selector: 'node[owlHelper = 1]',
           style: {
             label: '',
@@ -2607,6 +2615,24 @@ export default function App() {
             'text-halign': 'center',
             'text-margin-y': -20,
             padding: '16px',
+          },
+        },
+        {
+          selector: 'node[owlCollectionConnector = 1]',
+          style: {
+            shape: 'ellipse',
+            width: 42,
+            height: 42,
+            'background-color': '#fcfaf6',
+            'border-color': '#9aa0a4',
+            'border-width': 1.2,
+            color: '#5c4a39',
+            'font-size': 16,
+            'font-weight': 700,
+            'text-max-width': 34,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-wrap': 'none',
           },
         },
         {
@@ -3719,8 +3745,7 @@ export default function App() {
 
   function clearLoadedGraph() {
     edgeCurveOverridesRef.current = new Map();
-    setKgFiles([]);
-    setOntologyFiles([]);
+    setUploadedFiles([]);
     setGraphData(null);
     setVisibleElements([]);
     setSelectedClassIris([]);
@@ -3739,32 +3764,20 @@ export default function App() {
     setStatus(DEFAULT_STATUS);
   }
 
-  function handleKgFileSelection(files) {
+  function handleFileSelection(files) {
     if (!Array.isArray(files) || files.length === 0) {
       return;
     }
 
-    if (kgFiles.length === 0 && ontologyFiles.length === 0) {
-      setGraphProjectionMode(GRAPH_PROJECTION_MODES.RDF);
-    }
-
-    setKgFiles((current) => mergeSelectedFiles(current, files));
-  }
-
-  function handleOntologyFileSelection(files) {
-    if (!Array.isArray(files) || files.length === 0) {
-      return;
-    }
-
-    if (kgFiles.length === 0 && ontologyFiles.length === 0) {
+    if (uploadedFiles.length === 0) {
       setGraphProjectionMode(GRAPH_PROJECTION_MODES.OWL);
     }
 
-    setOntologyFiles((current) => mergeSelectedFiles(current, files));
+    setUploadedFiles((current) => mergeSelectedFiles(current, files));
   }
 
   useEffect(() => {
-    if (kgFiles.length === 0 && ontologyFiles.length === 0) {
+    if (uploadedFiles.length === 0) {
       setGraphData(null);
       setVisibleElements([]);
       setSelectedClassIris([]);
@@ -3790,20 +3803,12 @@ export default function App() {
       setOntologyMetadataRows([]);
 
       try {
-        const kgQuadGroups = await Promise.all(
-          kgFiles.map(async (file) => {
-            const text = await file.text();
-            return parseRdfText(text, file.name);
-          }),
-        );
-        const ontologyParsedFiles = await Promise.all(
-          ontologyFiles.map(async (file) => {
+        const parsedFiles = await Promise.all(
+          uploadedFiles.map(async (file) => {
             const text = await file.text();
             const quads = await parseRdfText(text, file.name);
-            const { headerQuads, contentQuads } = partitionOntologyHeaderQuads(quads);
-            const model = extractOntologyModel(contentQuads);
-            const hasSchema = modelHasOntologySchema(model);
-            return { fileName: file.name, headerQuads, contentQuads, hasSchema };
+            const { headerQuads } = partitionOntologyHeaderQuads(quads);
+            return { fileName: file.name, headerQuads, quads };
           }),
         );
 
@@ -3811,14 +3816,12 @@ export default function App() {
           return;
         }
 
-        const kgQuads = kgQuadGroups.flat();
-        const schemaOntologyQuads = [];
-        const instanceOntologyQuads = [];
-        let schemaOntologyFileCount = 0;
-        let instanceOntologyFileCount = 0;
+        const mergedQuads = [];
         const metadataRows = [];
 
-        for (const parsed of ontologyParsedFiles) {
+        for (const parsed of parsedFiles) {
+          mergedQuads.push(...parsed.quads);
+
           parsed.headerQuads.forEach((quad, index) => {
             metadataRows.push({
               id: `${parsed.fileName}-${index}-${getTermId(quad.subject)}-${getTermId(quad.object)}`,
@@ -3828,21 +3831,11 @@ export default function App() {
               value: formatTermForInspector(quad.object),
             });
           });
-
-          if (parsed.hasSchema) {
-            schemaOntologyQuads.push(...parsed.contentQuads);
-            schemaOntologyFileCount += 1;
-          } else {
-            instanceOntologyQuads.push(...parsed.contentQuads);
-            instanceOntologyFileCount += 1;
-          }
         }
 
-        const effectiveKgQuads = [...kgQuads, ...instanceOntologyQuads];
-        const mergedQuads = [...effectiveKgQuads, ...schemaOntologyQuads];
-        const ontologyModel = extractOntologyModel(schemaOntologyQuads);
-        const hasOntology = modelHasOntologySchema(ontologyModel) && schemaOntologyQuads.length > 0;
-        const hasKg = effectiveKgQuads.length > 0;
+        const ontologyModel = extractOntologyModel(mergedQuads);
+        const hasOntology = modelHasOntologySchema(ontologyModel);
+        const hasKg = mergedQuads.length > 0;
         const nextGraphData = buildGraphData(mergedQuads, {
           hasKg,
           hasOntology,
@@ -3876,11 +3869,7 @@ export default function App() {
         setOntologyMetadataRows([...metadataRows, ...derivedPrefixRows]);
 
         setStatus(
-          `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${kgFiles.length + instanceOntologyFileCount
-          } KG file${kgFiles.length + instanceOntologyFileCount === 1 ? '' : 's'}${schemaOntologyFileCount > 0
-            ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
-            : ''
-          }`,
+          `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${uploadedFiles.length} file${uploadedFiles.length === 1 ? '' : 's'}`,
         );
       } catch (error) {
         if (cancelled) {
@@ -3900,7 +3889,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [kgFiles, ontologyFiles]);
+  }, [uploadedFiles]);
 
   function toggleClass(classIri) {
     setSelectedClassIris((current) => {
@@ -4157,8 +4146,8 @@ export default function App() {
     '--right-panel-open-width': `${rightPanelWidth}px`,
     '--left-panel-width': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : `${leftPanelWidth}px`,
     '--right-panel-width': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : `${rightPanelWidth}px`,
-    '--left-gap': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : '18px',
-    '--right-gap': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : '18px',
+    '--left-gap': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : '10px',
+    '--right-gap': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : '5px',
   };
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
@@ -4240,12 +4229,12 @@ export default function App() {
                   >
                     {leftSectionOpen.source ? '-' : '+'}
                   </button>
-                  <h2>Source File</h2>
+                  <h2>Upload File</h2>
                   <button
                     type="button"
                     className="section-clear"
                     onClick={clearLoadedGraph}
-                    disabled={kgFiles.length === 0 && ontologyFiles.length === 0}
+                    disabled={uploadedFiles.length === 0}
                     aria-label="Clear all uploaded files and graph"
                     title="Clear graph"
                   >
@@ -4256,35 +4245,20 @@ export default function App() {
                 {leftSectionOpen.source && (
                   <div className="section-body">
                     <label className="file-control">
-                      <span>KG files (optional: .ttl/.rdf/.n3/.nt/.nq/.trig)</span>
+                      <span>Upload file (.ttl/.rdf/.owl/.n3/.nt/.nq/.trig)</span>
                       <input
                         type="file"
-                        accept=".ttl,.rdf,.n3,.nt,.nq,.trig"
+                        accept=".ttl,.rdf,.owl,.n3,.nt,.nq,.trig"
                         multiple
                         onChange={(event) => {
                           const files = Array.from(event.target.files ?? []);
-                          handleKgFileSelection(files);
+                          handleFileSelection(files);
                           event.target.value = '';
                         }}
                       />
-                      <small>{formatSelectedFiles(kgFiles, 'No KG files selected')}</small>
+                      <small>{formatSelectedFiles(uploadedFiles, 'No files selected')}</small>
                     </label>
-
-                    <label className="file-control">
-                      <span>Ontology files (optional: .owl/.rdf/.ttl)</span>
-                      <input
-                        type="file"
-                        accept=".ttl,.owl,.rdf,.n3,.nt,.nq,.trig"
-                        multiple
-                        onChange={(event) => {
-                          const files = Array.from(event.target.files ?? []);
-                          handleOntologyFileSelection(files);
-                          event.target.value = '';
-                        }}
-                      />
-                      <small>{formatSelectedFiles(ontologyFiles, 'No ontology files selected')}</small>
-                    </label>
-                    <small className="muted">{isLoading ? 'Parsing and merging graph...' : 'Graph updates automatically when files are added.'}</small>
+                    <small className="muted">{isLoading ? 'Parsing uploaded triples and refreshing both views...' : 'Graph updates automatically when files are added.'}</small>
                   </div>
                 )}
               </section>
@@ -4377,7 +4351,7 @@ export default function App() {
                     </div>
 
                     <div className="class-list">
-                      {!graphData && <p className="muted">Load data to list ontology IRIs.</p>}
+                      {!graphData && <p className="muted">Load data to list dataset IRIs.</p>}
                       {graphData && graphData.baseIris.length === 0 && (
                         <p className="muted">No named-node IRIs available for base extraction.</p>
                       )}
@@ -4707,30 +4681,65 @@ export default function App() {
               <div className="graph-legend-popover" role="dialog" aria-label="Graph legend">
                 <div className="graph-legend-title">Legend</div>
                 <div className="graph-legend-list">
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-class" />
-                    <span>Class</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-individual" />
-                    <span>Named individual or KG instance</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-literal" />
-                    <span>Literal value</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-datatype" />
-                    <span>Datatype</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-marker marker-class-expression" />
-                    <span>OWL connector or set</span>
-                  </div>
-                  <div className="graph-legend-item">
-                    <span className="graph-legend-edge-marker" />
-                    <span>Labeled relation edge</span>
-                  </div>
+                  {graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? (
+                    <>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-class" />
+                        <span>Class or named resource</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-individual" />
+                        <span>Named individual or KG instance</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-literal" />
+                        <span>Literal value</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-rdf-syntax" />
+                        <span>Blank RDF / OWL syntax node</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker edge-marker-base" />
+                        <span>`rdf:` / `rdfs:` relation</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker edge-marker-property" />
+                        <span>Other relation, including `owl:`</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker edge-marker-dotted" />
+                        <span>Added connector edge</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-class" />
+                        <span>Class</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-individual" />
+                        <span>Named individual or KG instance</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-literal" />
+                        <span>Literal value</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-datatype" />
+                        <span>Datatype</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-marker marker-class-expression" />
+                        <span>OWL connector or set</span>
+                      </div>
+                      <div className="graph-legend-item">
+                        <span className="graph-legend-edge-marker" />
+                        <span>Labeled relation edge</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -4822,7 +4831,7 @@ export default function App() {
 
                 {!selectedNode && !selectedEdge && ontologyMetadataRows.length > 0 && (
                   <>
-                    <h4>Ontology metadata ({ontologyMetadataRows.length})</h4>
+                    <h4>Dataset metadata ({ontologyMetadataRows.length})</h4>
                     <div className="property-list">
                       {ontologyMetadataRows.map((row) => (
                         <div key={row.id} className="property-row" title={row.fileName}>

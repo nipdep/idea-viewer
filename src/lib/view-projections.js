@@ -141,10 +141,7 @@ function suppressMetadataEdges(elements) {
 }
 
 function relationPaletteCategory(predicate) {
-  if (
-    predicate &&
-    (predicate.startsWith(RDF_NS) || predicate.startsWith('http://www.w3.org/2000/01/rdf-schema#') || predicate.startsWith('http://www.w3.org/2002/07/owl#'))
-  ) {
+  if (predicate && (predicate.startsWith(RDF_NS) || predicate.startsWith('http://www.w3.org/2000/01/rdf-schema#'))) {
     return 'base';
   }
   return 'property';
@@ -243,6 +240,12 @@ function connectorHoverLabel(data) {
   }
   if (data?.entityCategory === 'all-different' && data?.label === '⊎') {
     return 'DisjointUnion';
+  }
+  if (data?.entityCategory === 'owl-collection-connector' && data?.label === '[]') {
+    return 'RDF List';
+  }
+  if (data?.entityCategory === 'owl-collection-connector' && data?.label === '()') {
+    return 'RDF Seq';
   }
   return data?.fullLabel || data?.label || '';
 }
@@ -515,6 +518,88 @@ function makeNodeElementFromGraphNode(node) {
   };
 }
 
+function measureFallbackNode(label) {
+  const normalized = String(label || '').trim() || '?';
+  const lines = normalized.split('\n').filter(Boolean);
+  const lineCount = Math.max(lines.length, 1);
+  const maxLineLength = lines.reduce((max, line) => Math.max(max, line.length), 1);
+
+  return {
+    nodeWidth: Math.max(46, Math.min(192, Math.round(maxLineLength * 5.75 + 8))),
+    nodeHeight: Math.max(24, Math.min(154, Math.round(lineCount * 14 + 4))),
+    textMaxWidth: Math.max(38, Math.min(188, Math.round(maxLineLength * 5.75 + 4))),
+    labelLength: Math.min(Math.max(maxLineLength * lineCount, 4), 120),
+  };
+}
+
+function makeFallbackNodeElement(term) {
+  if (!term) {
+    return null;
+  }
+
+  const id = getTermId(term);
+  let fullLabel = '';
+  let kind = 'entity';
+  let entityCategory = 'named-entity';
+  let literalValue = '';
+  let literalDatatype = '';
+  let literalLanguage = '';
+  let iri = '';
+  let termType = term.termType;
+
+  if (term.termType === 'Literal') {
+    fullLabel = term.value || '';
+    kind = 'literal';
+    entityCategory = 'literal';
+    literalValue = term.value || '';
+    literalDatatype = term.datatype?.value || '';
+    literalLanguage = term.language || '';
+  } else if (term.termType === 'BlankNode') {
+    fullLabel = `[Blank ${term.value}]`;
+    kind = 'blank';
+    entityCategory = 'blank';
+    iri = term.value || '';
+  } else {
+    fullLabel = compactIri(term.value || '');
+    iri = term.value || '';
+  }
+
+  const metrics = measureFallbackNode(fullLabel);
+  return {
+    data: {
+      id,
+      label: fullLabel,
+      fullLabel,
+      iri,
+      baseIri: '',
+      kind,
+      ontologyKind: '',
+      entityCategory,
+      blankExpressionType: '',
+      restrictionKind: '',
+      restrictionTooltip: '',
+      graphRole: '',
+      isInstanceNode: 0,
+      isOntologyNode: 0,
+      mixedMode: 0,
+      termType,
+      literalValue,
+      literalDatatype,
+      literalLanguage,
+      labelLength: metrics.labelLength,
+      nodeWidth: metrics.nodeWidth,
+      nodeHeight: metrics.nodeHeight,
+      textMaxWidth: metrics.textMaxWidth,
+      hasClass: 0,
+      classCount: 0,
+      classBadge: '',
+      badgeSvg: '',
+      badgeWidth: 0,
+      classTooltip: '',
+    },
+  };
+}
+
 function makeExpressionNodeData(id, label, expressionKind) {
   return {
     id,
@@ -593,6 +678,42 @@ function makeNamedGroupNodeData(id, label, groupKind, size = 2) {
     owlNamedGroupNode: 1,
     nodeWidth: Math.max(130, 90 + size * 18),
     nodeHeight: Math.max(78, 56 + size * 12),
+  };
+}
+
+function makeCollectionConnectorNodeData(id, label, kind, size = 2) {
+  return {
+    id,
+    label,
+    fullLabel: label,
+    iri: '',
+    baseIri: '',
+    kind: 'blank',
+    ontologyKind: '',
+    entityCategory: 'owl-collection-connector',
+    blankExpressionType: kind,
+    restrictionKind: '',
+    restrictionTooltip: '',
+    graphRole: 'owl-collection-connector',
+    isInstanceNode: 0,
+    isOntologyNode: 0,
+    mixedMode: 0,
+    termType: 'BlankNode',
+    literalValue: '',
+    literalDatatype: '',
+    literalLanguage: '',
+    labelLength: Math.max(label.length, 1),
+    nodeWidth: Math.max(42, 36 + size * 2),
+    nodeHeight: Math.max(42, 36 + size * 2),
+    textMaxWidth: 34,
+    hasClass: 0,
+    classCount: 0,
+    classBadge: '',
+    badgeSvg: '',
+    badgeWidth: 0,
+    classTooltip: '',
+    lightOntologyView: 0,
+    owlCollectionConnector: 1,
   };
 }
 
@@ -679,6 +800,190 @@ function buildOutgoingLiteralEdgeIndex(graphData) {
   }
 
   return outgoing;
+}
+
+function shouldIncludeRawRdfEdge(category, options) {
+  if (category === 'type') {
+    return options.showTypeLinks;
+  }
+  if (category === 'annotation') {
+    return options.showAnnotationProperties;
+  }
+  if (category === 'data') {
+    return options.showDataProperties;
+  }
+  if (category === 'subclass') {
+    return true;
+  }
+  if (category === 'subproperty' || category === 'object') {
+    return options.showObjectProperties;
+  }
+  return true;
+}
+
+function detectRawRdfCategory(predicateIri, objectTermType) {
+  if (predicateIri === RDFS_SUBCLASS_OF) {
+    return 'subclass';
+  }
+  if (predicateIri === RDFS_SUBPROPERTY_OF) {
+    return 'subproperty';
+  }
+  if (predicateIri === RDF_TYPE) {
+    return 'type';
+  }
+  if (METADATA_PREDICATES.has(predicateIri)) {
+    return 'annotation';
+  }
+  if (objectTermType === 'Literal') {
+    return 'data';
+  }
+  return 'object';
+}
+
+function detectRawRdfAxiomKind(predicateIri, category) {
+  if (predicateIri === RDFS_SUBCLASS_OF) {
+    return 'SubClassOf';
+  }
+  if (predicateIri === RDFS_SUBPROPERTY_OF) {
+    return 'SubPropertyOf';
+  }
+  if (predicateIri === RDF_TYPE) {
+    return 'ClassAssertion';
+  }
+  if (predicateIri === RDFS_DOMAIN) {
+    return 'Domain';
+  }
+  if (predicateIri === RDFS_RANGE) {
+    return 'Range';
+  }
+  if (
+    predicateIri === OWL_EQUIVALENT_CLASS ||
+    predicateIri === OWL_DISJOINT_WITH ||
+    predicateIri === OWL_DISJOINT_UNION_OF ||
+    predicateIri === OWL_EQUIVALENT_PROPERTY ||
+    predicateIri === OWL_INVERSE_OF ||
+    predicateIri === OWL_SAME_AS ||
+    predicateIri === OWL_DIFFERENT_FROM ||
+    predicateIri === OWL_HAS_KEY
+  ) {
+    return compactIri(predicateIri);
+  }
+  if (EXPRESSION_PREDICATES.has(predicateIri)) {
+    return 'ClassExpression';
+  }
+  if (RESTRICTION_VALUE_PREDICATES.has(predicateIri) || RESTRICTION_CARDINALITY_PREDICATES.has(predicateIri) || predicateIri === OWL_ON_PROPERTY || predicateIri === OWL_HAS_SELF) {
+    return 'Restriction';
+  }
+  if (category === 'annotation') {
+    return 'AnnotationAssertion';
+  }
+  if (category === 'data' || category === 'object') {
+    return 'PropertyAssertion';
+  }
+  return 'Axiom';
+}
+
+function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
+  const nodeElementsById = new Map();
+  const edgeElements = [];
+  let edgeCounter = 0;
+
+  const ensureNodeElement = (term) => {
+    if (!term) {
+      return null;
+    }
+    const id = getTermId(term);
+    if (nodeElementsById.has(id)) {
+      return nodeElementsById.get(id);
+    }
+
+    const existingNode = graphData?.nodeMap?.get(id);
+    const element = makeNodeElementFromGraphNode(existingNode) || makeFallbackNodeElement(term);
+    if (!element) {
+      return null;
+    }
+
+    nodeElementsById.set(id, element);
+    return element;
+  };
+
+  const includeByFocus = (subjectTerm, objectTerm) => {
+    if (!(focusedNodeIds instanceof Set)) {
+      return true;
+    }
+
+    const subjectVisible = subjectTerm && focusedNodeIds.has(getTermId(subjectTerm));
+    if (!objectTerm) {
+      return subjectVisible;
+    }
+
+    return subjectVisible && focusedNodeIds.has(getTermId(objectTerm));
+  };
+
+  for (const quad of graphData?.quads ?? []) {
+    if (!quad?.subject || !quad?.predicate || !quad?.object) {
+      continue;
+    }
+
+    const objectIsNode =
+      quad.object.termType === 'NamedNode' ||
+      quad.object.termType === 'BlankNode';
+    const objectIsLiteral = quad.object.termType === 'Literal';
+    if (!objectIsNode && !objectIsLiteral) {
+      continue;
+    }
+
+    if (!includeByFocus(quad.subject, objectIsNode || objectIsLiteral ? quad.object : null)) {
+      continue;
+    }
+
+    const category = detectRawRdfCategory(quad.predicate.value, quad.object.termType);
+    if (!shouldIncludeRawRdfEdge(category, options)) {
+      continue;
+    }
+
+    const sourceElement = ensureNodeElement(quad.subject);
+    const targetElement = ensureNodeElement(quad.object);
+    if (!sourceElement || !targetElement) {
+      continue;
+    }
+
+    edgeElements.push({
+      data: {
+        id: `rdf-raw:${edgeCounter}`,
+        source: sourceElement.data.id,
+        target: targetElement.data.id,
+        predicate: quad.predicate.value,
+        predicateLabel: compactIri(quad.predicate.value),
+        category,
+        axiomKind: detectRawRdfAxiomKind(quad.predicate.value, category),
+        restrictionKind: '',
+        cardinalityLabel: '',
+        owlEdgeStyle: 'straight',
+        rdfViewEdge: 1,
+        isSelfLoop: sourceElement.data.id === targetElement.data.id ? 1 : 0,
+      },
+    });
+    edgeCounter += 1;
+  }
+
+  const candidateNodes = focusedNodeIds instanceof Set
+    ? graphData?.nodes?.filter((node) => focusedNodeIds.has(node.id)) ?? []
+    : graphData?.nodes ?? [];
+
+  for (const node of candidateNodes) {
+    if (node?.termType === 'Literal') {
+      continue;
+    }
+    ensureNodeElement({
+      termType: node.termType,
+      value: node.termType === 'BlankNode' ? node.id.replace(/^_:/, '') : node.iri || node.id,
+      datatype: { value: node.literalDatatype || '' },
+      language: node.literalLanguage || '',
+    });
+  }
+
+  return [...nodeElementsById.values(), ...edgeElements];
 }
 
 function formatPropertyLabelWithCharacteristics(baseLabel, declaration) {
@@ -1005,7 +1310,7 @@ function synthesizeCollectionProjection(graphData, visibleNodeIds) {
     hiddenNodeIds.add(edge.target);
     const groupId = `owl-list:${edge.source}:${edge.target}:${edge.predicate}`;
     synthesizedNodes.push({
-      data: makeNamedGroupNodeData(groupId, compactIri(edge.predicate), 'RdfListGroup', members.length),
+      data: makeCollectionConnectorNodeData(groupId, '[]', 'RdfListConnector', members.length),
     });
     synthesizedEdges.push({
       data: {
@@ -1050,7 +1355,7 @@ function synthesizeCollectionProjection(graphData, visibleNodeIds) {
     }
     const groupId = `owl-seq:${seqNode.id}`;
     synthesizedNodes.push({
-      data: makeNamedGroupNodeData(groupId, seqNode.fullLabel || compactIri(seqNode.id), 'RdfSeqGroup', itemEdges.length),
+      data: makeCollectionConnectorNodeData(groupId, '()', 'RdfSeqConnector', itemEdges.length),
     });
     hiddenNodeIds.add(seqNode.id);
     for (const itemEdge of itemEdges) {
@@ -1693,7 +1998,8 @@ function decorateEdgeAttachedStructures(graphData, elements, mode) {
           axiomKind: descriptor.label === 'owl:annotates' ? 'AxiomAnnotation' : 'Reification',
           restrictionKind: '',
           edgeAttachedConnector: 1,
-          owlEdgeStyle: 'straight',
+          rdfViewEdge: mode === GRAPH_VIEW_MODES.RDF ? 1 : 0,
+          owlEdgeStyle: mode === GRAPH_VIEW_MODES.RDF ? 'dotted' : 'straight',
         },
       });
     }
@@ -1946,6 +2252,17 @@ export function normalizeGraphViewMode(mode) {
   return GRAPH_VIEW_MODES.OWL;
 }
 
+function normalizeProjectionFlags(viewOptions = DEFAULT_VIEW_OPTIONS) {
+  return {
+    projectionMode: normalizeGraphViewMode(viewOptions?.projectionMode),
+    showDataProperties: Boolean(viewOptions?.showDataProperties),
+    showAnnotationProperties: Boolean(viewOptions?.showAnnotationProperties),
+    showObjectProperties: Boolean(viewOptions?.showObjectProperties),
+    showNamedIndividuals: Boolean(viewOptions?.showNamedIndividuals),
+    showTypeLinks: Boolean(viewOptions?.showTypeLinks),
+  };
+}
+
 export function createViewOptions(mode, flags = {}) {
   return {
     ...DEFAULT_VIEW_OPTIONS,
@@ -1955,21 +2272,31 @@ export function createViewOptions(mode, flags = {}) {
 }
 
 export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
-  const elements = buildFocusedSubset(graphData, focusedNodeIds, {
+  const options = normalizeProjectionFlags({
     ...viewOptions,
     projectionMode: GRAPH_VIEW_MODES.RDF,
   });
+  const effectiveFocusedNodeIds =
+    focusedNodeIds && graphData?.hasOntology && graphData?.hasKg
+      ? (() => {
+          const combined = new Set(focusedNodeIds);
+          for (const node of graphData?.nodes ?? []) {
+            if (node.isOntologyNode) {
+              combined.add(node.id);
+            }
+          }
+          return combined;
+        })()
+      : focusedNodeIds;
+  const elements = buildRawRdfProjectionElements(graphData, effectiveFocusedNodeIds, options);
 
-  return applyHoverMetadata(
+  return applySelfLoopGeometry(
     graphData,
-    applySelfLoopGeometry(
-      graphData,
-      applyRelationPalette(
-        decorateEdgeAttachedStructures(
-          graphData,
-          applyRdfLabels(suppressMetadataEdges(elements)),
-          GRAPH_VIEW_MODES.RDF,
-        ),
+    applyRelationPalette(
+      decorateEdgeAttachedStructures(
+        graphData,
+        applyRdfLabels(suppressMetadataEdges(elements)),
+        GRAPH_VIEW_MODES.RDF,
       ),
     ),
   );

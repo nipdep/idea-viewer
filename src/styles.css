@@ -5,9 +5,9 @@
   --paper: #fdf8f2;
   --accent: #c05635;
   --accent-2: #2a6f6e;
-  --panel: rgba(255, 255, 255, 0.92);
+  --panel: #ffffffeb;
   --border: rgba(30, 27, 22, 0.12);
-  --shadow: 0 18px 40px rgba(30, 27, 22, 0.12);
+  --shadow: none;
 }
 
 @font-face {
@@ -143,8 +143,10 @@ textarea {
 }
 
 .app-shell {
-  --left-panel-open-width: 320px;
+  --left-panel-open-width: 306px;
   --right-panel-open-width: 350px;
+  --left-gap: 10px;
+  --right-gap: 5px;
   display: grid;
   grid-template-columns:
     minmax(0, var(--left-panel-width, var(--left-panel-open-width)))
@@ -168,6 +170,12 @@ textarea {
 
 .panel.left {
   grid-column: 1;
+}
+
+.panel.left {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .graph-area {
@@ -211,11 +219,17 @@ textarea {
 .panel-content {
   height: 100%;
   min-height: 0;
-  padding: 16px;
+  padding: 0;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(30, 27, 22, 0.24) transparent;
+}
+
+.panel.left .panel-content {
+  display: grid;
+  align-content: start;
+  gap: 14px;
 }
 
 .panel-toggle {
@@ -300,15 +314,26 @@ textarea {
 }
 
 .panel-section {
-  margin-bottom: 14px;
+  margin-bottom: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--panel);
+  padding: 18px;
+}
+
+.panel.left .panel-section {
+  margin-bottom: 0;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: #fffdf9;
-  padding: 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
 }
 
 .panel-section:last-child {
   margin-bottom: 0;
+  border-bottom: 0;
 }
 
 .panel-section h2 {
@@ -694,14 +719,14 @@ textarea {
 
 .graph-area {
   position: relative;
-  padding: 14px;
+  padding: 0;
   overflow: hidden;
 }
 
 .graph-tools {
   position: absolute;
-  top: 18px;
-  right: 18px;
+  top: 12px;
+  right: 12px;
   z-index: 5;
 }
 
@@ -710,7 +735,7 @@ textarea {
 }
 
 .graph-tools-left {
-  left: 18px;
+  left: 12px;
   right: auto;
 }
 
@@ -997,6 +1022,17 @@ textarea {
   clip-path: none;
 }
 
+.graph-legend-marker.marker-rdf-syntax {
+  width: 24px;
+  height: 18px;
+  border-radius: 0;
+  background: #fcfaf6;
+  border-color: #9aa0a4;
+  border-width: 1.2px;
+  color: #5c4a39;
+  clip-path: polygon(22% 4%, 78% 4%, 97% 50%, 78% 96%, 22% 96%, 3% 50%);
+}
+
 .graph-legend-edge-marker {
   position: relative;
   width: 26px;
@@ -1027,6 +1063,32 @@ textarea {
   transform: translateY(-50%);
 }
 
+.graph-legend-edge-marker.edge-marker-base::before {
+  border-top-color: #9aa0a4;
+}
+
+.graph-legend-edge-marker.edge-marker-base::after {
+  border-left-color: #9aa0a4;
+}
+
+.graph-legend-edge-marker.edge-marker-property::before {
+  border-top-color: #9b7f66;
+}
+
+.graph-legend-edge-marker.edge-marker-property::after {
+  border-left-color: #9b7f66;
+}
+
+.graph-legend-edge-marker.edge-marker-dotted::before {
+  left: 1px;
+  right: 8px;
+  border-top: 1.5px dotted #9b7f66;
+}
+
+.graph-legend-edge-marker.edge-marker-dotted::after {
+  border-left-color: #9b7f66;
+}
+
 .graph-legend-note {
   margin: 8px 2px 1px;
   color: #5a5148;
@@ -1039,9 +1101,9 @@ textarea {
   width: 100%;
   height: 100%;
   min-height: 0;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #fcfaf6 0%, #f8f3ec 100%);
-  border: 1px solid #e0d6cb;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 0;
 }
 
 .graph-canvas.detached-pan-mode {
@@ -1119,25 +1181,25 @@ textarea {
 
 .status-bar.overlay {
   position: absolute;
-  left: 24px;
-  right: 24px;
-  bottom: 24px;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
   z-index: 2;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 250, 242, 0.92);
+  background: rgba(255, 253, 249, 0.94);
   padding: 7px 10px;
 }
 
 .error-stack {
   position: absolute;
-  top: 14px;
-  left: 14px;
-  right: 14px;
+  top: 12px;
+  left: 12px;
+  right: 12px;
   z-index: 7;
   display: grid;
   gap: 6px;
-  padding-right: 14px;
+  padding-right: 12px;
 }
 
 .error {

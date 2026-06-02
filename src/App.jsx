@@ -4991,8 +4991,6 @@ export default function App() {
                         <div key={row.id} className="property-row">
                           <div className="property-name">Manchester</div>
                           <div className="property-value breakable">{row.manchester}</div>
-                          <div className="property-name">Natural language</div>
-                          <div className="property-value breakable">{row.naturalLanguage}</div>
                         </div>
                       ))}
                     </div>

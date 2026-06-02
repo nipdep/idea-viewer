@@ -1688,6 +1688,9 @@ function buildStatementAnalysis(quads, store, labelIndex) {
     if (consumedQuadKeys.has(quadKey)) {
       continue;
     }
+    if (METADATA_PREDICATES.has(quad.predicate.value)) {
+      continue;
+    }
 
     const row = {
       id: `raw:${quadKey}`,

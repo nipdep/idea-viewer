@@ -141,7 +141,15 @@ function suppressMetadataEdges(elements) {
 }
 
 function relationPaletteCategory(predicate) {
-  if (predicate && (predicate.startsWith(RDF_NS) || predicate.startsWith('http://www.w3.org/2000/01/rdf-schema#'))) {
+  if (
+    predicate &&
+    (
+      predicate.startsWith(RDF_NS) ||
+      predicate.startsWith('http://www.w3.org/2000/01/rdf-schema#') ||
+      predicate.startsWith('rdf:') ||
+      predicate.startsWith('rdfs:')
+    )
+  ) {
     return 'base';
   }
   return 'property';
@@ -954,7 +962,10 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
         source: sourceElement.data.id,
         target: targetElement.data.id,
         predicate: quad.predicate.value,
-        predicateLabel: compactIri(quad.predicate.value),
+        predicateLabel:
+          quad.predicate.value === RDF_TYPE || quad.predicate.value === RDFS_SUBCLASS_OF
+            ? ''
+            : compactIri(quad.predicate.value),
         category,
         axiomKind: detectRawRdfAxiomKind(quad.predicate.value, category),
         restrictionKind: '',

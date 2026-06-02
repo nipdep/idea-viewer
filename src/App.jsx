@@ -941,20 +941,6 @@ function toViewOptions(projectionMode, graphData) {
   });
 }
 
-function modelHasOntologySchema(model) {
-  if (!model) {
-    return false;
-  }
-
-  return (
-    (model.classIds?.size ?? 0) > 0 ||
-    (model.objectPropertyIds?.size ?? 0) > 0 ||
-    (model.dataPropertyIds?.size ?? 0) > 0 ||
-    (model.annotationPropertyIds?.size ?? 0) > 0 ||
-    (model.datatypeIds?.size ?? 0) > 0
-  );
-}
-
 export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
@@ -2518,9 +2504,10 @@ export default function App() {
         {
           selector: 'node[kind = "blank"]',
           style: {
-            'background-color': '#ece7e1',
-            'border-color': '#c6bbae',
-            color: '#6b6157',
+            'background-color': '#fcfaf6',
+            'border-color': '#9aa0a4',
+            'border-width': 1.2,
+            color: '#5c4a39',
             shape: 'hexagon',
           },
         },
@@ -3834,11 +3821,12 @@ export default function App() {
         }
 
         const ontologyModel = extractOntologyModel(mergedQuads);
-        const hasOntology = modelHasOntologySchema(ontologyModel);
-        const hasKg = mergedQuads.length > 0;
         const nextGraphData = buildGraphData(mergedQuads, {
-          hasKg,
-          hasOntology,
+          // Stop classifying uploads as "ontology" vs "KG".
+          // We always render uploaded data through the ontology-style path,
+          // while still extracting declarations from the triples themselves.
+          hasKg: false,
+          hasOntology: true,
           ontologyModel,
         });
         const derivedPrefixRows = nextGraphData.baseIris.map((entry, index) => {
@@ -3866,6 +3854,7 @@ export default function App() {
         setSelectedEdgeId(null);
         setFocusedNodeId(null);
         setFocusedNodeIds([]);
+        setGraphProjectionMode(GRAPH_PROJECTION_MODES.OWL);
         setOntologyMetadataRows([...metadataRows, ...derivedPrefixRows]);
 
         setStatus(

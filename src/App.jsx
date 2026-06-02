@@ -2344,7 +2344,7 @@ export default function App() {
             'border-color': '#7e6f60',
             width: 'data(nodeWidth)',
             height: 'data(nodeHeight)',
-            padding: '6px',
+            padding: '1px',
           },
         },
         {
@@ -2443,15 +2443,15 @@ export default function App() {
           selector: 'node[entityCategory = "class-expression-connector"], node[entityCategory = "all-different"]',
           style: {
             shape: 'ellipse',
-            width: 42,
-            height: 42,
+            width: 38,
+            height: 38,
             'background-color': '#eef3f1',
             'border-color': '#6f7f86',
             'border-width': 2,
             color: '#334047',
-            'font-size': 18,
+            'font-size': 17,
             'font-weight': 800,
-            'text-max-width': 36,
+            'text-max-width': 32,
           },
         },
         {
@@ -2561,7 +2561,7 @@ export default function App() {
             'text-valign': 'top',
             'text-halign': 'center',
             'text-margin-y': -20,
-            padding: '20px',
+            padding: '16px',
           },
         },
         {

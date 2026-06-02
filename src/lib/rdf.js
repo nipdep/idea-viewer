@@ -420,9 +420,9 @@ function computeNodeMetrics(displayLabel) {
     }
   }
 
-  const nodeWidth = Math.max(64, Math.min(214, Math.round(maxLineLength * 6.2 + 26)));
-  const nodeHeight = Math.max(34, Math.min(176, Math.round(lineCount * 16 + 14)));
-  const textMaxWidth = Math.max(48, nodeWidth - 16);
+  const nodeWidth = Math.max(46, Math.min(192, Math.round(maxLineLength * 5.75 + 8)));
+  const nodeHeight = Math.max(24, Math.min(154, Math.round(lineCount * 14 + 4)));
+  const textMaxWidth = Math.max(38, nodeWidth - 4);
 
   return {
     nodeWidth,

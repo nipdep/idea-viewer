@@ -352,10 +352,10 @@ function buildHtmlExport(snapshot) {
     </div>
     <script>
       const snapshot = ${toInlineJson({
-        elements,
-        style: snapshot.style,
-        viewport: snapshot.viewport,
-      })};
+    elements,
+    style: snapshot.style,
+    viewport: snapshot.viewport,
+  })};
       const cy = cytoscape({
         container: document.getElementById('cy'),
         elements: snapshot.elements,
@@ -1676,7 +1676,7 @@ export default function App() {
               const closeness = Math.max(
                 0,
                 (repulsionRadius - Math.max(distance, repulsionStartDistance)) /
-                  Math.max(1, repulsionRadius - repulsionStartDistance),
+                Math.max(1, repulsionRadius - repulsionStartDistance),
               );
               const rankCrowdingBoost = 1 + Math.max(entry.rank, other.rank) * 0.95;
               const exclusionIntrusion = Math.max(0, completeRepulsionDistance - distance);
@@ -1937,8 +1937,8 @@ export default function App() {
               Math.max(
                 current.completelyRepulsiveRadius + other.completelyRepulsiveRadius,
                 Math.max(current.halfWidth + other.halfWidth, current.halfHeight + other.halfHeight) +
-                  basePadding +
-                  pairRank * 42,
+                basePadding +
+                pairRank * 42,
               );
             if (distance >= desiredDistance) {
               continue;
@@ -2261,9 +2261,9 @@ export default function App() {
     }
     const projectedRows = Array.isArray(edge.projectedMetadataRows)
       ? edge.projectedMetadataRows.map((row) => ({
-          key: row.key,
-          value: row.value,
-        }))
+        key: row.key,
+        value: row.value,
+      }))
       : [];
 
     const predicateMetadata = graphData.nodeMetadata.get(edge.predicate) ?? [];
@@ -2384,6 +2384,14 @@ export default function App() {
           },
         },
         {
+          selector:
+            'node[isOntologyNode = 1], node[entityCategory = "individual"]',
+          style: {
+            'border-color': '#8f6f52',
+            'border-width': 1.1,
+          },
+        },
+        {
           selector: 'node[kind = "literal"]',
           style: {
             'background-color': '#f0e4d7',
@@ -2446,8 +2454,8 @@ export default function App() {
             width: 38,
             height: 38,
             'background-color': '#eef3f1',
-            'border-color': '#6f7f86',
-            'border-width': 2,
+            'border-color': '#9aa0a4',
+            'border-width': 1.4,
             color: '#334047',
             'font-size': 17,
             'font-weight': 800,
@@ -2536,12 +2544,15 @@ export default function App() {
           selector: 'node[owlExpressionNode = 1]',
           style: {
             shape: 'ellipse',
+            width: 38,
+            height: 38,
             'background-color': '#fcfaf6',
-            'border-color': '#8f7b67',
-            'border-width': 1.3,
+            'border-color': '#9aa0a4',
+            'border-width': 1.2,
             color: '#5c4a39',
-            'font-size': 14,
+            'font-size': 17,
             'font-weight': 700,
+            'text-max-width': 32,
             'text-valign': 'center',
             'text-halign': 'center',
             'text-wrap': 'none',
@@ -2554,7 +2565,7 @@ export default function App() {
             'background-opacity': 0,
             'border-style': 'dashed',
             'border-width': 1.6,
-            'border-color': '#b59b85',
+            'border-color': '#a9adb1',
             color: '#7b6148',
             'font-size': 11,
             'font-weight': 600,
@@ -2752,8 +2763,8 @@ export default function App() {
           selector: '.focus-node',
           style: {
             'border-width': 4,
-            'border-color': '#8f6a47',
-            'background-color': '#f6eee4',
+            'border-color': '#4d8f78',
+            'background-color': '#edf7f1',
             color: '#1e1b16',
           },
         },
@@ -2761,15 +2772,15 @@ export default function App() {
           selector: '.focus-neighbor',
           style: {
             'border-width': 3,
-            'border-color': '#b08a66',
+            'border-color': '#7eb49e',
           },
         },
         {
           selector: '.focus-edge',
           style: {
             width: 3,
-            'line-color': '#8f6a47',
-            'target-arrow-color': '#8f6a47',
+            'line-color': '#4d8f78',
+            'target-arrow-color': '#4d8f78',
             opacity: 1,
           },
         },
@@ -2777,10 +2788,10 @@ export default function App() {
           selector: '.selected-relation',
           style: {
             width: 3.2,
-            'line-color': '#8f6a47',
-            'target-arrow-color': '#8f6a47',
-            'text-background-color': '#f8f0e7',
-            'text-border-color': '#d4b79b',
+            'line-color': '#4d8f78',
+            'target-arrow-color': '#4d8f78',
+            'text-background-color': '#eef8f3',
+            'text-border-color': '#b8d8c9',
             opacity: 1,
           },
         },
@@ -3809,12 +3820,10 @@ export default function App() {
         setOntologyMetadataRows([...metadataRows, ...derivedPrefixRows]);
 
         setStatus(
-          `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${
-            kgFiles.length + instanceOntologyFileCount
-          } KG file${kgFiles.length + instanceOntologyFileCount === 1 ? '' : 's'}${
-            schemaOntologyFileCount > 0
-              ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
-              : ''
+          `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${kgFiles.length + instanceOntologyFileCount
+          } KG file${kgFiles.length + instanceOntologyFileCount === 1 ? '' : 's'}${schemaOntologyFileCount > 0
+            ? ` + ${schemaOntologyFileCount} ontology file${schemaOntologyFileCount === 1 ? '' : 's'}`
+            : ''
           }`,
         );
       } catch (error) {
@@ -4102,9 +4111,8 @@ export default function App() {
 
   return (
     <div
-      className={`page-shell ${isGraphFullscreen ? 'fullscreen-mode' : ''} ${isPanelResizing ? 'resizing' : ''} ${
-        isDetachedPanMode ? 'detached-pan' : ''
-      }`}
+      className={`page-shell ${isGraphFullscreen ? 'fullscreen-mode' : ''} ${isPanelResizing ? 'resizing' : ''} ${isDetachedPanMode ? 'detached-pan' : ''
+        }`}
     >
       <header className="app-header">
         <div>
@@ -4136,15 +4144,14 @@ export default function App() {
 
       <div className={`app-shell ${isGraphFullscreen ? 'fullscreen' : ''}`} style={appShellStyle}>
         <aside
-          className={`panel left ${!isGraphFullscreen && leftCollapsed ? 'collapsed' : ''} ${
-            isGraphFullscreen ? 'floating' : ''
-          } ${isGraphFullscreen && leftFlyoutOpen ? 'floating-open' : ''}`}
+          className={`panel left ${!isGraphFullscreen && leftCollapsed ? 'collapsed' : ''} ${isGraphFullscreen ? 'floating' : ''
+            } ${isGraphFullscreen && leftFlyoutOpen ? 'floating-open' : ''}`}
           onMouseEnter={
             isGraphFullscreen
               ? () => {
-                  clearLeftFlyoutTimer();
-                  setLeftFlyoutOpen(true);
-                }
+                clearLeftFlyoutTimer();
+                setLeftFlyoutOpen(true);
+              }
               : undefined
           }
           onMouseLeave={isGraphFullscreen ? () => scheduleLeftFlyoutClose(120) : undefined}
@@ -4478,8 +4485,8 @@ export default function App() {
           onMouseEnter={
             isGraphFullscreen
               ? () => {
-                  closeFloatingPanels(100);
-                }
+                closeFloatingPanels(100);
+              }
               : undefined
           }
         >
@@ -4492,18 +4499,16 @@ export default function App() {
 
           <div className="graph-tools graph-tools-left">
             <div
-              className={`projection-toggle theme-switch ${
-                graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'mode-rdf' : 'mode-ontology'
-              }`}
+              className={`projection-toggle theme-switch ${graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'mode-rdf' : 'mode-ontology'
+                }`}
               role="tablist"
               aria-label="Graph projection mode"
             >
               <span className="projection-switch-thumb" aria-hidden="true" />
               <button
                 type="button"
-                className={`projection-toggle-button ${
-                  graphProjectionMode === GRAPH_PROJECTION_MODES.OWL ? 'active' : ''
-                }`}
+                className={`projection-toggle-button ${graphProjectionMode === GRAPH_PROJECTION_MODES.OWL ? 'active' : ''
+                  }`}
                 onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.OWL)}
                 aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.OWL}
                 aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.OWL]}
@@ -4526,9 +4531,8 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className={`projection-toggle-button ${
-                  graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'active' : ''
-                }`}
+                className={`projection-toggle-button ${graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'active' : ''
+                  }`}
                 onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.RDF)}
                 aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.RDF}
                 aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.RDF]}
@@ -4715,15 +4719,14 @@ export default function App() {
         </main>
 
         <aside
-          className={`panel right ${!isGraphFullscreen && rightCollapsed ? 'collapsed' : ''} ${
-            isGraphFullscreen ? 'floating' : ''
-          } ${isGraphFullscreen && rightFlyoutOpen ? 'floating-open' : ''}`}
+          className={`panel right ${!isGraphFullscreen && rightCollapsed ? 'collapsed' : ''} ${isGraphFullscreen ? 'floating' : ''
+            } ${isGraphFullscreen && rightFlyoutOpen ? 'floating-open' : ''}`}
           onMouseEnter={
             isGraphFullscreen
               ? () => {
-                  clearRightFlyoutTimer();
-                  setRightFlyoutOpen(true);
-                }
+                clearRightFlyoutTimer();
+                setRightFlyoutOpen(true);
+              }
               : undefined
           }
           onMouseLeave={isGraphFullscreen ? () => scheduleRightFlyoutClose(120) : undefined}

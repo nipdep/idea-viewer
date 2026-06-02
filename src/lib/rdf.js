@@ -2768,7 +2768,7 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
     addNodeById(sourceId, { entityCategory: 'class', ontologyKind: 'class' });
     const marker = addSyntheticNode('⊎', 'all-different', {
       id: `owl-disjoint-union:${sourceId}`,
-      nodeWidth: 48,
+      nodeWidth: 42,
       nodeHeight: 42,
     });
     addEdge(sourceId, marker.id, OWL_DISJOINT_UNION_OF, '', 'class-axiom', {
@@ -2804,7 +2804,7 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
     const isAllDisjointClasses = quad.object.value === OWL_ALL_DISJOINT_CLASSES;
     const marker = addSyntheticNode(isAllDisjointClasses ? '≢' : '!=', 'all-different', {
       id: `${isAllDisjointClasses ? 'owl-all-disjoint-classes' : 'owl-all-different'}:${getTermId(quad.subject)}`,
-      nodeWidth: 48,
+      nodeWidth: 42,
       nodeHeight: 42,
     });
     for (const member of members) {

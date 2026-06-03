@@ -4,6 +4,11 @@ export const GRAPH_VIEW_MODES = Object.freeze({
   OWL: 'owl',
   RDF: 'rdf',
 });
+const OWL_PROJECTION_LEVELS = Object.freeze({
+  TAXONOMY: 'taxonomy',
+  ONTOLOGY: 'ontology',
+  KG: 'kg',
+});
 
 const RDFS_COMMENT = 'http://www.w3.org/2000/01/rdf-schema#comment';
 const RDFS_DOMAIN = 'http://www.w3.org/2000/01/rdf-schema#domain';
@@ -2256,6 +2261,119 @@ function applyOwlProjection(graphData, elements) {
   return safeProjectedElements;
 }
 
+function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
+  if (owlProjectionLevel === OWL_PROJECTION_LEVELS.KG || !owlProjectionLevel) {
+    return elements;
+  }
+
+  const helperLikeNodeCategories = new Set([
+    'owl-helper',
+    'owl-expression',
+    'owl-group',
+    'owl-collection-connector',
+    'all-different',
+    'edge-anchor',
+    'class-expression-connector',
+  ]);
+  const allowedNodeIds = new Set();
+  const excludedNodeIds = new Set();
+  const allowedNodeKindsForTaxonomy = new Set([
+    'class',
+    'class-expression',
+    'owl-expression',
+    'owl-group',
+    'class-expression-connector',
+  ]);
+
+  for (const element of elements) {
+    const data = element?.data;
+    if (!data || data.source) {
+      continue;
+    }
+
+    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.ONTOLOGY) {
+      if (data.entityCategory === 'individual' || data.entityCategory === 'literal' || data.termType === 'Literal') {
+        excludedNodeIds.add(data.id);
+        continue;
+      }
+      allowedNodeIds.add(data.id);
+      continue;
+    }
+
+    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.TAXONOMY) {
+      const isAllowedClassLikeNode =
+        data.ontologyKind === 'class' ||
+        allowedNodeKindsForTaxonomy.has(data.entityCategory) ||
+        allowedNodeKindsForTaxonomy.has(data.blankExpressionType);
+      if (!isAllowedClassLikeNode) {
+        continue;
+      }
+      allowedNodeIds.add(data.id);
+    }
+  }
+
+  if (owlProjectionLevel === OWL_PROJECTION_LEVELS.ONTOLOGY && excludedNodeIds.size > 0) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const element of elements) {
+        const data = element?.data;
+        if (!data?.source) {
+          continue;
+        }
+
+        const sourceExcluded = excludedNodeIds.has(data.source);
+        const targetExcluded = excludedNodeIds.has(data.target);
+        if (!sourceExcluded && !targetExcluded) {
+          continue;
+        }
+
+        const neighborId = sourceExcluded ? data.target : data.source;
+        if (excludedNodeIds.has(neighborId)) {
+          continue;
+        }
+
+        const neighborNode = elements.find((entry) => !entry?.data?.source && entry.data.id === neighborId)?.data;
+        if (!neighborNode) {
+          continue;
+        }
+
+        if (helperLikeNodeCategories.has(neighborNode.entityCategory) || neighborNode.owlHelper) {
+          excludedNodeIds.add(neighborId);
+          allowedNodeIds.delete(neighborId);
+          changed = true;
+        }
+      }
+    }
+  }
+
+  return elements.filter((element) => {
+    const data = element?.data;
+    if (!data) {
+      return false;
+    }
+
+    if (!data.source) {
+      return allowedNodeIds.has(data.id) && !excludedNodeIds.has(data.id);
+    }
+
+    if (
+      !allowedNodeIds.has(data.source) ||
+      !allowedNodeIds.has(data.target) ||
+      excludedNodeIds.has(data.source) ||
+      excludedNodeIds.has(data.target)
+    ) {
+      return false;
+    }
+
+    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.ONTOLOGY) {
+      return true;
+    }
+
+    return data.predicate === RDFS_SUBCLASS_OF || data.category === 'class-expression';
+  });
+}
+
 export function normalizeGraphViewMode(mode) {
   if (mode === GRAPH_VIEW_MODES.RDF || mode === 'kg') {
     return GRAPH_VIEW_MODES.RDF;
@@ -2322,17 +2440,21 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
   const baseElements = suppressMetadataEdges(elements);
 
   try {
+    const owlProjectionLevel = viewOptions?.owlProjectionLevel ?? OWL_PROJECTION_LEVELS.KG;
     return applyHoverMetadata(
       graphData,
-      applySelfLoopGeometry(
-        graphData,
-        applyRelationPalette(
-          decorateEdgeAttachedStructures(
-            graphData,
-            applyOwlProjection(graphData, baseElements),
-            GRAPH_VIEW_MODES.OWL,
+      filterOwlProjectionByLevel(
+        applySelfLoopGeometry(
+          graphData,
+          applyRelationPalette(
+            decorateEdgeAttachedStructures(
+              graphData,
+              applyOwlProjection(graphData, baseElements),
+              GRAPH_VIEW_MODES.OWL,
+            ),
           ),
         ),
+        owlProjectionLevel,
       ),
     );
   } catch (error) {

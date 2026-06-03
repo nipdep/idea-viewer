@@ -43,6 +43,11 @@ const GRAPH_PROJECTION_MODES = {
   OWL: GRAPH_VIEW_MODES.OWL,
   RDF: GRAPH_VIEW_MODES.RDF,
 };
+const OWL_PROJECTION_LEVELS = {
+  TAXONOMY: 'taxonomy',
+  ONTOLOGY: 'ontology',
+  KG: 'kg',
+};
 const PROJECTION_MODE_LABELS = {
   [GRAPH_PROJECTION_MODES.OWL]: 'OWL View',
   [GRAPH_PROJECTION_MODES.RDF]: 'RDF View',
@@ -927,27 +932,61 @@ const EDGE_BEND_HANDLE_RENDER_SIZE = 10;
 const EDGE_BEND_HANDLE_GLYPH = '✥';
 const EDGE_BEND_HANDLE_CENTER_OFFSET = 12;
 
-function toViewFlags() {
+function toViewFlags(projectionMode, owlProjectionLevel) {
+  if (projectionMode === GRAPH_PROJECTION_MODES.RDF) {
+    return {
+      showDataProperties: true,
+      showAnnotationProperties: false,
+      showObjectProperties: true,
+      showNamedIndividuals: true,
+    };
+  }
+
+  if (projectionMode === GRAPH_PROJECTION_MODES.OWL) {
+    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.TAXONOMY) {
+      return {
+        showDataProperties: false,
+        showAnnotationProperties: false,
+        showObjectProperties: false,
+        showNamedIndividuals: false,
+        showTypeLinks: false,
+      };
+    }
+
+    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.ONTOLOGY) {
+      return {
+        showDataProperties: true,
+        showAnnotationProperties: false,
+        showObjectProperties: true,
+        showNamedIndividuals: false,
+        showTypeLinks: true,
+      };
+    }
+  }
+
   return {
     showDataProperties: true,
     showAnnotationProperties: false,
     showObjectProperties: true,
     showNamedIndividuals: true,
+    showTypeLinks: true,
   };
 }
 
-function toViewOptions(projectionMode, graphData) {
-  const flags = toViewFlags();
+function toViewOptions(projectionMode, graphData, owlProjectionLevel) {
+  const flags = toViewFlags(projectionMode, owlProjectionLevel);
   if (projectionMode === GRAPH_PROJECTION_MODES.RDF) {
     return createViewOptions(GRAPH_PROJECTION_MODES.RDF, {
       ...flags,
       showTypeLinks: Boolean(graphData?.hasOntology),
+      owlProjectionLevel,
     });
   }
 
   return createViewOptions(GRAPH_PROJECTION_MODES.OWL, {
     ...flags,
-    showTypeLinks: Boolean(graphData?.hasOntology),
+    showTypeLinks: flags.showTypeLinks && Boolean(graphData?.hasOntology),
+    owlProjectionLevel,
   });
 }
 
@@ -984,6 +1023,7 @@ export default function App() {
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
   const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.OWL);
+  const [owlProjectionLevel, setOwlProjectionLevel] = useState(OWL_PROJECTION_LEVELS.KG);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
@@ -4294,7 +4334,7 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = toViewOptions(graphProjectionMode, graphData);
+        const viewOptions = toViewOptions(graphProjectionMode, graphData, owlProjectionLevel);
         const projectElements = (focusedNodeIds = null) => {
           const projected = buildProjectedElements(graphData, focusedNodeIds, viewOptions);
           if (
@@ -4365,7 +4405,7 @@ export default function App() {
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
             applyEdgeCurveOverrides(
-              buildProjectedElements(graphData, null, toViewOptions(graphProjectionMode, graphData)),
+              buildProjectedElements(graphData, null, toViewOptions(graphProjectionMode, graphData, owlProjectionLevel)),
               edgeCurveOverridesRef.current,
             ),
           );
@@ -4389,6 +4429,7 @@ export default function App() {
     nodeNameQuery,
     sparqlQuery,
     graphProjectionMode,
+    owlProjectionLevel,
     showClassTypeFilter,
   ]);
 
@@ -5069,9 +5110,39 @@ export default function App() {
                 {leftSectionOpen.filters && (
                   <div className="section-body">
                     <h3 className="filter-group-title">Projection</h3>
-                    <p className="muted">
-                      Active view: {graphProjectionMode === GRAPH_PROJECTION_MODES.OWL ? 'OWL view' : 'RDF view'}
-                    </p>
+                    {graphProjectionMode === GRAPH_PROJECTION_MODES.OWL ? (
+                      <div className="option-list" role="radiogroup" aria-label="OWL projection level">
+                        <label className="option-item">
+                          <input
+                            type="radio"
+                            name="owl-projection-level"
+                            checked={owlProjectionLevel === OWL_PROJECTION_LEVELS.TAXONOMY}
+                            onChange={() => setOwlProjectionLevel(OWL_PROJECTION_LEVELS.TAXONOMY)}
+                          />
+                          <span>Taxonomy</span>
+                        </label>
+                        <label className="option-item">
+                          <input
+                            type="radio"
+                            name="owl-projection-level"
+                            checked={owlProjectionLevel === OWL_PROJECTION_LEVELS.ONTOLOGY}
+                            onChange={() => setOwlProjectionLevel(OWL_PROJECTION_LEVELS.ONTOLOGY)}
+                          />
+                          <span>Ontology</span>
+                        </label>
+                        <label className="option-item">
+                          <input
+                            type="radio"
+                            name="owl-projection-level"
+                            checked={owlProjectionLevel === OWL_PROJECTION_LEVELS.KG}
+                            onChange={() => setOwlProjectionLevel(OWL_PROJECTION_LEVELS.KG)}
+                          />
+                          <span>KG</span>
+                        </label>
+                      </div>
+                    ) : (
+                      <p className="muted">Use the graph toolbar toggle to switch between OWL and RDF views.</p>
+                    )}
 
                     {showClassTypeFilter && (
                       <>

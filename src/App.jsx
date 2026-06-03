@@ -1011,6 +1011,7 @@ export default function App() {
   const detachedPanLastMouseRef = useRef(null);
   const suppressNextTapRef = useRef(false);
   const edgeCurveOverridesRef = useRef(new Map());
+  const initialGraphStyleJsonRef = useRef(null);
 
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [graphData, setGraphData] = useState(null);
@@ -3528,6 +3529,9 @@ export default function App() {
     container.addEventListener('contextmenu', onContextMenu);
 
     cyRef.current = cy;
+    if (!initialGraphStyleJsonRef.current && typeof cy.style().json === 'function') {
+      initialGraphStyleJsonRef.current = cy.style().json();
+    }
 
     return () => {
       container.removeEventListener('mousedown', onMouseDownCapture, true);
@@ -3703,190 +3707,9 @@ export default function App() {
           opacity: 0.16,
         });
     } else {
-      styleBuilder
-        .selector('node')
-        .style({
-          'background-color': '#f6f0e8',
-          color: '#1e1b16',
-          'border-color': '#7e6f60',
-          'border-width': 0.4,
-        })
-        .selector('node[hasClass > 0][entityCategory != "class-expression"]')
-        .style({
-          'background-image': 'data(badgeSvg)',
-          'background-image-opacity': 1,
-          'background-image-containment': 'over',
-          'background-width': 'data(badgeWidth)',
-          'background-height': 24,
-          'background-position-x': '100%',
-          'background-position-y': '0%',
-          'background-offset-x': 26,
-          'background-offset-y': -7,
-          'background-repeat': 'no-repeat',
-          'background-fit': 'none',
-          'background-clip': 'none',
-          'bounds-expansion': 36,
-        })
-        .selector('node[kind = "literal"]')
-        .style({
-          'background-color': '#f0e4d7',
-          'border-color': '#9b7458',
-          color: '#1e1b16',
-        })
-        .selector('node[entityCategory = "datatype"]')
-        .style({
-          'background-color': '#eee5da',
-          'border-color': '#8e7560',
-          color: '#1e1b16',
-        })
-        .selector('node[entityCategory = "data-property"]')
-        .style({
-          'background-color': '#f0e7db',
-          'border-color': '#9b7f66',
-          color: '#1e1b16',
-        })
-        .selector('node[entityCategory = "object-property"]')
-        .style({
-          'background-color': '#efe4d7',
-          'border-color': '#9f7a57',
-          color: '#1e1b16',
-        })
-        .selector('node[entityCategory = "annotation-property"]')
-        .style({
-          'background-color': '#efe6dd',
-          'border-color': '#9e846b',
-          'border-style': 'dashed',
-          color: '#1e1b16',
-        })
-        .selector('node[entityCategory = "class-expression"]')
-        .style({
-          'background-color': '#e8f2ef',
-          'border-color': '#2f8a81',
-          'border-width': 2.2,
-          color: '#1f4f4c',
-        })
-        .selector('node[lightOntologyView = 1]')
-        .style({
-          color: '#2a231d',
-          'background-color': '#f6f0e8',
-          'border-color': '#7e6f60',
-          'border-style': 'solid',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "class"]')
-        .style({
-          'background-color': '#d9c4ab',
-          'border-color': '#8d6b4c',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "object-property"]')
-        .style({
-          'background-color': '#d4e2f2',
-          'border-color': '#5d7fa8',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "data-property"]')
-        .style({
-          'background-color': '#d6ebd9',
-          'border-color': '#5f9067',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "annotation-property"]')
-        .style({
-          'background-color': '#f0d9e4',
-          'border-color': '#ab6f8a',
-          'border-style': 'solid',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "individual"]')
-        .style({
-          'background-color': '#dfdfdf',
-          'border-color': '#7f7f7f',
-        })
-        .selector('node[lightOntologyView = 1][kind = "literal"]')
-        .style({
-          'background-color': '#f5ebbe',
-          'border-color': '#b9a14f',
-          color: '#2a231d',
-        })
-        .selector('node[lightOntologyView = 1][entityCategory = "datatype"]')
-        .style({
-          'background-color': '#d6ebd9',
-          'border-color': '#5f9067',
-        })
-        .selector('node[mixedMode = 1][isOntologyNode = 1]')
-        .style({
-          'background-color': '#e5d5c4',
-          'border-color': '#86684f',
-          color: '#2d2218',
-        })
-        .selector('node[kind = "blank"]')
-        .style({
-          'background-color': '#ece7e1',
-          'border-color': '#c6bbae',
-          color: '#6b6157',
-        })
-        .selector('node[reifiedStatement = 1]')
-        .style({
-          'background-color': '#f7f0e8',
-          'border-color': '#86684f',
-          color: '#f7f0e8',
-        })
-        .selector('edge')
-        .style({
-          color: '#5a524a',
-          'text-background-color': '#fffaf2',
-          'text-border-color': '#e2d8cb',
-          'line-color': '#c8bfb4',
-          'target-arrow-color': '#c8bfb4',
-          opacity: 0.76,
-        })
-        .selector('edge[category = "reification"]')
-        .style({
-          'line-color': '#86684f',
-          'target-arrow-color': '#86684f',
-          color: '#5e4734',
-        })
-        .selector('edge[reifiedOnly = 1]')
-        .style({
-          'line-style': 'dashed',
-          opacity: 0.62,
-        })
-        .selector('edge[lightOntologyView = 1]')
-        .style({
-          'line-color': '#b8afa5',
-          'target-arrow-color': '#b8afa5',
-          color: '#5a524a',
-        })
-        .selector('edge[lightOntologyView = 1][lightRestrictionEdge = 1]')
-        .style({
-          'line-color': '#3f8f86',
-          'target-arrow-color': '#3f8f86',
-          color: '#3d665f',
-          'text-background-color': '#f8f5ef',
-          'text-border-color': '#d2cbc2',
-        })
-        .selector('.focus-node')
-        .style({
-          'border-color': '#1e6b6a',
-          'background-color': '#d8eeeb',
-          color: '#1e1b16',
-        })
-        .selector('.focus-neighbor')
-        .style({
-          'border-color': '#3a8f86',
-        })
-        .selector('.focus-edge')
-        .style({
-          'line-color': '#3a8f86',
-          'target-arrow-color': '#3a8f86',
-        })
-        .selector('.selected-relation')
-        .style({
-          'line-color': '#1e6b6a',
-          'target-arrow-color': '#1e6b6a',
-          'text-background-color': '#f0fff8',
-          'text-border-color': '#9fd5cb',
-        })
-        .selector('.faded')
-        .style({
-          opacity: 0.12,
-        });
+      if (initialGraphStyleJsonRef.current && typeof styleBuilder.fromJson === 'function') {
+        styleBuilder.fromJson(initialGraphStyleJsonRef.current);
+      }
     }
 
     styleBuilder
@@ -3897,7 +3720,7 @@ export default function App() {
       .selector('edge[showSourceCardinality = 1]')
       .style('source-font-size', clampedFontSize)
       .update();
-  }, [graphZoomSpeed, graphFontSize, graphThemeMode]);
+  }, [graphZoomSpeed, graphFontSize, graphThemeMode, graphProjectionMode]);
 
   useEffect(() => {
     focusedNodeIdRef.current = focusedNodeId;

@@ -145,15 +145,9 @@ textarea {
 .app-shell {
   --left-panel-open-width: 306px;
   --right-panel-open-width: 350px;
-  --left-gap: 10px;
-  --right-gap: 5px;
   display: grid;
   grid-template-columns:
-    minmax(0, var(--left-panel-width, var(--left-panel-open-width)))
-    var(--left-gap, 18px)
-    minmax(0, 1fr)
-    var(--right-gap, 18px)
-    minmax(0, var(--right-panel-width, var(--right-panel-open-width)));
+    minmax(0, var(--left-panel-width, var(--left-panel-open-width))) var(--left-gap, 5px) minmax(0, 1fr) var(--right-gap, 5px) minmax(0, var(--right-panel-width, var(--right-panel-open-width)));
   height: 100%;
   min-height: 0;
   padding: 4px 24px 24px;
@@ -224,12 +218,6 @@ textarea {
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(30, 27, 22, 0.24) transparent;
-}
-
-.panel.left .panel-content {
-  display: grid;
-  align-content: start;
-  gap: 14px;
 }
 
 .panel-toggle {
@@ -307,8 +295,8 @@ textarea {
   opacity: 1;
 }
 
-.panel-toggle:hover + .panel-resize-handle::after,
-.panel-toggle:focus-visible + .panel-resize-handle::after {
+.panel-toggle:hover+.panel-resize-handle::after,
+.panel-toggle:focus-visible+.panel-resize-handle::after {
   opacity: 1;
   background: rgba(42, 111, 110, 0.45);
 }
@@ -323,7 +311,7 @@ textarea {
 }
 
 .panel.left .panel-section {
-  margin-bottom: 0;
+  margin-bottom: 14px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--panel);
@@ -570,7 +558,7 @@ textarea {
   margin-top: 2px;
 }
 
-.sparql-prefix-group + .sparql-prefix-group {
+.sparql-prefix-group+.sparql-prefix-group {
   margin-top: 10px;
 }
 
@@ -1016,21 +1004,10 @@ textarea {
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  background: #fcfaf6;
-  border-color: #9aa0a4;
+  background: #e8f2ef;
+  border-color: #2f8a81;
   border-width: 2px;
   clip-path: none;
-}
-
-.graph-legend-marker.marker-rdf-syntax {
-  width: 24px;
-  height: 18px;
-  border-radius: 0;
-  background: #fcfaf6;
-  border-color: #9aa0a4;
-  border-width: 1.2px;
-  color: #5c4a39;
-  clip-path: polygon(22% 4%, 78% 4%, 97% 50%, 78% 96%, 22% 96%, 3% 50%);
 }
 
 .graph-legend-edge-marker {
@@ -1061,32 +1038,6 @@ textarea {
   border-bottom: 4px solid transparent;
   border-left: 6px solid #c8bfb4;
   transform: translateY(-50%);
-}
-
-.graph-legend-edge-marker.edge-marker-base::before {
-  border-top-color: #9aa0a4;
-}
-
-.graph-legend-edge-marker.edge-marker-base::after {
-  border-left-color: #9aa0a4;
-}
-
-.graph-legend-edge-marker.edge-marker-property::before {
-  border-top-color: #9b7f66;
-}
-
-.graph-legend-edge-marker.edge-marker-property::after {
-  border-left-color: #9b7f66;
-}
-
-.graph-legend-edge-marker.edge-marker-dotted::before {
-  left: 1px;
-  right: 8px;
-  border-top: 1.5px dotted #9b7f66;
-}
-
-.graph-legend-edge-marker.edge-marker-dotted::after {
-  border-left-color: #9b7f66;
 }
 
 .graph-legend-note {
@@ -1489,6 +1440,7 @@ textarea {
 }
 
 @media (max-width: 760px) {
+
   html,
   body,
   #root {

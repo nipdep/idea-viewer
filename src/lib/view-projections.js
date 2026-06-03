@@ -924,8 +924,8 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
     if (!objectTerm) {
       return subjectVisible;
     }
-
-    return subjectVisible && focusedNodeIds.has(getTermId(objectTerm));
+    const objectVisible = focusedNodeIds.has(getTermId(objectTerm));
+    return subjectVisible || objectVisible;
   };
 
   for (const quad of graphData?.quads ?? []) {

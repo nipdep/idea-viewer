@@ -1404,11 +1404,12 @@ export default function App() {
     existingHandle.position(position);
   }
 
-  function applySpiralSeedLayout(cy) {
+  function applySpiralSeedLayout(cy, options = {}) {
     const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
     if (nodes.length === 0) {
       return false;
     }
+    const compactness = Number.isFinite(options.compactness) ? options.compactness : 1;
     const degreeById = buildVisibleIncidentEdgeCounts(cy, nodes);
 
     const nodeEntries = nodes
@@ -1424,8 +1425,8 @@ export default function App() {
       entry.rank = normalizeRank(entry.degree);
     });
     const spacing = Math.max(
-      92,
-      Math.round(nodeEntries.reduce((span, entry) => Math.max(span, entry.span), 80) + 28),
+      Math.round(52 * compactness),
+      Math.round((nodeEntries.reduce((span, entry) => Math.max(span, entry.span), 80) + 28) * compactness),
     );
     const goldenAngle = Math.PI * (3 - Math.sqrt(5));
 
@@ -1871,6 +1872,268 @@ export default function App() {
     }
 
     return movedAny;
+  }
+
+  function applySimpleRdfForceLayout(cy, options = {}) {
+    const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
+    if (nodes.length < 2) {
+      return false;
+    }
+
+    const edges = cy
+      .edges(':visible')
+      .not('[edgeAnchorTether = 1]')
+      .not('[edgeAttachedConnector = 1]')
+      .not('[owlRelationConnector = 1]');
+
+    const iterations = Number.isFinite(options.iterations) ? options.iterations : 80;
+    const attractionStrength = Number.isFinite(options.attractionStrength) ? options.attractionStrength : 0.015;
+    const repulsionStrength = Number.isFinite(options.repulsionStrength) ? options.repulsionStrength : 12000;
+    const targetEdgeLength = Number.isFinite(options.targetEdgeLength) ? options.targetEdgeLength : 110;
+    const maxStep = Number.isFinite(options.maxStep) ? options.maxStep : 18;
+    const centeringStrength = Number.isFinite(options.centeringStrength) ? options.centeringStrength : 0.003;
+
+    const nodeEntries = nodes.map((node) => ({
+      id: node.id(),
+      node,
+      width: Math.max(36, Number(node.width()) || 36),
+      height: Math.max(24, Number(node.height()) || 24),
+      degree: 0,
+    }));
+    const nodeById = new Map(nodeEntries.map((entry) => [entry.id, entry]));
+
+    edges.forEach((edge) => {
+      const sourceEntry = nodeById.get(edge.source().id());
+      const targetEntry = nodeById.get(edge.target().id());
+      if (sourceEntry) {
+        sourceEntry.degree += 1;
+      }
+      if (targetEntry && targetEntry !== sourceEntry) {
+        targetEntry.degree += 1;
+      }
+    });
+
+    const positions = new Map(
+      nodeEntries.map((entry) => {
+        const position = entry.node.position();
+        return [
+          entry.id,
+          {
+            x: Number.isFinite(position.x) ? position.x : 0,
+            y: Number.isFinite(position.y) ? position.y : 0,
+          },
+        ];
+      }),
+    );
+    const snapshot = new Map(
+      Array.from(positions.entries()).map(([id, position]) => [id, { x: position.x, y: position.y }]),
+    );
+
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+      const cooling = 1 - iteration / iterations;
+      const forceById = new Map(nodeEntries.map((entry) => [entry.id, { x: 0, y: 0 }]));
+
+      for (let index = 0; index < nodeEntries.length; index += 1) {
+        const current = nodeEntries[index];
+        const currentPosition = positions.get(current.id);
+        for (let otherIndex = index + 1; otherIndex < nodeEntries.length; otherIndex += 1) {
+          const other = nodeEntries[otherIndex];
+          const otherPosition = positions.get(other.id);
+          let dx = otherPosition.x - currentPosition.x;
+          let dy = otherPosition.y - currentPosition.y;
+          let distanceSquared = dx * dx + dy * dy;
+          if (distanceSquared < 0.01) {
+            dx = 0.1;
+            dy = 0.1;
+            distanceSquared = dx * dx + dy * dy;
+          }
+
+          const distance = Math.sqrt(distanceSquared);
+          const minDistance =
+            Math.max(current.width, current.height) / 2 +
+            Math.max(other.width, other.height) / 2 +
+            10;
+          const overlapBoost = distance < minDistance ? 3 + (minDistance - distance) / Math.max(1, minDistance) : 1;
+          const repulsion = (repulsionStrength / distanceSquared) * overlapBoost;
+          const unitX = dx / distance;
+          const unitY = dy / distance;
+
+          const currentForce = forceById.get(current.id);
+          const otherForce = forceById.get(other.id);
+          currentForce.x -= unitX * repulsion;
+          currentForce.y -= unitY * repulsion;
+          otherForce.x += unitX * repulsion;
+          otherForce.y += unitY * repulsion;
+        }
+      }
+
+      edges.forEach((edge) => {
+        const sourceId = edge.source().id();
+        const targetId = edge.target().id();
+        const sourcePosition = positions.get(sourceId);
+        const targetPosition = positions.get(targetId);
+        if (!sourcePosition || !targetPosition) {
+          return;
+        }
+
+        let dx = targetPosition.x - sourcePosition.x;
+        let dy = targetPosition.y - sourcePosition.y;
+        let distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared < 0.01) {
+          dx = 0.1;
+          dy = 0.1;
+          distanceSquared = dx * dx + dy * dy;
+        }
+
+        const distance = Math.sqrt(distanceSquared);
+        const stretch = distance - targetEdgeLength;
+        const attraction = stretch * attractionStrength;
+        const unitX = dx / distance;
+        const unitY = dy / distance;
+        const sourceForce = forceById.get(sourceId);
+        const targetForce = forceById.get(targetId);
+        if (!sourceForce || !targetForce) {
+          return;
+        }
+        sourceForce.x += unitX * attraction;
+        sourceForce.y += unitY * attraction;
+        targetForce.x -= unitX * attraction;
+        targetForce.y -= unitY * attraction;
+      });
+
+      let centroidX = 0;
+      let centroidY = 0;
+      nodeEntries.forEach((entry) => {
+        const position = positions.get(entry.id);
+        centroidX += position.x;
+        centroidY += position.y;
+      });
+      centroidX /= nodeEntries.length;
+      centroidY /= nodeEntries.length;
+
+      nodeEntries.forEach((entry) => {
+        const position = positions.get(entry.id);
+        const force = forceById.get(entry.id);
+        const degreeDamping = 1 / Math.max(1, 1 + entry.degree * 0.08);
+        const stepX = Math.max(-maxStep, Math.min(maxStep, force.x * cooling * degreeDamping));
+        const stepY = Math.max(-maxStep, Math.min(maxStep, force.y * cooling * degreeDamping));
+        position.x += stepX - (position.x - centroidX) * centeringStrength;
+        position.y += stepY - (position.y - centroidY) * centeringStrength;
+      });
+    }
+
+    cy.batch(() => {
+      nodeEntries.forEach((entry) => {
+        const position = positions.get(entry.id);
+        if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+          return;
+        }
+        entry.node.position(position);
+      });
+    });
+
+    if (!hasFiniteNodePositions(cy)) {
+      cy.batch(() => {
+        nodeEntries.forEach((entry) => {
+          const position = snapshot.get(entry.id);
+          if (position) {
+            entry.node.position(position);
+          }
+        });
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  function hasNodeOverlap(cy, spacing = 0) {
+    const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
+    if (nodes.length < 2) {
+      return false;
+    }
+
+    const nodeEntries = nodes.map((node) => ({
+      id: node.id(),
+      x: node.position('x'),
+      y: node.position('y'),
+      halfWidth: Math.max(20, node.width() / 2) + spacing / 2,
+      halfHeight: Math.max(16, node.height() / 2) + spacing / 2,
+    }));
+
+    for (let index = 0; index < nodeEntries.length; index += 1) {
+      const current = nodeEntries[index];
+      for (let otherIndex = index + 1; otherIndex < nodeEntries.length; otherIndex += 1) {
+        const other = nodeEntries[otherIndex];
+        const overlapX = current.halfWidth + other.halfWidth - Math.abs(other.x - current.x);
+        const overlapY = current.halfHeight + other.halfHeight - Math.abs(other.y - current.y);
+        if (overlapX > 0 && overlapY > 0) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  function compactLayoutUntilNoOverlapBoundary(cy, options = {}) {
+    const nodes = cy.nodes(':visible').not('[edgeAnchor = 1]');
+    if (nodes.length < 2) {
+      return false;
+    }
+
+    const passes = Number.isFinite(options.passes) ? options.passes : 16;
+    const scaleStep = Number.isFinite(options.scaleStep) ? options.scaleStep : 0.94;
+    const spacing = Number.isFinite(options.spacing) ? options.spacing : 6;
+    const resolvePasses = Number.isFinite(options.resolvePasses) ? options.resolvePasses : 16;
+    let compacted = false;
+
+    for (let pass = 0; pass < passes; pass += 1) {
+      const snapshot = new Map(
+        nodes.map((node) => [
+          node.id(),
+          {
+            x: node.position('x'),
+            y: node.position('y'),
+          },
+        ]),
+      );
+
+      let centroidX = 0;
+      let centroidY = 0;
+      nodes.forEach((node) => {
+        centroidX += node.position('x');
+        centroidY += node.position('y');
+      });
+      centroidX /= nodes.length;
+      centroidY /= nodes.length;
+
+      cy.batch(() => {
+        nodes.forEach((node) => {
+          const position = snapshot.get(node.id());
+          node.position({
+            x: centroidX + (position.x - centroidX) * scaleStep,
+            y: centroidY + (position.y - centroidY) * scaleStep,
+          });
+        });
+      });
+
+      resolveNodeOverlaps(cy, resolvePasses, spacing);
+
+      if (!hasFiniteNodePositions(cy) || hasNodeOverlap(cy, Math.max(0, spacing - 1))) {
+        cy.batch(() => {
+          nodes.forEach((node) => {
+            const position = snapshot.get(node.id());
+            node.position(position);
+          });
+        });
+        break;
+      }
+
+      compacted = true;
+    }
+
+    return compacted;
   }
 
   function enforceRankAwareSpacing(cy, maxPasses = 10, basePadding = 14) {
@@ -3231,6 +3494,14 @@ export default function App() {
   }, [graphData]);
 
   useEffect(() => {
+    // Switching between OWL and RDF can change the node/edge population a lot.
+    // Force a fresh layout so we do not reuse stale cached geometry from the
+    // previous projection mode.
+    hasAppliedInitialLayoutRef.current = false;
+    layoutPositionCacheRef.current.clear();
+  }, [graphProjectionMode]);
+
+  useEffect(() => {
     groupDragStateRef.current = null;
     groupDragArmRef.current = null;
     setMultiClassBadgeTooltip(null);
@@ -3334,15 +3605,29 @@ export default function App() {
       }
 
       const useMagneticInitialLayout = shouldUseMagneticInitialLayout();
+      const useSimplifiedRdfLayout = graphProjectionMode === GRAPH_PROJECTION_MODES.RDF;
       let initialPositionsAreFinite = false;
 
-      if (useMagneticInitialLayout) {
+      if (useMagneticInitialLayout && !useSimplifiedRdfLayout) {
         initialPositionsAreFinite = applyMagneticInitialLayout(cy);
       }
 
       if (!initialPositionsAreFinite || !hasFiniteNodePositions(cy)) {
-        applySpiralSeedLayout(cy);
+        applySpiralSeedLayout(cy, {
+          compactness: useSimplifiedRdfLayout ? 0.44 : 1,
+        });
         initialPositionsAreFinite = hasFiniteNodePositions(cy);
+      }
+
+      if (useSimplifiedRdfLayout && initialPositionsAreFinite) {
+        applySimpleRdfForceLayout(cy, {
+          iterations: 84,
+          attractionStrength: 0.015,
+          repulsionStrength: 12000,
+          targetEdgeLength: 98,
+          maxStep: 16,
+          centeringStrength: 0.003,
+        });
       }
 
       const layoutCollection = cy
@@ -3352,19 +3637,28 @@ export default function App() {
         .not('[edgeAttachedConnector = 1]')
         .not('[owlRelationConnector = 1]');
 
-      layout = layoutCollection.layout({
-        name: 'cose',
-        animate: false,
-        fit: true,
-        padding: 42,
-        randomize: !initialPositionsAreFinite,
-        idealEdgeLength: useMagneticInitialLayout ? 54 : 110,
-        edgeElasticity: useMagneticInitialLayout ? 240 : 80,
-        nodeRepulsion: useMagneticInitialLayout ? 4200 : 20000,
-        gravity: useMagneticInitialLayout ? 0.5 : 0.25,
-        numIter: useMagneticInitialLayout ? 220 : 1000,
-        coolingFactor: useMagneticInitialLayout ? 0.96 : 0.99,
-      });
+      layout = layoutCollection.layout(
+        useSimplifiedRdfLayout
+          ? {
+              name: 'preset',
+              animate: false,
+              fit: true,
+              padding: 42,
+            }
+          : {
+              name: 'cose',
+              animate: false,
+              fit: true,
+              padding: 42,
+              randomize: !initialPositionsAreFinite,
+              idealEdgeLength: useMagneticInitialLayout ? 54 : 110,
+              edgeElasticity: useMagneticInitialLayout ? 240 : 80,
+              nodeRepulsion: useMagneticInitialLayout ? 4200 : 20000,
+              gravity: useMagneticInitialLayout ? 0.5 : 0.25,
+              numIter: useMagneticInitialLayout ? 220 : 1000,
+              coolingFactor: useMagneticInitialLayout ? 0.96 : 0.99,
+            },
+      );
 
       layout.one('layoutstop', () => {
         if (cancelled || cy.destroyed()) {
@@ -3374,7 +3668,7 @@ export default function App() {
         if (!hasFiniteNodePositions(cy)) {
           applySpiralSeedLayout(cy);
         }
-        if (useMagneticInitialLayout) {
+        if (useMagneticInitialLayout && !useSimplifiedRdfLayout) {
           applyMagneticInitialLayout(cy, {
             preserveCurrentPositions: true,
             compactness: 0.96,
@@ -3394,9 +3688,18 @@ export default function App() {
           });
         }
         resolveNodeOverlaps(cy, useMagneticInitialLayout ? 20 : 12, useMagneticInitialLayout ? 26 : 18);
-        if (useMagneticInitialLayout) {
+        if (useMagneticInitialLayout && !useSimplifiedRdfLayout) {
           enforceRankAwareSpacing(cy, 8, 14);
           resolveNodeOverlaps(cy, 10, 24);
+        }
+        if (useSimplifiedRdfLayout) {
+          resolveNodeOverlaps(cy, 18, 8);
+          compactLayoutUntilNoOverlapBoundary(cy, {
+            passes: 18,
+            scaleStep: 0.92,
+            spacing: 6,
+            resolvePasses: 18,
+          });
         }
         synchronizeEdgeAnchorPositions(cy);
         synchronizeEdgeBendHandle(cy);
@@ -3608,6 +3911,17 @@ export default function App() {
 
       try {
         const viewOptions = toViewOptions(graphProjectionMode, graphData);
+        const projectElements = (focusedNodeIds = null) => {
+          const projected = buildProjectedElements(graphData, focusedNodeIds, viewOptions);
+          if (
+            graphProjectionMode === GRAPH_PROJECTION_MODES.RDF &&
+            projected.length === 0 &&
+            graphData.nodes.length > 0
+          ) {
+            return buildProjectedElements(graphData, null, viewOptions);
+          }
+          return projected;
+        };
         const classFilterActive =
           showClassTypeFilter &&
           graphData.classes.length > 0 &&
@@ -3621,7 +3935,7 @@ export default function App() {
           if (!cancelled) {
             setVisibleElements(
               applyEdgeCurveOverrides(
-                buildProjectedElements(graphData, null, viewOptions),
+                projectElements(null),
                 edgeCurveOverridesRef.current,
               ),
             );
@@ -3657,7 +3971,7 @@ export default function App() {
         if (!cancelled) {
           setVisibleElements(
             applyEdgeCurveOverrides(
-              buildProjectedElements(graphData, selectedEntities, viewOptions),
+              projectElements(selectedEntities),
               edgeCurveOverridesRef.current,
             ),
           );
@@ -3667,11 +3981,7 @@ export default function App() {
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
             applyEdgeCurveOverrides(
-              buildProjectedElements(
-                graphData,
-                null,
-                toViewOptions(graphProjectionMode, graphData),
-              ),
+              buildProjectedElements(graphData, null, toViewOptions(graphProjectionMode, graphData)),
               edgeCurveOverridesRef.current,
             ),
           );

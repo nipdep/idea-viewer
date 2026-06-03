@@ -1000,6 +1000,10 @@ export default function App() {
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
+  const [graphFontSize, setGraphFontSize] = useState(DEFAULT_GRAPH_FONT_SIZE);
+  const [graphThemeMode, setGraphThemeMode] = useState(GRAPH_THEME_MODES.CLASSIC);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
@@ -1058,6 +1062,7 @@ export default function App() {
     },
     [selectedEdgeId, graphData, visibleElements],
   );
+  const isHighContrastGraph = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
 
   function setSingleFocusedNode(nodeId) {
     setSelectedEdgeId(null);
@@ -1096,6 +1101,22 @@ export default function App() {
     setSelectedEdgeId(null);
     setFocusedNodeId(null);
     setFocusedNodeIds([]);
+  }
+
+  function handleGraphZoomSpeedChange(nextValue) {
+    const parsedValue = Number.parseFloat(nextValue);
+    if (!Number.isFinite(parsedValue)) {
+      return;
+    }
+    const clampedValue = Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, parsedValue));
+    setGraphZoomSpeed(Number(clampedValue.toFixed(2)));
+  }
+
+  function stepGraphFontSize(direction) {
+    setGraphFontSize((current) => {
+      const nextValue = current + direction;
+      return Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, nextValue));
+    });
   }
 
   function captureCurrentViewSnapshot() {
@@ -2607,7 +2628,7 @@ export default function App() {
     const cy = cytoscape({
       container: graphContainerRef.current,
       elements: [],
-      wheelSensitivity: 0.2,
+      wheelSensitivity: DEFAULT_GRAPH_ZOOM_SPEED,
       style: [
         {
           selector: 'node',
@@ -2616,7 +2637,7 @@ export default function App() {
             shape: 'round-rectangle',
             'background-color': '#f6f0e8',
             color: '#1e1b16',
-            'font-size': 10,
+            'font-size': DEFAULT_GRAPH_FONT_SIZE,
             'font-weight': 600,
             'text-wrap': 'wrap',
             'text-max-width': 'data(textMaxWidth)',
@@ -2891,7 +2912,7 @@ export default function App() {
             label: 'data(predicateLabel)',
             'source-label': 'data(sourceCardinality)',
             color: '#5a524a',
-            'font-size': 10,
+            'font-size': DEFAULT_GRAPH_FONT_SIZE,
             'font-family': 'Avenir Next, Nunito Sans, Segoe UI, sans-serif',
             'text-wrap': 'wrap',
             'text-max-width': 110,
@@ -2930,7 +2951,7 @@ export default function App() {
             'source-text-border-width': 0.5,
             'source-text-border-color': '#e2d8cb',
             'source-text-border-opacity': 1,
-            'source-font-size': 10,
+            'source-font-size': DEFAULT_GRAPH_FONT_SIZE,
             'source-font-weight': 700,
             'source-color': '#6c5340',
           },
@@ -3474,6 +3495,359 @@ export default function App() {
       cy.destroy();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (!target.closest('.header-settings-menu')) {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSettingsOpen]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+
+    const clampedZoomSpeed = Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, graphZoomSpeed));
+    const clampedFontSize = Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, graphFontSize));
+    const isHighContrast = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
+
+    if (cy._private?.options) {
+      cy._private.options.wheelSensitivity = clampedZoomSpeed;
+    }
+
+    const styleBuilder = cy.style();
+
+    if (isHighContrast) {
+      styleBuilder
+        .selector('node')
+        .style({
+          'background-color': '#ffffff',
+          color: '#000000',
+          'border-color': '#000000',
+          'border-width': 1.4,
+          'border-style': 'solid',
+        })
+        .selector('node[hasClass > 0][entityCategory != "class-expression"]')
+        .style({
+          'background-image': 'none',
+          'background-image-opacity': 0,
+          'background-width': 0,
+          'background-height': 0,
+          'background-offset-x': 0,
+          'background-offset-y': 0,
+          'bounds-expansion': 8,
+        })
+        .selector('node[entityCategory = "annotation-property"]')
+        .style({
+          'border-style': 'dashed',
+        })
+        .selector('node[entityCategory = "class-expression"]')
+        .style({
+          'background-color': '#ffffff',
+          color: '#000000',
+          'border-color': '#000000',
+          'border-width': 1.8,
+        })
+        .selector('node[mixedMode = 1][isOntologyNode = 1]')
+        .style({
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          color: '#000000',
+        })
+        .selector('node[kind = "blank"]')
+        .style({
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          color: '#000000',
+        })
+        .selector('node[reifiedStatement = 1]')
+        .style({
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          color: '#ffffff',
+        })
+        .selector('edge')
+        .style({
+          color: '#000000',
+          'text-background-color': '#ffffff',
+          'text-border-color': '#000000',
+          'text-border-width': 0.8,
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          width: 1.6,
+          opacity: 0.96,
+        })
+        .selector('edge[category = "reification"]')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          color: '#000000',
+        })
+        .selector('edge[reifiedOnly = 1]')
+        .style({
+          'line-style': 'dashed',
+          opacity: 0.9,
+        })
+        .selector('edge[lightOntologyView = 1]')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          color: '#000000',
+        })
+        .selector('edge[lightOntologyView = 1][lightRestrictionEdge = 1]')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          color: '#000000',
+          'text-background-color': '#ffffff',
+          'text-border-color': '#000000',
+        })
+        .selector('.focus-node')
+        .style({
+          'border-color': '#000000',
+          'background-color': '#ffffff',
+          color: '#000000',
+        })
+        .selector('.focus-neighbor')
+        .style({
+          'border-color': '#000000',
+        })
+        .selector('.focus-edge')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+        })
+        .selector('.selected-relation')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          'text-background-color': '#ffffff',
+          'text-border-color': '#000000',
+        })
+        .selector('.faded')
+        .style({
+          opacity: 0.16,
+        });
+    } else {
+      styleBuilder
+        .selector('node')
+        .style({
+          'background-color': '#f6f0e8',
+          color: '#1e1b16',
+          'border-color': '#7e6f60',
+          'border-width': 0.4,
+        })
+        .selector('node[hasClass > 0][entityCategory != "class-expression"]')
+        .style({
+          'background-image': 'data(badgeSvg)',
+          'background-image-opacity': 1,
+          'background-image-containment': 'over',
+          'background-width': 'data(badgeWidth)',
+          'background-height': 24,
+          'background-position-x': '100%',
+          'background-position-y': '0%',
+          'background-offset-x': 26,
+          'background-offset-y': -7,
+          'background-repeat': 'no-repeat',
+          'background-fit': 'none',
+          'background-clip': 'none',
+          'bounds-expansion': 36,
+        })
+        .selector('node[kind = "literal"]')
+        .style({
+          'background-color': '#f0e4d7',
+          'border-color': '#9b7458',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "datatype"]')
+        .style({
+          'background-color': '#eee5da',
+          'border-color': '#8e7560',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "data-property"]')
+        .style({
+          'background-color': '#f0e7db',
+          'border-color': '#9b7f66',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "object-property"]')
+        .style({
+          'background-color': '#efe4d7',
+          'border-color': '#9f7a57',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "annotation-property"]')
+        .style({
+          'background-color': '#efe6dd',
+          'border-color': '#9e846b',
+          'border-style': 'dashed',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "class-expression"]')
+        .style({
+          'background-color': '#e8f2ef',
+          'border-color': '#2f8a81',
+          'border-width': 2.2,
+          color: '#1f4f4c',
+        })
+        .selector('node[lightOntologyView = 1]')
+        .style({
+          color: '#2a231d',
+          'background-color': '#f6f0e8',
+          'border-color': '#7e6f60',
+          'border-style': 'solid',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "class"]')
+        .style({
+          'background-color': '#d9c4ab',
+          'border-color': '#8d6b4c',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "object-property"]')
+        .style({
+          'background-color': '#d4e2f2',
+          'border-color': '#5d7fa8',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "data-property"]')
+        .style({
+          'background-color': '#d6ebd9',
+          'border-color': '#5f9067',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "annotation-property"]')
+        .style({
+          'background-color': '#f0d9e4',
+          'border-color': '#ab6f8a',
+          'border-style': 'solid',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "individual"]')
+        .style({
+          'background-color': '#dfdfdf',
+          'border-color': '#7f7f7f',
+        })
+        .selector('node[lightOntologyView = 1][kind = "literal"]')
+        .style({
+          'background-color': '#f5ebbe',
+          'border-color': '#b9a14f',
+          color: '#2a231d',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "datatype"]')
+        .style({
+          'background-color': '#d6ebd9',
+          'border-color': '#5f9067',
+        })
+        .selector('node[mixedMode = 1][isOntologyNode = 1]')
+        .style({
+          'background-color': '#e5d5c4',
+          'border-color': '#86684f',
+          color: '#2d2218',
+        })
+        .selector('node[kind = "blank"]')
+        .style({
+          'background-color': '#ece7e1',
+          'border-color': '#c6bbae',
+          color: '#6b6157',
+        })
+        .selector('node[reifiedStatement = 1]')
+        .style({
+          'background-color': '#f7f0e8',
+          'border-color': '#86684f',
+          color: '#f7f0e8',
+        })
+        .selector('edge')
+        .style({
+          color: '#5a524a',
+          'text-background-color': '#fffaf2',
+          'text-border-color': '#e2d8cb',
+          'line-color': '#c8bfb4',
+          'target-arrow-color': '#c8bfb4',
+          opacity: 0.76,
+        })
+        .selector('edge[category = "reification"]')
+        .style({
+          'line-color': '#86684f',
+          'target-arrow-color': '#86684f',
+          color: '#5e4734',
+        })
+        .selector('edge[reifiedOnly = 1]')
+        .style({
+          'line-style': 'dashed',
+          opacity: 0.62,
+        })
+        .selector('edge[lightOntologyView = 1]')
+        .style({
+          'line-color': '#b8afa5',
+          'target-arrow-color': '#b8afa5',
+          color: '#5a524a',
+        })
+        .selector('edge[lightOntologyView = 1][lightRestrictionEdge = 1]')
+        .style({
+          'line-color': '#3f8f86',
+          'target-arrow-color': '#3f8f86',
+          color: '#3d665f',
+          'text-background-color': '#f8f5ef',
+          'text-border-color': '#d2cbc2',
+        })
+        .selector('.focus-node')
+        .style({
+          'border-color': '#1e6b6a',
+          'background-color': '#d8eeeb',
+          color: '#1e1b16',
+        })
+        .selector('.focus-neighbor')
+        .style({
+          'border-color': '#3a8f86',
+        })
+        .selector('.focus-edge')
+        .style({
+          'line-color': '#3a8f86',
+          'target-arrow-color': '#3a8f86',
+        })
+        .selector('.selected-relation')
+        .style({
+          'line-color': '#1e6b6a',
+          'target-arrow-color': '#1e6b6a',
+          'text-background-color': '#f0fff8',
+          'text-border-color': '#9fd5cb',
+        })
+        .selector('.faded')
+        .style({
+          opacity: 0.12,
+        });
+    }
+
+    styleBuilder
+      .selector('node')
+      .style('font-size', clampedFontSize)
+      .selector('edge')
+      .style('font-size', clampedFontSize)
+      .selector('edge[showSourceCardinality = 1]')
+      .style('source-font-size', clampedFontSize)
+      .update();
+  }, [graphZoomSpeed, graphFontSize, graphThemeMode]);
 
   useEffect(() => {
     focusedNodeIdRef.current = focusedNodeId;
@@ -4451,6 +4825,7 @@ export default function App() {
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
+  const settingsButtonLabel = isSettingsOpen ? 'Hide graph settings' : 'Show graph settings';
   const hasExportableGraph = visibleElements.length > 0;
 
   return (
@@ -4483,6 +4858,111 @@ export default function App() {
               <path d="M12 .5C5.65.5.5 5.66.5 12.02c0 5.08 3.29 9.39 7.86 10.91.57.11.78-.25.78-.55 0-.27-.01-1.16-.02-2.1-3.2.7-3.87-1.35-3.87-1.35-.52-1.33-1.28-1.68-1.28-1.68-1.04-.72.08-.71.08-.71 1.15.08 1.75 1.18 1.75 1.18 1.02 1.76 2.68 1.25 3.33.96.1-.74.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.47.11-3.06 0 0 .96-.31 3.14 1.18a10.9 10.9 0 0 1 5.72 0c2.17-1.49 3.13-1.18 3.13-1.18.63 1.59.24 2.77.12 3.06.74.8 1.18 1.83 1.18 3.09 0 4.43-2.68 5.41-5.24 5.69.41.35.77 1.03.77 2.08 0 1.5-.01 2.71-.01 3.08 0 .3.21.67.79.55A11.52 11.52 0 0 0 23.5 12C23.5 5.66 18.35.5 12 .5Z" />
             </svg>
           </a>
+          <div className="header-settings-menu">
+            <button
+              type="button"
+              className={`header-icon-button ${isSettingsOpen ? 'active' : ''}`}
+              onClick={() => setIsSettingsOpen((value) => !value)}
+              aria-label={settingsButtonLabel}
+              title={settingsButtonLabel}
+              aria-pressed={isSettingsOpen}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" style={{ fill: 'none' }}>
+                <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.8" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+
+            {isSettingsOpen && (
+              <div className="header-settings-popover" role="dialog" aria-label="Graph settings">
+                <div className="header-settings-title">Graph settings</div>
+
+                <div className="header-setting-row">
+                  <div className="header-setting-label-row">
+                    <span>Graph theme</span>
+                    <span>{isHighContrastGraph ? 'Legacy B/W' : 'Classic'}</span>
+                  </div>
+                  <div
+                    className={`header-theme-toggle ${isHighContrastGraph ? 'mode-high-contrast' : 'mode-classic'}`}
+                    role="tablist"
+                    aria-label="Graph render theme"
+                  >
+                    <span className="header-theme-toggle-thumb" aria-hidden="true" />
+                    <button
+                      type="button"
+                      className={`header-theme-toggle-button ${!isHighContrastGraph ? 'active' : ''}`}
+                      onClick={() => setGraphThemeMode(GRAPH_THEME_MODES.CLASSIC)}
+                      aria-label="Use classic graph theme"
+                      title="Classic graph theme"
+                      aria-pressed={!isHighContrastGraph}
+                    >
+                      Classic
+                    </button>
+                    <button
+                      type="button"
+                      className={`header-theme-toggle-button ${isHighContrastGraph ? 'active' : ''}`}
+                      onClick={() => setGraphThemeMode(GRAPH_THEME_MODES.HIGH_CONTRAST)}
+                      aria-label="Use legacy black-and-white graph theme"
+                      title="Legacy black-and-white graph theme"
+                      aria-pressed={isHighContrastGraph}
+                    >
+                      Legacy B/W
+                    </button>
+                  </div>
+                </div>
+
+                <div className="header-setting-row">
+                  <div className="header-setting-label-row">
+                    <span>Zoom speed</span>
+                    <span>{graphZoomSpeed.toFixed(2)}</span>
+                  </div>
+                  <input
+                    className="header-setting-slider"
+                    type="range"
+                    min={MIN_GRAPH_ZOOM_SPEED}
+                    max={MAX_GRAPH_ZOOM_SPEED}
+                    step={0.01}
+                    value={graphZoomSpeed}
+                    onChange={(event) => handleGraphZoomSpeedChange(event.target.value)}
+                  />
+                </div>
+
+                <div className="header-setting-row">
+                  <div className="header-setting-label-row">
+                    <span>Font size</span>
+                    <span>{graphFontSize}px</span>
+                  </div>
+                  <div className="header-setting-stepper">
+                    <button
+                      type="button"
+                      className="header-stepper-button"
+                      onClick={() => stepGraphFontSize(-1)}
+                      disabled={graphFontSize <= MIN_GRAPH_FONT_SIZE}
+                      aria-label="Decrease graph font size"
+                    >
+                      -
+                    </button>
+                    <div className="header-stepper-value">{graphFontSize}</div>
+                    <button
+                      type="button"
+                      className="header-stepper-button"
+                      onClick={() => stepGraphFontSize(1)}
+                      disabled={graphFontSize >= MAX_GRAPH_FONT_SIZE}
+                      aria-label="Increase graph font size"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -5044,7 +5524,10 @@ export default function App() {
             )}
           </div>
 
-          <div ref={graphContainerRef} className={`graph-canvas ${isDetachedPanMode ? 'detached-pan-mode' : ''}`} />
+          <div
+            ref={graphContainerRef}
+            className={`graph-canvas ${isDetachedPanMode ? 'detached-pan-mode' : ''} ${isHighContrastGraph ? 'mode-high-contrast' : ''}`}
+          />
 
           {multiClassBadgeTooltip && (
             <div className="badge-fanout" style={{ left: multiClassBadgeTooltip.left, top: multiClassBadgeTooltip.top }}>

@@ -4488,8 +4488,8 @@ export default function App() {
           uploadedFiles.map(async (file) => {
             const text = await file.text();
             const quads = await parseRdfText(text, file.name);
-            const { headerQuads } = partitionOntologyHeaderQuads(quads);
-            return { fileName: file.name, headerQuads, quads };
+            const { headerQuads, contentQuads } = partitionOntologyHeaderQuads(quads);
+            return { fileName: file.name, headerQuads, contentQuads };
           }),
         );
 
@@ -4501,7 +4501,7 @@ export default function App() {
         const metadataRows = [];
 
         for (const parsed of parsedFiles) {
-          mergedQuads.push(...parsed.quads);
+          mergedQuads.push(...parsed.contentQuads);
 
           parsed.headerQuads.forEach((quad, index) => {
             metadataRows.push({

@@ -212,6 +212,20 @@ const METADATA_PREDICATES = new Set([
   DCT_SOURCE,
 ]);
 
+function collectOntologySubjectIds(quads) {
+  const ontologySubjectIds = new Set();
+  for (const quad of quads) {
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_ONTOLOGY
+    ) {
+      ontologySubjectIds.add(getTermId(quad.subject));
+    }
+  }
+  return ontologySubjectIds;
+}
+
 function hashText(value) {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i += 1) {
@@ -1939,9 +1953,12 @@ export function extractOntologyClassIds(quads) {
 }
 
 export function buildGraphData(quads, options = {}) {
-  const store = new Store(quads);
-  const labelIndex = buildLabelIndex(quads);
-  const statementAnalysis = buildStatementAnalysis(quads, store, labelIndex);
+  const ontologySubjectIds = collectOntologySubjectIds(quads);
+  const graphQuads =
+    ontologySubjectIds.size > 0 ? quads.filter((quad) => !ontologySubjectIds.has(getTermId(quad.subject))) : quads;
+  const store = new Store(graphQuads);
+  const labelIndex = buildLabelIndex(graphQuads);
+  const statementAnalysis = buildStatementAnalysis(graphQuads, store, labelIndex);
   const hasOntology = Boolean(options.hasOntology);
   const hasKg = Boolean(options.hasKg);
   const ontologyModel = options.ontologyModel ?? {};
@@ -1955,7 +1972,7 @@ export function buildGraphData(quads, options = {}) {
   const ontologyDatatypeNodeIds = ontologyModel.datatypeIds instanceof Set ? ontologyModel.datatypeIds : new Set();
   const ontologyNamedIndividualNodeIds =
     ontologyModel.namedIndividualIds instanceof Set ? ontologyModel.namedIndividualIds : new Set();
-  const { blankRoles, blankLabelById, restrictionKindById, restrictionTooltipById } = buildBlankExpressionIndex(quads);
+  const { blankRoles, blankLabelById, restrictionKindById, restrictionTooltipById } = buildBlankExpressionIndex(graphQuads);
 
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -2030,7 +2047,7 @@ export function buildGraphData(quads, options = {}) {
     ]);
   };
 
-  for (const quad of quads) {
+  for (const quad of graphQuads) {
     if (quad.predicate.value === RDF_TYPE && quad.subject.termType === 'NamedNode' && quad.object.termType === 'NamedNode') {
       if (quad.object.value === OWL_OBJECT_PROPERTY) {
         objectPropertyIris.add(quad.subject.value);
@@ -2103,7 +2120,7 @@ export function buildGraphData(quads, options = {}) {
 
   let objectEdgeCounter = 0;
   let literalEdgeCounter = 0;
-  for (const quad of quads) {
+  for (const quad of graphQuads) {
     if (!isEntityTerm(quad.subject)) {
       continue;
     }
@@ -2348,7 +2365,7 @@ export function buildGraphData(quads, options = {}) {
     ...Array.from(annotationPropertyIris.values()),
   ]);
 
-  for (const quad of quads) {
+  for (const quad of graphQuads) {
     if (
       quad.predicate.value === RDFS_RANGE &&
       quad.subject.termType === 'NamedNode' &&
@@ -2488,7 +2505,7 @@ export function buildGraphData(quads, options = {}) {
     ontologyDataPropertyNodeIds: ontologyDataPropertyIds,
     ontologyAnnotationPropertyNodeIds: ontologyAnnotationPropertyIds,
     ontologyDatatypeNodeIds,
-    quads,
+    quads: graphQuads,
     blankExpressionNodeIds: new Set(
       Array.from(blankRoles.entries())
         .filter(([, info]) => Boolean(info?.role))

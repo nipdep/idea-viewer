@@ -47,6 +47,16 @@ const PROJECTION_MODE_LABELS = {
   [GRAPH_PROJECTION_MODES.OWL]: 'OWL View',
   [GRAPH_PROJECTION_MODES.RDF]: 'RDF View',
 };
+const GRAPH_THEME_MODES = Object.freeze({
+  CLASSIC: 'classic',
+  HIGH_CONTRAST: 'high-contrast',
+});
+const MIN_GRAPH_ZOOM_SPEED = 0.01;
+const DEFAULT_GRAPH_ZOOM_SPEED = 0.08;
+const MAX_GRAPH_ZOOM_SPEED = 0.2;
+const MIN_GRAPH_FONT_SIZE = 8;
+const DEFAULT_GRAPH_FONT_SIZE = 12;
+const MAX_GRAPH_FONT_SIZE = 20;
 const RDFS_LABEL_IRI = 'http://www.w3.org/2000/01/rdf-schema#label';
 const XSD_BOOLEAN_IRI = 'http://www.w3.org/2001/XMLSchema#boolean';
 const XSD_DECIMAL_IRI = 'http://www.w3.org/2001/XMLSchema#decimal';
@@ -2647,7 +2657,7 @@ export default function App() {
             'border-color': '#7e6f60',
             width: 'data(nodeWidth)',
             height: 'data(nodeHeight)',
-            padding: '1px',
+            padding: '4px',
           },
         },
         {

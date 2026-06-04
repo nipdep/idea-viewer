@@ -62,6 +62,8 @@ const MAX_GRAPH_ZOOM_SPEED = 0.85;
 const MIN_GRAPH_FONT_SIZE = 8;
 const DEFAULT_GRAPH_FONT_SIZE = 12;
 const MAX_GRAPH_FONT_SIZE = 20;
+const LARGE_OWL_LAYOUT_NODE_THRESHOLD = 260;
+const LARGE_OWL_LAYOUT_EDGE_THRESHOLD = 700;
 const RDFS_LABEL_IRI = 'http://www.w3.org/2000/01/rdf-schema#label';
 const XSD_BOOLEAN_IRI = 'http://www.w3.org/2001/XMLSchema#boolean';
 const XSD_DECIMAL_IRI = 'http://www.w3.org/2001/XMLSchema#decimal';
@@ -3835,6 +3837,24 @@ export default function App() {
       });
     };
 
+    const restoreCachedPositions = () => {
+      let restoredCount = 0;
+      cy.batch(() => {
+        cy.nodes().not('[edgeAnchor = 1]').forEach((node) => {
+          const cached = positionCache.get(node.id());
+          if (!cached) {
+            return;
+          }
+          if (!Number.isFinite(cached.x) || !Number.isFinite(cached.y)) {
+            return;
+          }
+          node.position({ x: cached.x, y: cached.y });
+          restoredCount += 1;
+        });
+      });
+      return restoredCount;
+    };
+
     const fitGraph = (duration = 0) => {
       if (cancelled || cy.destroyed() || cy.elements().empty()) {
         return;
@@ -3864,7 +3884,24 @@ export default function App() {
 
       const useMagneticInitialLayout = shouldUseMagneticInitialLayout();
       const useSimplifiedRdfLayout = graphProjectionMode === GRAPH_PROJECTION_MODES.RDF;
+      const visibleLayoutNodes = cy
+        .nodes(':visible')
+        .not('[edgeAnchor = 1]')
+        .not('[edgeBendHandle = 1]');
+      const visibleLayoutEdges = cy
+        .edges(':visible')
+        .not('[edgeAnchorTether = 1]')
+        .not('[edgeAttachedConnector = 1]')
+        .not('[owlRelationConnector = 1]');
+      const useLargeOwlFallbackLayout =
+        !useSimplifiedRdfLayout &&
+        (visibleLayoutNodes.length >= LARGE_OWL_LAYOUT_NODE_THRESHOLD ||
+          visibleLayoutEdges.length >= LARGE_OWL_LAYOUT_EDGE_THRESHOLD);
       let initialPositionsAreFinite = false;
+
+      if (restoreCachedPositions() > 0) {
+        initialPositionsAreFinite = hasFiniteNodePositions(cy);
+      }
 
       if (useMagneticInitialLayout && !useSimplifiedRdfLayout) {
         initialPositionsAreFinite = applyMagneticInitialLayout(cy);
@@ -3888,6 +3925,17 @@ export default function App() {
         });
       }
 
+      if (useLargeOwlFallbackLayout && initialPositionsAreFinite) {
+        applySimpleRdfForceLayout(cy, {
+          iterations: visibleLayoutNodes.length > 420 ? 44 : 60,
+          attractionStrength: 0.016,
+          repulsionStrength: visibleLayoutNodes.length > 420 ? 9000 : 11000,
+          targetEdgeLength: 108,
+          maxStep: 10,
+          centeringStrength: 0.0022,
+        });
+      }
+
       const layoutCollection = cy
         .elements(':visible')
         .not('[edgeAnchor = 1]')
@@ -3903,6 +3951,13 @@ export default function App() {
               fit: true,
               padding: 42,
             }
+          : useLargeOwlFallbackLayout
+            ? {
+                name: 'preset',
+                animate: false,
+                fit: true,
+                padding: 42,
+              }
           : {
               name: 'cose',
               animate: false,
@@ -3957,6 +4012,16 @@ export default function App() {
             scaleStep: 0.92,
             spacing: 6,
             resolvePasses: 18,
+          });
+        }
+        if (useLargeOwlFallbackLayout) {
+          resolveNodeOverlaps(cy, 18, 18);
+          enforceRankAwareSpacing(cy, 8, 12);
+          compactLayoutUntilNoOverlapBoundary(cy, {
+            passes: 10,
+            scaleStep: 0.95,
+            spacing: 12,
+            resolvePasses: 10,
           });
         }
         synchronizeEdgeAnchorPositions(cy);

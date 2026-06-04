@@ -94,6 +94,7 @@ const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
   OWL_AXIOM,
   OWL_ASYMMETRIC_PROPERTY,
   OWL_CLASS,
+  RDFS_DATATYPE,
   RDFS_CLASS,
 ]);
 const BUILTIN_ANNOTATION_PREDICATES = new Set([
@@ -1206,6 +1207,14 @@ function annotationObjectToLiteralValue(term) {
   return term.value ?? '';
 }
 
+function isNamedIndividualTypingQuad(quad) {
+  return (
+    quad?.predicate?.value === RDF_TYPE &&
+    quad?.object?.termType === 'NamedNode' &&
+    quad.object.value === OWL_NAMED_INDIVIDUAL
+  );
+}
+
 function makeQuadKey(quad) {
   const graphId =
     quad.graph && quad.graph.termType !== 'DefaultGraph'
@@ -1502,6 +1511,10 @@ function buildStatementAnalysis(quads, store, labelIndex) {
   };
 
   const serializeTopLevelStatement = (quad) => {
+    if (isNamedIndividualTypingQuad(quad)) {
+      return null;
+    }
+
     const subjectLabel = formatTermForManchester(quad.subject, labelIndex);
     const subjectNl = formatTermForNl(quad.subject, labelIndex);
     const predicateLabel = compactIri(quad.predicate.value);
@@ -1704,6 +1717,9 @@ function buildStatementAnalysis(quads, store, labelIndex) {
   for (const quad of quads) {
     const quadKey = makeQuadKey(quad);
     if (consumedQuadKeys.has(quadKey)) {
+      continue;
+    }
+    if (isNamedIndividualTypingQuad(quad)) {
       continue;
     }
     if (METADATA_PREDICATES.has(quad.predicate.value)) {
@@ -2174,6 +2190,10 @@ export function buildGraphData(quads, options = {}) {
     );
     const axiomKind = getAxiomKind(quad, category, objectPropertyIris, dataPropertyIris, annotationPropertyIris);
     const restrictionKind = getRestrictionKind(quad.predicate.value);
+
+    if (isNamedIndividualTypingQuad(quad)) {
+      continue;
+    }
 
     if (category === 'annotation') {
       const annotationValue = annotationObjectToLiteralValue(quad.object);

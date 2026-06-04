@@ -48,6 +48,7 @@ const OWL_MIN_CARDINALITY = 'http://www.w3.org/2002/07/owl#minCardinality';
 const OWL_MIN_QUALIFIED_CARDINALITY = 'http://www.w3.org/2002/07/owl#minQualifiedCardinality';
 const OWL_ONE_OF = 'http://www.w3.org/2002/07/owl#oneOf';
 const OWL_OBJECT_PROPERTY = 'http://www.w3.org/2002/07/owl#ObjectProperty';
+const OWL_NAMED_INDIVIDUAL = 'http://www.w3.org/2002/07/owl#NamedIndividual';
 const OWL_ON_CLASS = 'http://www.w3.org/2002/07/owl#onClass';
 const OWL_ON_DATA_RANGE = 'http://www.w3.org/2002/07/owl#onDataRange';
 const OWL_ON_DATATYPE = 'http://www.w3.org/2002/07/owl#onDatatype';
@@ -972,6 +973,14 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
 
   for (const quad of graphData?.quads ?? []) {
     if (!quad?.subject || !quad?.predicate || !quad?.object) {
+      continue;
+    }
+
+    if (
+      quad.predicate.value === RDF_TYPE &&
+      quad.object.termType === 'NamedNode' &&
+      quad.object.value === OWL_NAMED_INDIVIDUAL
+    ) {
       continue;
     }
 

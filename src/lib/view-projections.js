@@ -2542,6 +2542,27 @@ function applyOwlProjection(graphData, elements) {
   const dedupedNodes = dedupedProjectedElements.filter((element) => !element?.data?.source);
   const redundantHelperNodeIds = new Set();
 
+  const hasEquivalentRestrictionEdge = (sourceId, targetId, predicate, excludeNodeId = '') =>
+    dedupedEdges.some((otherEdgeElement) => {
+      const otherData = otherEdgeElement?.data;
+      if (!otherData || otherData.source !== sourceId || otherData.target !== targetId) {
+        return false;
+      }
+      if (otherData.predicate !== predicate) {
+        return false;
+      }
+      if (
+        otherData.axiomKind !== 'Restriction' &&
+        otherData.axiomKind !== 'ClassExpressionRestriction'
+      ) {
+        return false;
+      }
+      if (!excludeNodeId) {
+        return true;
+      }
+      return otherData.source !== excludeNodeId && otherData.target !== excludeNodeId;
+    });
+
   for (const nodeElement of dedupedNodes) {
     const nodeData = nodeElement?.data;
     if (!nodeData?.id || !String(nodeData.id).startsWith('owl-expr:')) {
@@ -2578,6 +2599,53 @@ function applyOwlProjection(graphData, elements) {
     );
 
     if (hasAllDirectAnchorEdges) {
+      redundantHelperNodeIds.add(nodeData.id);
+    }
+  }
+
+  for (const nodeElement of dedupedNodes) {
+    const nodeData = nodeElement?.data;
+    if (
+      !nodeData?.id ||
+      (!String(nodeData.id).startsWith('owl-target-restr:') &&
+        nodeData.entityCategory !== 'class-expression-connector')
+    ) {
+      continue;
+    }
+
+    const incomingEdges = dedupedEdges.filter((edgeElement) => edgeElement.data.target === nodeData.id);
+    const outgoingEdges = dedupedEdges.filter((edgeElement) => edgeElement.data.source === nodeData.id);
+    if (incomingEdges.length === 0 || outgoingEdges.length === 0) {
+      continue;
+    }
+
+    const restrictionIncomingEdges = incomingEdges.filter(
+      (edgeElement) =>
+        edgeElement.data.axiomKind === 'Restriction' ||
+        edgeElement.data.axiomKind === 'ClassExpressionRestriction',
+    );
+    const restrictionOutgoingEdges = outgoingEdges.filter(
+      (edgeElement) => edgeElement.data.axiomKind === 'ClassExpressionRestriction',
+    );
+    if (
+      restrictionIncomingEdges.length !== incomingEdges.length ||
+      restrictionOutgoingEdges.length !== outgoingEdges.length
+    ) {
+      continue;
+    }
+
+    const isPureRelay = restrictionIncomingEdges.every((incomingEdge) =>
+      restrictionOutgoingEdges.every((outgoingEdge) =>
+        hasEquivalentRestrictionEdge(
+          incomingEdge.data.source,
+          outgoingEdge.data.target,
+          outgoingEdge.data.predicate,
+          nodeData.id,
+        ),
+      ),
+    );
+
+    if (isPureRelay) {
       redundantHelperNodeIds.add(nodeData.id);
     }
   }

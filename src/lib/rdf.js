@@ -8,6 +8,7 @@ const RDFS_NS = 'http://www.w3.org/2000/01/rdf-schema#';
 const OWL_NS = 'http://www.w3.org/2002/07/owl#';
 const XSD_NS = 'http://www.w3.org/2001/XMLSchema#';
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
+const SKOS_NS = 'http://www.w3.org/2004/02/skos/core#';
 const RDF_DESCRIPTION = `${RDF_NS}Description`;
 const RDF_FIRST = `${RDF_NS}first`;
 const RDF_REST = `${RDF_NS}rest`;
@@ -72,6 +73,7 @@ const OWL_TRANSITIVE_PROPERTY = `${OWL_NS}TransitiveProperty`;
 const OWL_SYMMETRIC_PROPERTY = `${OWL_NS}SymmetricProperty`;
 const PROV_WAS_DERIVED_FROM = 'http://www.w3.org/ns/prov#wasDerivedFrom';
 const DCT_SOURCE = 'http://purl.org/dc/terms/source';
+const SKOS_PREF_LABEL = `${SKOS_NS}prefLabel`;
 const RDF_STATEMENT = `${RDF_NS}Statement`;
 const RDF_SUBJECT = `${RDF_NS}subject`;
 const RDF_PREDICATE = `${RDF_NS}predicate`;
@@ -104,6 +106,8 @@ const BUILTIN_ANNOTATION_PREDICATES = new Set([
   `${OWL_NS}backwardCompatibleWith`,
   `${OWL_NS}incompatibleWith`,
   `${OWL_NS}deprecated`,
+  DCT_SOURCE,
+  SKOS_PREF_LABEL,
 ]);
 
 const EXPRESSION_NODE_PREDICATE_LABELS = new Map([

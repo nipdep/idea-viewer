@@ -56,9 +56,9 @@ const GRAPH_THEME_MODES = Object.freeze({
   CLASSIC: 'classic',
   HIGH_CONTRAST: 'high-contrast',
 });
-const MIN_GRAPH_ZOOM_SPEED = 0.01;
-const DEFAULT_GRAPH_ZOOM_SPEED = 0.08;
-const MAX_GRAPH_ZOOM_SPEED = 0.2;
+const MIN_GRAPH_ZOOM_SPEED = 0.02;
+const DEFAULT_GRAPH_ZOOM_SPEED = 0.12;
+const MAX_GRAPH_ZOOM_SPEED = 0.85;
 const MIN_GRAPH_FONT_SIZE = 8;
 const DEFAULT_GRAPH_FONT_SIZE = 12;
 const MAX_GRAPH_FONT_SIZE = 20;
@@ -1055,6 +1055,7 @@ export default function App() {
   const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
   const [graphFontSize, setGraphFontSize] = useState(DEFAULT_GRAPH_FONT_SIZE);
   const [graphThemeMode, setGraphThemeMode] = useState(GRAPH_THEME_MODES.CLASSIC);
+  const [showDottedEdgeLabels, setShowDottedEdgeLabels] = useState(true);
 
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loadError, setLoadError] = useState('');
@@ -3019,6 +3020,7 @@ export default function App() {
         {
           selector: 'edge[category = "type"], edge[axiomKind = "ClassAssertion"]',
           style: {
+            label: '',
             'target-arrow-shape': 'triangle-backcurve',
             'arrow-scale': 1.15,
           },
@@ -3067,8 +3069,8 @@ export default function App() {
         {
           selector: 'edge[owlSynthesized = 1][owlEdgeStyle = "dotted"]',
           style: {
-            label: '',
-            'source-label': '',
+            label: 'data(predicateLabel)',
+            'source-label': 'data(sourceCardinality)',
           },
         },
         {
@@ -3592,6 +3594,10 @@ export default function App() {
     if (cy._private?.options) {
       cy._private.options.wheelSensitivity = clampedZoomSpeed;
     }
+    const renderer = typeof cy.renderer === 'function' ? cy.renderer() : null;
+    if (renderer && typeof renderer === 'object') {
+      renderer.wheelSensitivity = clampedZoomSpeed;
+    }
 
     const styleBuilder = cy.style();
 
@@ -3717,10 +3723,15 @@ export default function App() {
       .style('font-size', clampedFontSize)
       .selector('edge')
       .style('font-size', clampedFontSize)
+      .selector('edge[owlSynthesized = 1][owlEdgeStyle = "dotted"]')
+      .style({
+        label: showDottedEdgeLabels ? 'data(predicateLabel)' : '',
+        'source-label': showDottedEdgeLabels ? 'data(sourceCardinality)' : '',
+      })
       .selector('edge[showSourceCardinality = 1]')
       .style('source-font-size', clampedFontSize)
       .update();
-  }, [graphZoomSpeed, graphFontSize, graphThemeMode, graphProjectionMode]);
+  }, [graphZoomSpeed, graphFontSize, graphThemeMode, graphProjectionMode, showDottedEdgeLabels]);
 
   useEffect(() => {
     focusedNodeIdRef.current = focusedNodeId;
@@ -4801,7 +4812,7 @@ export default function App() {
                     type="range"
                     min={MIN_GRAPH_ZOOM_SPEED}
                     max={MAX_GRAPH_ZOOM_SPEED}
-                    step={0.01}
+                    step={0.02}
                     value={graphZoomSpeed}
                     onChange={(event) => handleGraphZoomSpeedChange(event.target.value)}
                   />
@@ -4833,6 +4844,21 @@ export default function App() {
                       +
                     </button>
                   </div>
+                </div>
+
+                <div className="header-setting-row">
+                  <div className="header-setting-label-row">
+                    <span>Dotted edge labels</span>
+                    <span>{showDottedEdgeLabels ? 'On' : 'Off'}</span>
+                  </div>
+                  <label className="header-setting-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={showDottedEdgeLabels}
+                      onChange={(event) => setShowDottedEdgeLabels(event.target.checked)}
+                    />
+                    <span>Show labels on synthesized dotted OWL edges</span>
+                  </label>
                 </div>
               </div>
             )}

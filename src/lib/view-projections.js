@@ -1085,6 +1085,23 @@ function toCardinalityMarker(predicate, value) {
   return '';
 }
 
+function mergeCardinalityMarkers(...values) {
+  const markers = [];
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (text && !markers.includes(text)) {
+      markers.push(text);
+    }
+  }
+  if (markers.length === 0) {
+    return '';
+  }
+  if (markers.length === 1) {
+    return markers[0];
+  }
+  return markers.join(' + ');
+}
+
 function isTruthyBooleanLiteral(graphData, nodeId) {
   const node = graphData?.nodeMap?.get(nodeId);
   if (!node || node.termType !== 'Literal') {
@@ -1609,9 +1626,56 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
     }
   }
 
+  const helperEdgeIdsToRemove = new Set();
+  const helperNodeIdsToRemove = new Set();
+
+  for (const edgeElement of synthesizedEdges) {
+    const edgeData = edgeElement?.data;
+    if (!edgeData?.source || !String(edgeData.target || '').startsWith('owl-card:')) {
+      continue;
+    }
+
+    const matchingTargetEdges = synthesizedEdges.filter((candidateElement) => {
+      const candidate = candidateElement?.data;
+      if (!candidate?.source) {
+        return false;
+      }
+      if (candidate.id === edgeData.id) {
+        return false;
+      }
+      if (candidate.source !== edgeData.source || candidate.predicate !== edgeData.predicate) {
+        return false;
+      }
+      return !String(candidate.target || '').startsWith('owl-card:');
+    });
+
+    if (matchingTargetEdges.length === 0) {
+      continue;
+    }
+
+    for (const candidateElement of matchingTargetEdges) {
+      const candidate = candidateElement.data;
+      candidate.sourceCardinality = mergeCardinalityMarkers(candidate.sourceCardinality, edgeData.sourceCardinality);
+      candidate.showSourceCardinality = candidate.sourceCardinality ? 1 : 0;
+    }
+
+    helperEdgeIdsToRemove.add(edgeData.id);
+    helperNodeIdsToRemove.add(edgeData.target);
+  }
+
+  const mergedSynthesizedEdges =
+    helperEdgeIdsToRemove.size === 0
+      ? synthesizedEdges
+      : synthesizedEdges.filter((edgeElement) => !helperEdgeIdsToRemove.has(edgeElement?.data?.id));
+
+  const mergedSynthesizedNodes =
+    helperNodeIdsToRemove.size === 0
+      ? synthesizedNodes
+      : synthesizedNodes.filter((nodeElement) => !helperNodeIdsToRemove.has(nodeElement?.data?.id));
+
   return {
-    synthesizedNodes,
-    synthesizedEdges,
+    synthesizedNodes: mergedSynthesizedNodes,
+    synthesizedEdges: mergedSynthesizedEdges,
     hiddenNodeIds,
   };
 }

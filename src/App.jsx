@@ -3903,7 +3903,14 @@ export default function App() {
         initialPositionsAreFinite = hasFiniteNodePositions(cy);
       }
 
-      if (useMagneticInitialLayout && !useSimplifiedRdfLayout) {
+      if (useLargeOwlFallbackLayout && !initialPositionsAreFinite) {
+        applySpiralSeedLayout(cy, {
+          compactness: 0.92,
+        });
+        initialPositionsAreFinite = hasFiniteNodePositions(cy);
+      }
+
+      if (useMagneticInitialLayout && !useSimplifiedRdfLayout && !useLargeOwlFallbackLayout) {
         initialPositionsAreFinite = applyMagneticInitialLayout(cy);
       }
 
@@ -3927,12 +3934,12 @@ export default function App() {
 
       if (useLargeOwlFallbackLayout && initialPositionsAreFinite) {
         applySimpleRdfForceLayout(cy, {
-          iterations: visibleLayoutNodes.length > 420 ? 44 : 60,
-          attractionStrength: 0.016,
-          repulsionStrength: visibleLayoutNodes.length > 420 ? 9000 : 11000,
-          targetEdgeLength: 108,
-          maxStep: 10,
-          centeringStrength: 0.0022,
+          iterations: visibleLayoutNodes.length > 420 ? 56 : 72,
+          attractionStrength: 0.014,
+          repulsionStrength: visibleLayoutNodes.length > 420 ? 7600 : 9200,
+          targetEdgeLength: 124,
+          maxStep: 8,
+          centeringStrength: 0.002,
         });
       }
 

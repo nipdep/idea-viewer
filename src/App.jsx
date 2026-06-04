@@ -3938,12 +3938,12 @@ export default function App() {
 
       if (useLargeOwlFallbackLayout && initialPositionsAreFinite) {
         applySimpleRdfForceLayout(cy, {
-          iterations: visibleLayoutNodes.length > 420 ? 56 : 72,
-          attractionStrength: 0.014,
-          repulsionStrength: visibleLayoutNodes.length > 420 ? 7600 : 9200,
-          targetEdgeLength: 124,
-          maxStep: 8,
-          centeringStrength: 0.002,
+          iterations: visibleLayoutNodes.length > 420 ? 12 : 18,
+          attractionStrength: 0.011,
+          repulsionStrength: visibleLayoutNodes.length > 420 ? 5200 : 6400,
+          targetEdgeLength: 132,
+          maxStep: 5,
+          centeringStrength: 0.0012,
         });
       }
 
@@ -3992,7 +3992,7 @@ export default function App() {
         if (!hasFiniteNodePositions(cy)) {
           applySpiralSeedLayout(cy);
         }
-        if (useMagneticInitialLayout && !useSimplifiedRdfLayout) {
+        if (useMagneticInitialLayout && !useSimplifiedRdfLayout && !useLargeOwlFallbackLayout) {
           applyMagneticInitialLayout(cy, {
             preserveCurrentPositions: true,
             compactness: 0.96,
@@ -4026,14 +4026,7 @@ export default function App() {
           });
         }
         if (useLargeOwlFallbackLayout) {
-          resolveNodeOverlaps(cy, 18, 18);
-          enforceRankAwareSpacing(cy, 8, 12);
-          compactLayoutUntilNoOverlapBoundary(cy, {
-            passes: 10,
-            scaleStep: 0.95,
-            spacing: 12,
-            resolvePasses: 10,
-          });
+          resolveNodeOverlaps(cy, 4, 10);
         }
         synchronizeEdgeAnchorPositions(cy);
         synchronizeEdgeBendHandle(cy);
@@ -4054,7 +4047,7 @@ export default function App() {
           if (!hasFiniteNodePositions(cy)) {
             applySpiralSeedLayout(cy);
           }
-          if (useMagneticInitialLayout) {
+          if (useMagneticInitialLayout && !useLargeOwlFallbackLayout) {
             applyMagneticInitialLayout(cy, {
               preserveCurrentPositions: true,
               compactness: 0.96,
@@ -4073,6 +4066,9 @@ export default function App() {
               minSpacing: 128,
             });
             resolveNodeOverlaps(cy, 20, 26);
+          }
+          if (useLargeOwlFallbackLayout) {
+            resolveNodeOverlaps(cy, 4, 10);
           }
           synchronizeEdgeAnchorPositions(cy);
           synchronizeEdgeBendHandle(cy);
@@ -4351,67 +4347,6 @@ export default function App() {
     sparqlQuery,
     graphProjectionMode,
     owlProjectionLevel,
-    showClassTypeFilter,
-  ]);
-
-  useEffect(() => {
-    if (!graphData) {
-      return undefined;
-    }
-
-    if (graphProjectionMode !== GRAPH_PROJECTION_MODES.OWL || owlProjectionLevel !== OWL_PROJECTION_LEVELS.ONTOLOGY) {
-      return undefined;
-    }
-
-    const classFilterActive =
-      showClassTypeFilter &&
-      graphData.classes.length > 0 &&
-      selectedClassIris.length !== graphData.classes.length;
-    const baseIriFilterActive =
-      graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
-    const nodeNameFilterActive = nodeNameQuery.trim().length > 0;
-    const sparqlActive = sparqlQuery.trim().length > 0;
-
-    if (classFilterActive || baseIriFilterActive || nodeNameFilterActive || sparqlActive) {
-      return undefined;
-    }
-
-    const kgCacheKey = buildProjectionCacheKey(GRAPH_PROJECTION_MODES.OWL, OWL_PROJECTION_LEVELS.KG);
-    if (projectedElementsCacheRef.current.has(kgCacheKey)) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    const schedule = window.requestIdleCallback
-      ? window.requestIdleCallback.bind(window)
-      : (callback) => window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 0 }), 120);
-    const cancel = window.cancelIdleCallback
-      ? window.cancelIdleCallback.bind(window)
-      : window.clearTimeout.bind(window);
-
-    const handle = schedule(() => {
-      if (cancelled) {
-        return;
-      }
-      const kgViewOptions = toViewOptions(GRAPH_PROJECTION_MODES.OWL, graphData, OWL_PROJECTION_LEVELS.KG);
-      const kgProjected = buildProjectedElements(graphData, null, kgViewOptions);
-      if (!cancelled) {
-        projectedElementsCacheRef.current.set(kgCacheKey, kgProjected);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      cancel(handle);
-    };
-  }, [
-    graphData,
-    graphProjectionMode,
-    owlProjectionLevel,
-    selectedClassIris,
-    selectedBaseIris,
-    nodeNameQuery,
-    sparqlQuery,
     showClassTypeFilter,
   ]);
 

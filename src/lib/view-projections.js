@@ -139,6 +139,57 @@ function cloneElement(element) {
   };
 }
 
+function buildProjectedEdgeEquivalenceIndex(edgeElements) {
+  const edgesByTarget = new Map();
+  const edgesBySource = new Map();
+  const equivalenceByPair = new Map();
+
+  const equivalenceKeyForEdge = (edgeData) => {
+    if (!edgeData?.source) {
+      return '';
+    }
+    if (edgeData.axiomKind === 'Restriction' || edgeData.axiomKind === 'ClassExpressionRestriction') {
+      return `restriction|${edgeData.predicate}`;
+    }
+    if (
+      edgeData.axiomKind === 'SubClassOf' ||
+      edgeData.axiomKind === 'ClassExpression' ||
+      edgeData.predicate === RDFS_SUBCLASS_OF ||
+      edgeData.predicate === OWL_EQUIVALENT_CLASS
+    ) {
+      return 'hierarchy';
+    }
+    return `${edgeData.predicate}|${edgeData.axiomKind || ''}`;
+  };
+
+  for (const edgeElement of edgeElements) {
+    const edgeData = edgeElement?.data;
+    if (!edgeData?.source) {
+      continue;
+    }
+
+    const incoming = edgesByTarget.get(edgeData.target) ?? [];
+    incoming.push(edgeElement);
+    edgesByTarget.set(edgeData.target, incoming);
+
+    const outgoing = edgesBySource.get(edgeData.source) ?? [];
+    outgoing.push(edgeElement);
+    edgesBySource.set(edgeData.source, outgoing);
+
+    const pairKey = `${edgeData.source}|${edgeData.target}`;
+    const equivalenceKeys = equivalenceByPair.get(pairKey) ?? new Set();
+    equivalenceKeys.add(equivalenceKeyForEdge(edgeData));
+    equivalenceByPair.set(pairKey, equivalenceKeys);
+  }
+
+  return {
+    edgesByTarget,
+    edgesBySource,
+    equivalenceByPair,
+    equivalenceKeyForEdge,
+  };
+}
+
 function suppressMetadataEdges(elements) {
   return elements.filter((element) => {
     const predicate = element?.data?.predicate;
@@ -2611,9 +2662,6 @@ function applyOwlProjection(graphData, elements) {
     return !restrictionLikeEdgeKeys.has(`${data.source}|${data.target}|${data.predicate}`);
   });
 
-  const isRestrictionLikeAxiom = (axiomKind) =>
-    axiomKind === 'Restriction' || axiomKind === 'ClassExpressionRestriction';
-
   const isRestrictionRelayNode = (nodeData) =>
     Boolean(
       nodeData?.id &&
@@ -2624,40 +2672,18 @@ function applyOwlProjection(graphData, elements) {
   const isExpressionHelperNode = (nodeData) =>
     Boolean(nodeData?.id && String(nodeData.id).startsWith('owl-expr:'));
 
-  const hasEquivalentDirectEdge = (edges, sourceId, targetId, edgeData, excludedNodeIds = new Set()) =>
-    edges.some((otherEdgeElement) => {
-      const otherData = otherEdgeElement?.data;
-      if (!otherData || otherData.source !== sourceId || otherData.target !== targetId) {
-        return false;
-      }
-      if (excludedNodeIds.has(otherData.source) || excludedNodeIds.has(otherData.target)) {
-        return false;
-      }
-      if (isRestrictionLikeAxiom(edgeData.axiomKind)) {
-        return otherData.predicate === edgeData.predicate && isRestrictionLikeAxiom(otherData.axiomKind);
-      }
-      if (
-        edgeData.axiomKind === 'SubClassOf' ||
-        edgeData.axiomKind === 'ClassExpression' ||
-        edgeData.predicate === RDFS_SUBCLASS_OF ||
-        edgeData.predicate === OWL_EQUIVALENT_CLASS
-      ) {
-        return (
-          otherData.predicate === RDFS_SUBCLASS_OF ||
-          otherData.predicate === OWL_EQUIVALENT_CLASS ||
-          otherData.axiomKind === 'SubClassOf' ||
-          otherData.axiomKind === 'ClassExpression'
-        );
-      }
-      return otherData.predicate === edgeData.predicate && otherData.axiomKind === edgeData.axiomKind;
-    });
-
   let compactedProjectedElements = dedupedProjectedElements;
   let removedHelperNodes = true;
   while (removedHelperNodes) {
     removedHelperNodes = false;
-    const currentEdges = compactedProjectedElements.filter((element) => element?.data?.source);
     const currentNodes = compactedProjectedElements.filter((element) => !element?.data?.source);
+    const currentEdges = compactedProjectedElements.filter((element) => element?.data?.source);
+    const {
+      edgesByTarget,
+      edgesBySource,
+      equivalenceByPair,
+      equivalenceKeyForEdge,
+    } = buildProjectedEdgeEquivalenceIndex(currentEdges);
     const redundantHelperNodeIds = new Set();
 
     for (const nodeElement of currentNodes) {
@@ -2666,16 +2692,17 @@ function applyOwlProjection(graphData, elements) {
         continue;
       }
 
-      const incomingEdges = currentEdges.filter((edgeElement) => edgeElement.data.target === nodeData.id);
-      const outgoingEdges = currentEdges.filter((edgeElement) => edgeElement.data.source === nodeData.id);
+      const incomingEdges = edgesByTarget.get(nodeData.id) ?? [];
+      const outgoingEdges = edgesBySource.get(nodeData.id) ?? [];
       if (incomingEdges.length !== 1 || outgoingEdges.length === 0) {
         continue;
       }
 
       const anchorSourceId = incomingEdges[0].data.source;
-      const hasAllDirectAnchorEdges = outgoingEdges.every((edgeElement) =>
-        hasEquivalentDirectEdge(currentEdges, anchorSourceId, edgeElement.data.target, edgeElement.data),
-      );
+      const hasAllDirectAnchorEdges = outgoingEdges.every((edgeElement) => {
+        const pairKeys = equivalenceByPair.get(`${anchorSourceId}|${edgeElement.data.target}`);
+        return pairKeys?.has(equivalenceKeyForEdge(edgeElement.data)) ?? false;
+      });
 
       if (hasAllDirectAnchorEdges) {
         redundantHelperNodeIds.add(nodeData.id);
@@ -2688,16 +2715,22 @@ function applyOwlProjection(graphData, elements) {
         continue;
       }
 
-      const incomingEdges = currentEdges.filter((edgeElement) => edgeElement.data.target === nodeData.id);
-      const outgoingEdges = currentEdges.filter((edgeElement) => edgeElement.data.source === nodeData.id);
+      const incomingEdges = edgesByTarget.get(nodeData.id) ?? [];
+      const outgoingEdges = edgesBySource.get(nodeData.id) ?? [];
 
       if (incomingEdges.length === 0 || outgoingEdges.length === 0) {
         redundantHelperNodeIds.add(nodeData.id);
         continue;
       }
 
-      const restrictionIncomingEdges = incomingEdges.filter((edgeElement) => isRestrictionLikeAxiom(edgeElement.data.axiomKind));
-      const restrictionOutgoingEdges = outgoingEdges.filter((edgeElement) => isRestrictionLikeAxiom(edgeElement.data.axiomKind));
+      const restrictionIncomingEdges = incomingEdges.filter(
+        (edgeElement) =>
+          edgeElement.data.axiomKind === 'Restriction' || edgeElement.data.axiomKind === 'ClassExpressionRestriction',
+      );
+      const restrictionOutgoingEdges = outgoingEdges.filter(
+        (edgeElement) =>
+          edgeElement.data.axiomKind === 'Restriction' || edgeElement.data.axiomKind === 'ClassExpressionRestriction',
+      );
       if (
         restrictionIncomingEdges.length !== incomingEdges.length ||
         restrictionOutgoingEdges.length !== outgoingEdges.length
@@ -2706,15 +2739,10 @@ function applyOwlProjection(graphData, elements) {
       }
 
       const isPureRelay = restrictionIncomingEdges.every((incomingEdge) =>
-        restrictionOutgoingEdges.every((outgoingEdge) =>
-          hasEquivalentDirectEdge(
-            currentEdges,
-            incomingEdge.data.source,
-            outgoingEdge.data.target,
-            outgoingEdge.data,
-            new Set([nodeData.id]),
-          ),
-        ),
+        restrictionOutgoingEdges.every((outgoingEdge) => {
+          const pairKeys = equivalenceByPair.get(`${incomingEdge.data.source}|${outgoingEdge.data.target}`);
+          return pairKeys?.has(equivalenceKeyForEdge(outgoingEdge.data)) ?? false;
+        }),
       );
 
       if (isPureRelay) {

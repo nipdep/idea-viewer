@@ -2538,12 +2538,70 @@ function applyOwlProjection(graphData, elements) {
     return !restrictionLikeEdgeKeys.has(`${data.source}|${data.target}|${data.predicate}`);
   });
 
+  const dedupedEdges = dedupedProjectedElements.filter((element) => element?.data?.source);
+  const dedupedNodes = dedupedProjectedElements.filter((element) => !element?.data?.source);
+  const redundantHelperNodeIds = new Set();
+
+  for (const nodeElement of dedupedNodes) {
+    const nodeData = nodeElement?.data;
+    if (!nodeData?.id || !String(nodeData.id).startsWith('owl-expr:')) {
+      continue;
+    }
+
+    const incomingEdges = dedupedEdges.filter((edgeElement) => edgeElement.data.target === nodeData.id);
+    const outgoingEdges = dedupedEdges.filter((edgeElement) => edgeElement.data.source === nodeData.id);
+    if (incomingEdges.length !== 1 || outgoingEdges.length === 0) {
+      continue;
+    }
+
+    const anchorSourceId = incomingEdges[0].data.source;
+    const restrictionEdges = outgoingEdges.filter(
+      (edgeElement) => edgeElement.data.axiomKind === 'ClassExpressionRestriction',
+    );
+    if (restrictionEdges.length === 0 || restrictionEdges.length !== outgoingEdges.length) {
+      continue;
+    }
+
+    const hasAllDirectAnchorEdges = restrictionEdges.every((edgeElement) =>
+      dedupedEdges.some((otherEdgeElement) => {
+        if (otherEdgeElement.data.source !== anchorSourceId || otherEdgeElement.data.target !== edgeElement.data.target) {
+          return false;
+        }
+        if (otherEdgeElement.data.predicate !== edgeElement.data.predicate) {
+          return false;
+        }
+        return (
+          otherEdgeElement.data.axiomKind === 'Restriction' ||
+          otherEdgeElement.data.axiomKind === 'ClassExpressionRestriction'
+        );
+      }),
+    );
+
+    if (hasAllDirectAnchorEdges) {
+      redundantHelperNodeIds.add(nodeData.id);
+    }
+  }
+
+  const compactedProjectedElements =
+    redundantHelperNodeIds.size === 0
+      ? dedupedProjectedElements
+      : dedupedProjectedElements.filter((element) => {
+          const data = element?.data;
+          if (!data) {
+            return false;
+          }
+          if (!data.source) {
+            return !redundantHelperNodeIds.has(data.id);
+          }
+          return !redundantHelperNodeIds.has(data.source) && !redundantHelperNodeIds.has(data.target);
+        });
+
   const projectedNodeIds = new Set(
-    dedupedProjectedElements
+    compactedProjectedElements
       .filter((element) => !element?.data?.source)
       .map((element) => element.data.id),
   );
-  const safeProjectedElements = dedupedProjectedElements.filter((element) => {
+  const safeProjectedElements = compactedProjectedElements.filter((element) => {
     const data = element?.data;
     if (!data?.source) {
       return true;

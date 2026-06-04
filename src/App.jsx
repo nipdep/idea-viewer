@@ -1006,6 +1006,7 @@ export default function App() {
   const resizeStateRef = useRef(null);
   const hasAppliedInitialLayoutRef = useRef(false);
   const layoutPositionCacheRef = useRef(new Map());
+  const projectedElementsCacheRef = useRef(new Map());
   const groupDragStateRef = useRef(null);
   const groupDragArmRef = useRef(null);
   const shouldFitAfterFocusClearRef = useRef(false);
@@ -1026,7 +1027,7 @@ export default function App() {
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
   const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.OWL);
-  const [owlProjectionLevel, setOwlProjectionLevel] = useState(OWL_PROJECTION_LEVELS.KG);
+  const [owlProjectionLevel, setOwlProjectionLevel] = useState(OWL_PROJECTION_LEVELS.ONTOLOGY);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
@@ -1117,6 +1118,8 @@ export default function App() {
     [selectedEdgeId, graphData, visibleElements],
   );
   const isHighContrastGraph = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
+
+  const buildProjectionCacheKey = (projectionMode, projectionLevel) => `${projectionMode}:${projectionLevel}`;
 
   function setSingleFocusedNode(nodeId) {
     setSelectedEdgeId(null);
@@ -3751,6 +3754,7 @@ export default function App() {
   useEffect(() => {
     hasAppliedInitialLayoutRef.current = false;
     layoutPositionCacheRef.current.clear();
+    projectedElementsCacheRef.current.clear();
   }, [graphData]);
 
   useEffect(() => {
@@ -4241,7 +4245,15 @@ export default function App() {
 
       try {
         const viewOptions = toViewOptions(graphProjectionMode, graphData, owlProjectionLevel);
+        const currentProjectionCacheKey = buildProjectionCacheKey(graphProjectionMode, owlProjectionLevel);
         const projectElements = (focusedNodeIds = null) => {
+          if (!focusedNodeIds) {
+            const cachedProjected = projectedElementsCacheRef.current.get(currentProjectionCacheKey);
+            if (cachedProjected) {
+              return cachedProjected;
+            }
+          }
+
           const projected = buildProjectedElements(graphData, focusedNodeIds, viewOptions);
           if (
             graphProjectionMode === GRAPH_PROJECTION_MODES.RDF &&
@@ -4249,6 +4261,9 @@ export default function App() {
             graphData.nodes.length > 0
           ) {
             return buildProjectedElements(graphData, null, viewOptions);
+          }
+          if (!focusedNodeIds) {
+            projectedElementsCacheRef.current.set(currentProjectionCacheKey, projected);
           }
           return projected;
         };
@@ -4340,6 +4355,67 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    if (!graphData) {
+      return undefined;
+    }
+
+    if (graphProjectionMode !== GRAPH_PROJECTION_MODES.OWL || owlProjectionLevel !== OWL_PROJECTION_LEVELS.ONTOLOGY) {
+      return undefined;
+    }
+
+    const classFilterActive =
+      showClassTypeFilter &&
+      graphData.classes.length > 0 &&
+      selectedClassIris.length !== graphData.classes.length;
+    const baseIriFilterActive =
+      graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
+    const nodeNameFilterActive = nodeNameQuery.trim().length > 0;
+    const sparqlActive = sparqlQuery.trim().length > 0;
+
+    if (classFilterActive || baseIriFilterActive || nodeNameFilterActive || sparqlActive) {
+      return undefined;
+    }
+
+    const kgCacheKey = buildProjectionCacheKey(GRAPH_PROJECTION_MODES.OWL, OWL_PROJECTION_LEVELS.KG);
+    if (projectedElementsCacheRef.current.has(kgCacheKey)) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const schedule = window.requestIdleCallback
+      ? window.requestIdleCallback.bind(window)
+      : (callback) => window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 0 }), 120);
+    const cancel = window.cancelIdleCallback
+      ? window.cancelIdleCallback.bind(window)
+      : window.clearTimeout.bind(window);
+
+    const handle = schedule(() => {
+      if (cancelled) {
+        return;
+      }
+      const kgViewOptions = toViewOptions(GRAPH_PROJECTION_MODES.OWL, graphData, OWL_PROJECTION_LEVELS.KG);
+      const kgProjected = buildProjectedElements(graphData, null, kgViewOptions);
+      if (!cancelled) {
+        projectedElementsCacheRef.current.set(kgCacheKey, kgProjected);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      cancel(handle);
+    };
+  }, [
+    graphData,
+    graphProjectionMode,
+    owlProjectionLevel,
+    selectedClassIris,
+    selectedBaseIris,
+    nodeNameQuery,
+    sparqlQuery,
+    showClassTypeFilter,
+  ]);
+
+  useEffect(() => {
     const visibleNodeIds = new Set(
       visibleElements.filter((entry) => !entry.data.source).map((entry) => entry.data.id),
     );
@@ -4390,6 +4466,7 @@ export default function App() {
     setLoadError('');
     setFilterError('');
     setStatus(DEFAULT_STATUS);
+    setOwlProjectionLevel(OWL_PROJECTION_LEVELS.ONTOLOGY);
   }
 
   function handleFileSelection(files) {
@@ -4399,6 +4476,7 @@ export default function App() {
 
     if (uploadedFiles.length === 0) {
       setGraphProjectionMode(GRAPH_PROJECTION_MODES.OWL);
+      setOwlProjectionLevel(OWL_PROJECTION_LEVELS.ONTOLOGY);
     }
 
     setUploadedFiles((current) => mergeSelectedFiles(current, files));
@@ -4496,6 +4574,7 @@ export default function App() {
         setFocusedNodeId(null);
         setFocusedNodeIds([]);
         setGraphProjectionMode(GRAPH_PROJECTION_MODES.OWL);
+        setOwlProjectionLevel(OWL_PROJECTION_LEVELS.ONTOLOGY);
         setOntologyMetadataRows([...metadataRows, ...derivedPrefixRows]);
 
         setStatus(

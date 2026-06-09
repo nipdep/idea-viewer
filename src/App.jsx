@@ -49,6 +49,11 @@ const OWL_PROJECTION_LEVELS = {
   ONTOLOGY: 'ontology',
   KG: 'kg',
 };
+const GRAPH_FILTER_AXES = {
+  ALL: 'all',
+  TBOX: 't-box',
+  ABOX: 'a-box',
+};
 const PROJECTION_MODE_LABELS = {
   [GRAPH_PROJECTION_MODES.OWL]: 'OWL View',
   [GRAPH_PROJECTION_MODES.RDF]: 'RDF View',
@@ -71,6 +76,26 @@ const XSD_DECIMAL_IRI = 'http://www.w3.org/2001/XMLSchema#decimal';
 const VIEW_EXPORT_NS = 'https://idea-viewer.local/view#';
 const CYTOSCAPE_CDN_URL = 'https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js';
 const GITHUB_ISSUES_URL = 'https://github.com/nipdep/idea-viewer/issues';
+const TBOX_ONTOLOGY_KINDS = new Set(['class', 'object-property', 'data-property', 'annotation-property', 'datatype']);
+const TBOX_ENTITY_CATEGORIES = new Set([
+  'class',
+  'data-property',
+  'object-property',
+  'annotation-property',
+  'datatype',
+  'class-expression',
+]);
+const ABOX_ENTITY_CATEGORIES = new Set(['individual', 'thing', 'literal']);
+const GRAPH_AXIS_HELPER_CATEGORIES = new Set([
+  'owl-helper',
+  'owl-expression',
+  'owl-group',
+  'owl-collection-connector',
+  'all-different',
+  'edge-anchor',
+  'class-expression-connector',
+  'rdf-connector',
+]);
 
 const { blankNode, literal, namedNode, quad } = DataFactory;
 
@@ -560,6 +585,107 @@ function runBaseIriFilter(graphData, baseIris) {
   return matchedNodeIds;
 }
 
+function getGraphAxisForNode(node) {
+  if (!node) {
+    return GRAPH_FILTER_AXES.ALL;
+  }
+
+  const ontologyKind = node.ontologyKind ?? '';
+  const entityCategory = node.entityCategory ?? '';
+
+  if (node.termType === 'Literal' || entityCategory === 'literal') {
+    return GRAPH_FILTER_AXES.ABOX;
+  }
+
+  if (TBOX_ONTOLOGY_KINDS.has(ontologyKind) || TBOX_ENTITY_CATEGORIES.has(entityCategory) || node.isOntologyNode) {
+    return GRAPH_FILTER_AXES.TBOX;
+  }
+
+  if (ontologyKind === 'individual' || ABOX_ENTITY_CATEGORIES.has(entityCategory) || node.isInstanceNode) {
+    return GRAPH_FILTER_AXES.ABOX;
+  }
+
+  if (entityCategory === 'blank') {
+    return GRAPH_FILTER_AXES.ABOX;
+  }
+
+  return GRAPH_FILTER_AXES.TBOX;
+}
+
+function runGraphAxisFilter(graphData, graphFilterAxis) {
+  if (!graphData || graphFilterAxis === GRAPH_FILTER_AXES.ALL) {
+    return null;
+  }
+
+  const matchedNodeIds = new Set();
+  for (const node of graphData.nodes) {
+    if (getGraphAxisForNode(node) === graphFilterAxis) {
+      matchedNodeIds.add(node.id);
+    }
+  }
+
+  return matchedNodeIds;
+}
+
+function filterProjectedElementsByGraphAxis(elements, graphFilterAxis) {
+  if (!Array.isArray(elements) || graphFilterAxis === GRAPH_FILTER_AXES.ALL) {
+    return elements;
+  }
+
+  const nodeElements = elements.filter((element) => !element?.data?.source);
+  const edgeElements = elements.filter((element) => element?.data?.source);
+  const nodeElementsById = new Map(nodeElements.map((element) => [element.data.id, element]));
+  const retainedNodeIds = new Set();
+
+  for (const element of nodeElements) {
+    const data = element?.data;
+    if (!data || GRAPH_AXIS_HELPER_CATEGORIES.has(data.entityCategory ?? '')) {
+      continue;
+    }
+
+    if (getGraphAxisForNode(data) === graphFilterAxis) {
+      retainedNodeIds.add(data.id);
+    }
+  }
+
+  let addedHelperNode = true;
+  while (addedHelperNode) {
+    addedHelperNode = false;
+    for (const edge of edgeElements) {
+      const data = edge?.data;
+      if (!data) {
+        continue;
+      }
+
+      const sourceNode = nodeElementsById.get(data.source)?.data;
+      const targetNode = nodeElementsById.get(data.target)?.data;
+      const sourceRetained = retainedNodeIds.has(data.source);
+      const targetRetained = retainedNodeIds.has(data.target);
+
+      if (sourceNode && GRAPH_AXIS_HELPER_CATEGORIES.has(sourceNode.entityCategory ?? '') && targetRetained && !sourceRetained) {
+        retainedNodeIds.add(data.source);
+        addedHelperNode = true;
+      }
+
+      if (targetNode && GRAPH_AXIS_HELPER_CATEGORIES.has(targetNode.entityCategory ?? '') && sourceRetained && !targetRetained) {
+        retainedNodeIds.add(data.target);
+        addedHelperNode = true;
+      }
+    }
+  }
+
+  return elements.filter((element) => {
+    const data = element?.data;
+    if (!data) {
+      return false;
+    }
+    if (!data.source) {
+      return retainedNodeIds.has(data.id);
+    }
+    return retainedNodeIds.has(data.source) && retainedNodeIds.has(data.target);
+  });
+}
+
 function normalizeSearchText(value) {
   return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -1041,6 +1167,7 @@ export default function App() {
 
   const [selectedClassIris, setSelectedClassIris] = useState([]);
   const [selectedBaseIris, setSelectedBaseIris] = useState([]);
+  const [graphFilterAxis, setGraphFilterAxis] = useState(GRAPH_FILTER_AXES.ALL);
   const [nodeNameQuery, setNodeNameQuery] = useState('');
   const [sparqlDraft, setSparqlDraft] = useState('');
   const [sparqlQuery, setSparqlQuery] = useState('');
@@ -4293,25 +4420,29 @@ export default function App() {
         const viewOptions = toViewOptions(graphProjectionMode, graphData, owlProjectionLevel);
         const currentProjectionCacheKey = buildProjectionCacheKey(graphProjectionMode, owlProjectionLevel);
         const projectElements = (focusedNodeIds = null) => {
+          let projected;
           if (!focusedNodeIds) {
             const cachedProjected = projectedElementsCacheRef.current.get(currentProjectionCacheKey);
             if (cachedProjected) {
-              return cachedProjected;
+              projected = cachedProjected;
             }
           }
 
-          const projected = buildProjectedElements(graphData, focusedNodeIds, viewOptions);
-          if (
-            graphProjectionMode === GRAPH_PROJECTION_MODES.RDF &&
-            projected.length === 0 &&
-            graphData.nodes.length > 0
-          ) {
-            return buildProjectedElements(graphData, null, viewOptions);
+          if (!projected) {
+            projected = buildProjectedElements(graphData, focusedNodeIds, viewOptions);
+            if (
+              graphProjectionMode === GRAPH_PROJECTION_MODES.RDF &&
+              projected.length === 0 &&
+              graphData.nodes.length > 0
+            ) {
+              projected = buildProjectedElements(graphData, null, viewOptions);
+            }
+            if (!focusedNodeIds) {
+              projectedElementsCacheRef.current.set(currentProjectionCacheKey, projected);
+            }
           }
-          if (!focusedNodeIds) {
-            projectedElementsCacheRef.current.set(currentProjectionCacheKey, projected);
-          }
-          return projected;
+
+          return filterProjectedElementsByGraphAxis(projected, graphFilterAxis);
         };
         const classFilterActive =
           showClassTypeFilter &&
@@ -4319,10 +4450,11 @@ export default function App() {
           selectedClassIris.length !== graphData.classes.length;
         const baseIriFilterActive =
           graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
+        const graphAxisActive = graphFilterAxis !== GRAPH_FILTER_AXES.ALL;
         const nodeNameFilterActive = nodeNameQuery.trim().length > 0;
         const sparqlActive = sparqlQuery.trim().length > 0;
 
-        if (!classFilterActive && !baseIriFilterActive && !nodeNameFilterActive && !sparqlActive) {
+        if (!classFilterActive && !baseIriFilterActive && !graphAxisActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
             setVisibleElements(
               applyEdgeCurveOverrides(
@@ -4339,6 +4471,11 @@ export default function App() {
 
         if (baseIriFilterActive) {
           selectedEntities = runBaseIriFilter(graphData, selectedBaseIris);
+        }
+
+        if (graphAxisActive) {
+          const axisMatches = runGraphAxisFilter(graphData, graphFilterAxis);
+          selectedEntities = selectedEntities ? intersectSets(selectedEntities, axisMatches) : axisMatches;
         }
 
         if (classFilterActive) {
@@ -4393,6 +4530,7 @@ export default function App() {
     graphData,
     selectedClassIris,
     selectedBaseIris,
+    graphFilterAxis,
     nodeNameQuery,
     sparqlQuery,
     graphProjectionMode,
@@ -4551,6 +4689,7 @@ export default function App() {
         setGraphData(nextGraphData);
         setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
         setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
+        setGraphFilterAxis(GRAPH_FILTER_AXES.ALL);
         setNodeNameQuery('');
         setSparqlDraft('');
         setSparqlQuery('');
@@ -5137,6 +5276,37 @@ export default function App() {
                     ) : (
                       <p className="muted">Use the graph toolbar toggle to switch between OWL and RDF views.</p>
                     )}
+
+                    <h3 className="filter-group-title">Axis</h3>
+                    <div className="option-list" role="radiogroup" aria-label="Graph filtering axis">
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="graph-filter-axis"
+                          checked={graphFilterAxis === GRAPH_FILTER_AXES.ALL}
+                          onChange={() => setGraphFilterAxis(GRAPH_FILTER_AXES.ALL)}
+                        />
+                        <span>all</span>
+                      </label>
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="graph-filter-axis"
+                          checked={graphFilterAxis === GRAPH_FILTER_AXES.TBOX}
+                          onChange={() => setGraphFilterAxis(GRAPH_FILTER_AXES.TBOX)}
+                        />
+                        <span>T-box</span>
+                      </label>
+                      <label className="option-item">
+                        <input
+                          type="radio"
+                          name="graph-filter-axis"
+                          checked={graphFilterAxis === GRAPH_FILTER_AXES.ABOX}
+                          onChange={() => setGraphFilterAxis(GRAPH_FILTER_AXES.ABOX)}
+                        />
+                        <span>A-Box</span>
+                      </label>
+                    </div>
 
                     {showClassTypeFilter && (
                       <>

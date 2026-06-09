@@ -6,6 +6,7 @@ export const GRAPH_VIEW_MODES = Object.freeze({
 });
 const OWL_PROJECTION_LEVELS = Object.freeze({
   TAXONOMY: 'taxonomy',
+  SCHEMA: 'schema',
   ONTOLOGY: 'ontology',
   KG: 'kg',
 });
@@ -13,15 +14,26 @@ const OWL_PROJECTION_LEVELS = Object.freeze({
 const RDFS_COMMENT = 'http://www.w3.org/2000/01/rdf-schema#comment';
 const RDFS_DOMAIN = 'http://www.w3.org/2000/01/rdf-schema#domain';
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
+const RDFS_MEMBER = 'http://www.w3.org/2000/01/rdf-schema#member';
 const RDFS_RANGE = 'http://www.w3.org/2000/01/rdf-schema#range';
+const RDFS_RESOURCE = 'http://www.w3.org/2000/01/rdf-schema#Resource';
 const RDFS_SUBCLASS_OF = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
 const RDFS_SUBPROPERTY_OF = 'http://www.w3.org/2000/01/rdf-schema#subPropertyOf';
+const RDFS_CONTAINER = 'http://www.w3.org/2000/01/rdf-schema#Container';
 const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const RDF_ALT = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#Alt';
 const RDF_FIRST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+const RDF_BAG = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#Bag';
+const RDF_HTML = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML';
+const RDF_LANG_STRING = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString';
+const RDF_LIST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#List';
 const RDF_NIL = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+const RDF_PROPERTY = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#Property';
 const RDF_REST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
 const RDF_SEQ = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq';
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+const RDF_VALUE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#value';
+const RDF_XML_LITERAL = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral';
 const OWL_ALL_VALUES_FROM = 'http://www.w3.org/2002/07/owl#allValuesFrom';
 const OWL_ANNOTATION_PROPERTY = 'http://www.w3.org/2002/07/owl#AnnotationProperty';
 const OWL_IMPORTS = 'http://www.w3.org/2002/07/owl#imports';
@@ -72,6 +84,7 @@ const OWL_UNION_OF = 'http://www.w3.org/2002/07/owl#unionOf';
 const OWL_VERSION_IRI = 'http://www.w3.org/2002/07/owl#versionIRI';
 const OWL_VERSION_INFO = 'http://www.w3.org/2002/07/owl#versionInfo';
 const OWL_WITH_RESTRICTIONS = 'http://www.w3.org/2002/07/owl#withRestrictions';
+const PROV_NS = 'http://www.w3.org/ns/prov#';
 const PROV_WAS_DERIVED_FROM = 'http://www.w3.org/ns/prov#wasDerivedFrom';
 const DCT_SOURCE = 'http://purl.org/dc/terms/source';
 const RDF_STATEMENT = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement';
@@ -85,6 +98,7 @@ const METADATA_PREDICATES = new Set([
   'http://www.w3.org/2004/02/skos/core#prefLabel',
   'http://schema.org/name',
   'http://xmlns.com/foaf/0.1/name',
+  RDF_VALUE,
   OWL_IMPORTS,
   OWL_VERSION_IRI,
   OWL_VERSION_INFO,
@@ -240,15 +254,101 @@ function applyRdfLabels(elements) {
     }
 
     if (data.termType === 'NamedNode') {
+      const existingDisplay = data.displayLabel || data.label || '';
+      const existingFull = data.fullLabel || '';
       const compact = compactIri(data.iri || data.id || '');
-      if (compact) {
-        data.label = compact;
+      data.label = existingDisplay || existingFull || compact;
+      if (!data.fullLabel && compact) {
         data.fullLabel = compact;
       }
     }
 
     return next;
   });
+}
+
+function isProvIri(iri) {
+  return Boolean(iri) && String(iri).startsWith(PROV_NS);
+}
+
+function isProvNode(node) {
+  if (!node || node.termType !== 'NamedNode') {
+    return false;
+  }
+
+  if (isProvIri(node.iri || node.id)) {
+    return true;
+  }
+
+  return Array.isArray(node.classes) && node.classes.some((classIri) => isProvIri(classIri));
+}
+
+function isGraphSuppressedNode(graphData, nodeId) {
+  if (!nodeId) {
+    return false;
+  }
+  return isProvNode(graphData?.nodeMap?.get(nodeId));
+}
+
+function isContainerMembershipPredicate(predicate) {
+  return predicate === RDFS_MEMBER || /^http:\/\/www\.w3\.org\/1999\/02\/22-rdf-syntax-ns#_\d+$/.test(String(predicate || ''));
+}
+
+function rdfContainerSymbol(typeIri) {
+  if (typeIri === RDF_SEQ) {
+    return '()';
+  }
+  if (typeIri === RDF_BAG) {
+    return 'Bag';
+  }
+  if (typeIri === RDF_ALT) {
+    return 'Alt';
+  }
+  return '□';
+}
+
+function ordinalLabel(index) {
+  if (index === 0) {
+    return '1st';
+  }
+  if (index === 1) {
+    return '2nd';
+  }
+  if (index === 2) {
+    return '3rd';
+  }
+  return `${index + 1}th`;
+}
+
+function formatNodeLabel(graphData, nodeId) {
+  const node = graphData?.nodeMap?.get(nodeId);
+  return node?.fullLabel || compactIri(nodeId);
+}
+
+function summarizeHiddenNode(graphData, nodeId) {
+  const node = graphData?.nodeMap?.get(nodeId);
+  if (!node) {
+    return compactIri(nodeId);
+  }
+
+  const parts = [];
+  const dataRows = graphData?.dataProperties?.get(nodeId) ?? [];
+  for (const row of dataRows) {
+    if (!row?.predicateLabel || row.value == null) {
+      continue;
+    }
+    parts.push(`${row.predicateLabel}=${row.value}`);
+  }
+
+  for (const edge of graphData?.objectEdges ?? []) {
+    if (edge.source !== nodeId || edge.predicate === RDF_TYPE) {
+      continue;
+    }
+    parts.push(`${compactIri(edge.predicate)}=${formatNodeLabel(graphData, edge.target)}`);
+  }
+
+  const label = node.fullLabel || compactIri(nodeId);
+  return parts.length > 0 ? `${label} (${parts.join('; ')})` : label;
 }
 
 function computeSelfLoopStepSize(node) {
@@ -868,6 +968,29 @@ function readListMembers(startId, outgoingBySource) {
   return members;
 }
 
+function collectListCellIds(startId, outgoingBySource) {
+  if (!startId || startId === RDF_NIL) {
+    return [];
+  }
+
+  const cellIds = [];
+  const visited = new Set();
+  let currentId = startId;
+
+  while (currentId && currentId !== RDF_NIL && !visited.has(currentId)) {
+    visited.add(currentId);
+    cellIds.push(currentId);
+    const edges = outgoingBySource.get(currentId) ?? [];
+    const restEdge = edges.find((edge) => edge.predicate === RDF_REST);
+    if (!restEdge) {
+      break;
+    }
+    currentId = restEdge.target;
+  }
+
+  return cellIds;
+}
+
 function buildIncomingEdgeIndex(graphData) {
   const incoming = new Map();
 
@@ -990,11 +1113,16 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
   const edgeElements = [];
   let edgeCounter = 0;
 
+  const isDisplayOnlyNodeId = (nodeId) => nodeId === RDFS_LABEL;
+
   const ensureNodeElement = (term) => {
     if (!term) {
       return null;
     }
     const id = getTermId(term);
+    if (isDisplayOnlyNodeId(id)) {
+      return null;
+    }
     if (nodeElementsById.has(id)) {
       return nodeElementsById.get(id);
     }
@@ -1026,6 +1154,9 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
     if (!quad?.subject || !quad?.predicate || !quad?.object) {
       continue;
     }
+    if (isProvIri(quad.predicate.value)) {
+      continue;
+    }
 
     if (
       quad.predicate.value === RDF_TYPE &&
@@ -1049,6 +1180,12 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
 
     const category = detectRawRdfCategory(quad.predicate.value, quad.object.termType);
     if (!shouldIncludeRawRdfEdge(category, options)) {
+      continue;
+    }
+
+    const sourceNode = graphData?.nodeMap?.get(getTermId(quad.subject));
+    const targetNode = graphData?.nodeMap?.get(getTermId(quad.object));
+    if (isProvNode(sourceNode) || isProvNode(targetNode)) {
       continue;
     }
 
@@ -1088,6 +1225,12 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
     if (node?.termType === 'Literal') {
       continue;
     }
+    if (isProvNode(node)) {
+      continue;
+    }
+    if (isDisplayOnlyNodeId(node.id)) {
+      continue;
+    }
     ensureNodeElement({
       termType: node.termType,
       value: node.termType === 'BlankNode' ? node.id.replace(/^_:/, '') : node.iri || node.id,
@@ -1097,6 +1240,341 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
   }
 
   return [...nodeElementsById.values(), ...edgeElements];
+}
+
+function applyRdfSpecProjection(graphData, elements) {
+  const nodeElements = elements.filter((element) => !element?.data?.source);
+  const edgeElements = elements.filter((element) => element?.data?.source);
+  const nodeElementsById = new Map(nodeElements.map((element) => [element.data.id, cloneElement(element)]));
+  const hiddenNodeIds = new Set();
+  const hiddenEdgeIds = new Set();
+  const addedEdges = [];
+  const addedEdgeIds = new Set(edgeElements.map((element) => element.data.id));
+  const outgoingBySource = buildOutgoingEdgeIndex(graphData);
+  const incomingByTarget = buildIncomingEdgeIndex(graphData);
+  const typeEdgesBySource = new Map();
+
+  for (const edge of graphData?.objectEdges ?? []) {
+    if (edge.predicate !== RDF_TYPE) {
+      continue;
+    }
+    const rows = typeEdgesBySource.get(edge.source) ?? [];
+    rows.push(edge);
+    typeEdgesBySource.set(edge.source, rows);
+  }
+
+  const ensureNodeVisible = (nodeId, overrides = {}) => {
+    if (!nodeId) {
+      return null;
+    }
+    const existing = nodeElementsById.get(nodeId);
+    if (existing) {
+      Object.assign(existing.data, overrides);
+      return existing;
+    }
+    const sourceNode = graphData?.nodeMap?.get(nodeId);
+    const nodeElement = makeNodeElementFromGraphNode(sourceNode);
+    if (!nodeElement) {
+      return null;
+    }
+    Object.assign(nodeElement.data, overrides);
+    nodeElementsById.set(nodeId, nodeElement);
+    return nodeElement;
+  };
+
+  const addSyntheticEdge = (data) => {
+    if (!data?.id || addedEdgeIds.has(data.id)) {
+      return;
+    }
+    addedEdgeIds.add(data.id);
+    addedEdges.push({ data });
+  };
+
+  for (const nodeElement of nodeElementsById.values()) {
+    const nodeData = nodeElement.data;
+    if (nodeData.entityCategory !== 'datatype') {
+      continue;
+    }
+    if (nodeData.id === RDFS_DATATYPE) {
+      nodeData.rdfDatatypeRoot = 1;
+    }
+    if ([RDF_LANG_STRING, RDF_HTML, RDF_XML_LITERAL].includes(nodeData.id)) {
+      nodeData.rdfDatatypeDefinedSubtype = 1;
+    }
+  }
+
+  const handledListHeads = new Set();
+
+  for (const [sourceId, typeEdges] of typeEdgesBySource.entries()) {
+    const typeTargets = new Set(typeEdges.map((edge) => edge.target));
+    const isAllDifferent = typeTargets.has(OWL_ALL_DIFFERENT);
+    const isAllDisjointClasses = typeTargets.has(OWL_ALL_DISJOINT_CLASSES);
+    if (!isAllDifferent && !isAllDisjointClasses) {
+      continue;
+    }
+
+    const memberPredicate = isAllDifferent ? OWL_DISTINCT_MEMBERS : OWL_MEMBERS;
+    const listEdge = (graphData.objectEdges ?? []).find(
+      (edge) => edge.source === sourceId && edge.predicate === memberPredicate,
+    );
+    if (!listEdge) {
+      continue;
+    }
+
+    const memberIds = readListMembers(listEdge.target, outgoingBySource);
+    if (memberIds.length === 0) {
+      continue;
+    }
+
+    handledListHeads.add(listEdge.target);
+    hiddenNodeIds.add(sourceId);
+
+    const connectorId = `rdf-owl-collection:${sourceId}`;
+    if (!nodeElementsById.has(connectorId)) {
+      nodeElementsById.set(connectorId, {
+        data: {
+          ...makeAxiomMarkerNodeData(connectorId, isAllDifferent ? '!=' : '≢'),
+          entityCategory: 'rdf-connector',
+          rdfConnectorKind: isAllDifferent ? 'all-different' : 'all-disjoint-classes',
+        },
+      });
+    }
+
+    for (const rawEdge of edgeElements) {
+      if (
+        (rawEdge.data.source === sourceId && rawEdge.data.predicate === RDF_TYPE && typeTargets.has(rawEdge.data.target)) ||
+        (rawEdge.data.source === sourceId && rawEdge.data.predicate === memberPredicate && rawEdge.data.target === listEdge.target)
+      ) {
+        hiddenEdgeIds.add(rawEdge.data.id);
+      }
+      if (rawEdge.data.target === sourceId) {
+        hiddenEdgeIds.add(rawEdge.data.id);
+        addSyntheticEdge({
+          ...rawEdge.data,
+          id: `${rawEdge.data.id}:owl-collection-target`,
+          target: connectorId,
+          rdfViewEdge: 1,
+        });
+      }
+    }
+
+    let cursorId = listEdge.target;
+    const visited = new Set();
+    while (cursorId && cursorId !== RDF_NIL && !visited.has(cursorId)) {
+      visited.add(cursorId);
+      hiddenNodeIds.add(cursorId);
+      for (const rawEdge of edgeElements) {
+        if (
+          (rawEdge.data.source === cursorId && (rawEdge.data.predicate === RDF_FIRST || rawEdge.data.predicate === RDF_REST)) ||
+          (rawEdge.data.source === cursorId && rawEdge.data.predicate === RDF_TYPE && rawEdge.data.target === RDF_LIST)
+        ) {
+          hiddenEdgeIds.add(rawEdge.data.id);
+        }
+      }
+      const restEdge = (outgoingBySource.get(cursorId) ?? []).find((edge) => edge.predicate === RDF_REST);
+      cursorId = restEdge?.target ?? '';
+    }
+
+    memberIds.forEach((memberId, index) => {
+      ensureNodeVisible(memberId);
+      addSyntheticEdge({
+        id: `${connectorId}:member:${index}`,
+        source: connectorId,
+        target: memberId,
+        predicate: memberPredicate,
+        predicateLabel: '',
+        category: 'object',
+        axiomKind: isAllDifferent ? 'AllDifferent' : 'AllDisjointClasses',
+        restrictionKind: '',
+        owlEdgeStyle: 'straight',
+        rdfViewEdge: 1,
+      });
+    });
+  }
+
+  const declarations = collectPropertyDeclarations(graphData);
+  for (const declaration of declarations.values()) {
+    if (declaration.propertyKind === 'annotation-property') {
+      continue;
+    }
+    for (const edgeElement of edgeElements) {
+      if (
+        edgeElement.data.source === declaration.propertyId &&
+        (edgeElement.data.predicate === RDFS_DOMAIN || edgeElement.data.predicate === RDFS_RANGE)
+      ) {
+        hiddenEdgeIds.add(edgeElement.data.id);
+      }
+    }
+    if (declaration.domains.size === 0 || declaration.ranges.size === 0) {
+      continue;
+    }
+    for (const rangeId of declaration.ranges) {
+      for (const domainId of declaration.domains) {
+        if (!ensureNodeVisible(rangeId) || !ensureNodeVisible(domainId)) {
+          continue;
+        }
+        addSyntheticEdge({
+          id: `rdf-prop:${declaration.propertyId}:${rangeId}:${domainId}`,
+          source: rangeId,
+          target: domainId,
+          predicate: declaration.propertyId,
+          predicateLabel: declaration.label,
+          category: declaration.propertyKind === 'data-property' ? 'data' : 'object',
+          axiomKind: 'PropertyProjection',
+          restrictionKind: '',
+          owlEdgeStyle: declaration.propertyKind === 'data-property' ? 'dashed' : 'straight',
+          rdfViewEdge: 1,
+          rdfPropertyProjection: 1,
+          isSelfLoop: rangeId === domainId ? 1 : 0,
+        });
+      }
+    }
+  }
+
+  for (const [nodeId, typeEdges] of typeEdgesBySource.entries()) {
+    const visibleNode = nodeElementsById.get(nodeId);
+    if (!visibleNode) {
+      continue;
+    }
+    const containerTypeEdge = typeEdges.find((edge) => [RDFS_CONTAINER, RDF_BAG, RDF_SEQ, RDF_ALT].includes(edge.target));
+    if (containerTypeEdge) {
+      const memberEdges = (graphData.objectEdges ?? [])
+        .filter((edge) => edge.source === nodeId && isContainerMembershipPredicate(edge.predicate))
+        .sort((left, right) => {
+          const leftMatch = left.predicate.match(/_(\d+)$/);
+          const rightMatch = right.predicate.match(/_(\d+)$/);
+          return Number(leftMatch?.[1] ?? 0) - Number(rightMatch?.[1] ?? 0);
+        });
+      if (memberEdges.length > 0) {
+        const connectorId = `rdf-container:${nodeId}`;
+        if (!nodeElementsById.has(connectorId)) {
+          const connector = {
+            data: {
+              ...makeCollectionConnectorNodeData(connectorId, rdfContainerSymbol(containerTypeEdge.target), 'RdfContainerConnector', memberEdges.length),
+              entityCategory: 'rdf-connector',
+              rdfConnectorKind: 'container',
+            },
+          };
+          nodeElementsById.set(connectorId, connector);
+        }
+        addSyntheticEdge({
+          id: `${connectorId}:owner`,
+          source: nodeId,
+          target: connectorId,
+          predicate: containerTypeEdge.target,
+          predicateLabel: '',
+          category: 'object',
+          axiomKind: 'Container',
+          restrictionKind: '',
+          owlEdgeStyle: 'straight',
+          rdfViewEdge: 1,
+        });
+        for (const memberEdge of memberEdges) {
+          ensureNodeVisible(memberEdge.target);
+          addSyntheticEdge({
+            id: `${connectorId}:member:${memberEdge.id}`,
+            source: connectorId,
+            target: memberEdge.target,
+            predicate: RDFS_MEMBER,
+            predicateLabel: 'member',
+            category: 'object',
+            axiomKind: 'ContainerMember',
+            restrictionKind: '',
+            owlEdgeStyle: 'straight',
+            rdfViewEdge: 1,
+          });
+          for (const rawEdge of edgeElements) {
+            if (rawEdge.data.source === memberEdge.source && rawEdge.data.target === memberEdge.target && rawEdge.data.predicate === memberEdge.predicate) {
+              hiddenEdgeIds.add(rawEdge.data.id);
+            }
+          }
+        }
+      }
+      for (const rawEdge of edgeElements) {
+        if (rawEdge.data.source === nodeId && rawEdge.data.predicate === RDF_TYPE && rawEdge.data.target === containerTypeEdge.target) {
+          hiddenEdgeIds.add(rawEdge.data.id);
+        }
+      }
+    }
+  }
+
+  for (const [nodeId, nodeElement] of nodeElementsById.entries()) {
+    const nodeData = nodeElement.data;
+    const typeTargets = new Set((typeEdgesBySource.get(nodeId) ?? []).map((edge) => edge.target));
+    const isListCell = nodeData.blankExpressionType === 'List' || typeTargets.has(RDF_LIST);
+    const hasIncomingRest = (incomingByTarget.get(nodeId) ?? []).some((edge) => edge.predicate === RDF_REST);
+    if (!isListCell || handledListHeads.has(nodeId) || hasIncomingRest) {
+      continue;
+    }
+
+    const memberIds = readListMembers(nodeId, outgoingBySource);
+    if (memberIds.length === 0) {
+      continue;
+    }
+
+    const connectorId = `rdf-list:${nodeId}`;
+    if (!nodeElementsById.has(connectorId)) {
+      nodeElementsById.set(connectorId, {
+        data: {
+          ...makeCollectionConnectorNodeData(connectorId, '[]', 'RdfListConnector', memberIds.length),
+          entityCategory: 'rdf-connector',
+          rdfConnectorKind: 'list',
+        },
+      });
+    }
+
+    hiddenNodeIds.add(nodeId);
+
+    const incomingToHead = edgeElements.filter(
+      (edge) => edge.data.target === nodeId && edge.data.predicate !== RDF_FIRST && edge.data.predicate !== RDF_REST,
+    );
+    for (const incomingEdge of incomingToHead) {
+      hiddenEdgeIds.add(incomingEdge.data.id);
+      addSyntheticEdge({
+        ...incomingEdge.data,
+        id: `${incomingEdge.data.id}:list-target`,
+        target: connectorId,
+        rdfViewEdge: 1,
+      });
+    }
+
+    let cursorId = nodeId;
+    const visited = new Set();
+    while (cursorId && cursorId !== RDF_NIL && !visited.has(cursorId)) {
+      visited.add(cursorId);
+      hiddenNodeIds.add(cursorId);
+      for (const edge of edgeElements) {
+        if (
+          (edge.data.source === cursorId && (edge.data.predicate === RDF_FIRST || edge.data.predicate === RDF_REST)) ||
+          (edge.data.source === cursorId && edge.data.predicate === RDF_TYPE && edge.data.target === RDF_LIST)
+        ) {
+          hiddenEdgeIds.add(edge.data.id);
+        }
+      }
+      const restEdge = (outgoingBySource.get(cursorId) ?? []).find((edge) => edge.predicate === RDF_REST);
+      cursorId = restEdge?.target ?? '';
+    }
+
+    memberIds.forEach((memberId, index) => {
+      ensureNodeVisible(memberId);
+      addSyntheticEdge({
+        id: `${connectorId}:member:${index}`,
+        source: connectorId,
+        target: memberId,
+        predicate: RDF_LIST,
+        predicateLabel: ordinalLabel(index),
+        category: 'object',
+        axiomKind: 'ListMember',
+        restrictionKind: '',
+        owlEdgeStyle: 'straight',
+        rdfViewEdge: 1,
+      });
+    });
+  }
+
+  const filteredNodes = Array.from(nodeElementsById.values()).filter((element) => !hiddenNodeIds.has(element.data.id));
+  const filteredEdges = edgeElements.filter((element) => !hiddenEdgeIds.has(element.data.id));
+  return [...filteredNodes, ...filteredEdges, ...addedEdges];
 }
 
 function formatPropertyLabelWithCharacteristics(baseLabel, declaration) {
@@ -1736,9 +2214,25 @@ function synthesizeCollectionProjection(graphData, visibleNodeIds) {
   const synthesizedNodes = [];
   const synthesizedEdges = [];
   const hiddenNodeIds = new Set();
+  const allDifferentIds = new Set(
+    (graphData?.nodes ?? [])
+      .filter((node) => Array.isArray(node.classes) && node.classes.includes(OWL_ALL_DIFFERENT))
+      .map((node) => node.id),
+  );
+  const allDisjointClassIds = new Set(
+    (graphData?.nodes ?? [])
+      .filter((node) => Array.isArray(node.classes) && node.classes.includes(OWL_ALL_DISJOINT_CLASSES))
+      .map((node) => node.id),
+  );
 
   for (const edge of graphData?.objectEdges ?? []) {
     if (EXPRESSION_PREDICATES.has(edge.predicate) || edge.predicate === OWL_DISJOINT_UNION_OF) {
+      continue;
+    }
+    if (
+      (edge.predicate === OWL_DISTINCT_MEMBERS && allDifferentIds.has(edge.source)) ||
+      (edge.predicate === OWL_MEMBERS && allDisjointClassIds.has(edge.source))
+    ) {
       continue;
     }
     if (!visibleNodeIds.has(edge.source)) {
@@ -1754,7 +2248,9 @@ function synthesizeCollectionProjection(graphData, visibleNodeIds) {
       continue;
     }
 
-    hiddenNodeIds.add(edge.target);
+    for (const cellId of collectListCellIds(edge.target, outgoingBySource)) {
+      hiddenNodeIds.add(cellId);
+    }
     const groupId = `owl-list:${edge.source}:${edge.target}:${edge.predicate}`;
     synthesizedNodes.push({
       data: makeCollectionConnectorNodeData(groupId, '[]', 'RdfListConnector', members.length),
@@ -1857,7 +2353,9 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
       }
 
       hiddenNodeIds.add(sourceId);
-      hiddenNodeIds.add(membersEdge.target);
+      for (const cellId of collectListCellIds(membersEdge.target, outgoingBySource)) {
+        hiddenNodeIds.add(cellId);
+      }
       const markerId = `owl-all-different:${sourceId}`;
       const markerData = makeAxiomMarkerNodeData(markerId, '≠');
       markerData.connectorAxiomText = `DifferentIndividuals(${members
@@ -1900,7 +2398,9 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
       }
 
       hiddenNodeIds.add(sourceId);
-      hiddenNodeIds.add(membersEdge.target);
+      for (const cellId of collectListCellIds(membersEdge.target, outgoingBySource)) {
+        hiddenNodeIds.add(cellId);
+      }
       const markerId = `owl-all-disjoint-classes:${sourceId}`;
       const markerData = makeAxiomMarkerNodeData(markerId, '≢');
       markerData.connectorAxiomText = `DisjointClasses(${members
@@ -1937,7 +2437,9 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
       continue;
     }
 
-    hiddenNodeIds.add(edge.target);
+    for (const cellId of collectListCellIds(edge.target, outgoingBySource)) {
+      hiddenNodeIds.add(cellId);
+    }
     const markerId = `owl-disjoint-union:${edge.source}:${edge.target}`;
     const markerData = makeAxiomMarkerNodeData(markerId, '⊎');
     markerData.connectorAxiomText = `${manchesterNodeText(graphData, edge.source)} DisjointUnionOf ${expressionMembersManchester(
@@ -2301,6 +2803,13 @@ function buildReificationDescriptors(graphData) {
     const rdfObjectNode = outgoing.find((edge) => edge.predicate === RDF_OBJECT)?.target;
     const rdfObjectLiteral = outgoingLiteral.find((edge) => edge.predicate === RDF_OBJECT)?.target;
     if (rdfSubject && rdfPredicate && (rdfObjectNode || rdfObjectLiteral)) {
+      const metadataRows = outgoing
+        .filter((edge) => ![RDF_TYPE, RDF_SUBJECT, RDF_PREDICATE, RDF_OBJECT].includes(edge.predicate))
+        .filter((edge) => !graphData.nodeMap.get(edge.target)?.classes?.includes(RDF_STATEMENT))
+        .map((edge) => ({
+          key: compactIri(edge.predicate),
+          value: summarizeHiddenNode(graphData, edge.target),
+        }));
       descriptors.push({
         kind: 'reification',
         reifierId: node.id,
@@ -2309,20 +2818,28 @@ function buildReificationDescriptors(graphData) {
         target: rdfObjectNode || rdfObjectLiteral,
         label: 'rdf:reifies',
         structuralPredicates: new Set([RDF_SUBJECT, RDF_PREDICATE, RDF_OBJECT]),
-        metadataRows: [],
+        metadataRows,
+        statementTargets: new Set(
+          outgoing
+            .filter((edge) => ![RDF_TYPE, RDF_SUBJECT, RDF_PREDICATE, RDF_OBJECT].includes(edge.predicate))
+            .filter((edge) => graphData.nodeMap.get(edge.target)?.classes?.includes(RDF_STATEMENT))
+            .map((edge) => edge.target),
+        ),
       });
     }
 
     const annotatedSource = outgoing.find((edge) => edge.predicate === OWL_ANNOTATED_SOURCE)?.target;
     const annotatedPredicate = outgoing.find((edge) => edge.predicate === OWL_ANNOTATED_PROPERTY)?.target;
-    const annotatedTarget = outgoing.find((edge) => edge.predicate === OWL_ANNOTATED_TARGET)?.target;
+    const annotatedTargetNode = outgoing.find((edge) => edge.predicate === OWL_ANNOTATED_TARGET)?.target;
+    const annotatedTargetLiteral = outgoingLiteral.find((edge) => edge.predicate === OWL_ANNOTATED_TARGET)?.target;
+    const annotatedTarget = annotatedTargetNode || annotatedTargetLiteral;
     if (annotatedSource && annotatedPredicate && annotatedTarget) {
       const metadataRows = [
         ...outgoing
           .filter((edge) => ![RDF_TYPE, OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET].includes(edge.predicate))
           .map((edge) => ({
             key: compactIri(edge.predicate),
-            value: graphData.nodeMap.get(edge.target)?.fullLabel || compactIri(edge.target),
+            value: summarizeHiddenNode(graphData, edge.target),
           })),
         ...outgoingLiteral
           .filter((edge) => ![RDF_TYPE, OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET].includes(edge.predicate))
@@ -2340,6 +2857,12 @@ function buildReificationDescriptors(graphData) {
         label: 'owl:annotates',
         structuralPredicates: new Set([OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET]),
         metadataRows,
+        attachmentObjectEdges: outgoing.filter(
+          (edge) => ![RDF_TYPE, OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET].includes(edge.predicate),
+        ),
+        attachmentLiteralEdges: outgoingLiteral.filter(
+          (edge) => ![RDF_TYPE, OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET].includes(edge.predicate),
+        ),
       });
     }
   }
@@ -2349,18 +2872,43 @@ function buildReificationDescriptors(graphData) {
 
 function decorateEdgeAttachedStructures(graphData, elements, mode) {
   const descriptors = buildReificationDescriptors(graphData);
+  const descriptorsByReifier = new Map(descriptors.map((descriptor) => [descriptor.reifierId, descriptor]));
+  const reificationIds = new Set(
+    descriptors.filter((descriptor) => descriptor.kind === 'reification').map((descriptor) => descriptor.reifierId),
+  );
   const structuralPredicatesByReifier = new Map(
     descriptors.map((descriptor) => [descriptor.reifierId, descriptor.structuralPredicates]),
   );
 
   const filteredElements = elements.filter((element) => {
     const data = element?.data;
-    if (!data?.source) {
+    if (!data) {
+      return false;
+    }
+    if (!data.source) {
+      const descriptor = descriptorsByReifier.get(data.id);
+      if (descriptor?.kind === 'axiom-annotation') {
+        return false;
+      }
       return true;
     }
+
+    const descriptor = descriptorsByReifier.get(data.source);
     const structuralPredicates = structuralPredicatesByReifier.get(data.source);
     if (structuralPredicates?.has(data.predicate)) {
       return false;
+    }
+    if (data.predicate && isProvIri(data.predicate)) {
+      return false;
+    }
+    if (isGraphSuppressedNode(graphData, data.source) || isGraphSuppressedNode(graphData, data.target)) {
+      return false;
+    }
+    if (descriptor?.kind === 'axiom-annotation') {
+      return false;
+    }
+    if (descriptor?.kind === 'reification') {
+      return data.category === 'object' && reificationIds.has(data.target);
     }
     return true;
   });
@@ -2413,6 +2961,57 @@ function decorateEdgeAttachedStructures(graphData, elements, mode) {
             ? matchingEdge.data.projectedMetadataRows
             : [];
           matchingEdge.data.projectedMetadataRows = [...existingRows, ...descriptor.metadataRows];
+        }
+
+        const anchorId = ensureEdgeAnchor(matchingEdge, anchorNodes, anchorEdges, anchorByEdgeId);
+        for (const attachmentEdge of descriptor.attachmentObjectEdges ?? []) {
+          if (attachmentEdge.target && isGraphSuppressedNode(graphData, attachmentEdge.target)) {
+            continue;
+          }
+          ensureNodeVisible(attachmentEdge.target);
+          const attachmentId = `edge-annot:${matchingEdge.data.id}:obj:${attachmentEdge.id}`;
+          if (addedEdgeIds.has(attachmentId)) {
+            continue;
+          }
+          addedEdgeIds.add(attachmentId);
+          relationEdges.push({
+            data: {
+              id: attachmentId,
+              source: anchorId,
+              target: attachmentEdge.target,
+              predicate: attachmentEdge.predicate,
+              predicateLabel: compactIri(attachmentEdge.predicate),
+              category: attachmentEdge.category ?? 'object',
+              axiomKind: 'AxiomAnnotation',
+              restrictionKind: '',
+              edgeAttachedConnector: 1,
+              rdfViewEdge: mode === GRAPH_VIEW_MODES.RDF ? 1 : 0,
+              owlEdgeStyle: attachmentEdge.category === 'data' ? 'dashed' : 'straight',
+            },
+          });
+        }
+        for (const attachmentEdge of descriptor.attachmentLiteralEdges ?? []) {
+          ensureNodeVisible(attachmentEdge.target);
+          const attachmentId = `edge-annot:${matchingEdge.data.id}:lit:${attachmentEdge.id}`;
+          if (addedEdgeIds.has(attachmentId)) {
+            continue;
+          }
+          addedEdgeIds.add(attachmentId);
+          relationEdges.push({
+            data: {
+              id: attachmentId,
+              source: anchorId,
+              target: attachmentEdge.target,
+              predicate: attachmentEdge.predicate,
+              predicateLabel: compactIri(attachmentEdge.predicate),
+              category: attachmentEdge.category ?? 'data',
+              axiomKind: 'AxiomAnnotation',
+              restrictionKind: '',
+              edgeAttachedConnector: 1,
+              rdfViewEdge: mode === GRAPH_VIEW_MODES.RDF ? 1 : 0,
+              owlEdgeStyle: 'dashed',
+            },
+          });
         }
       }
       continue;
@@ -2520,7 +3119,36 @@ function decorateEdgeAttachedStructures(graphData, elements, mode) {
     return next;
   });
 
-  return [...decoratedElements, ...anchorNodes, ...anchorEdges, ...relationEdges];
+  const combinedElements = [...decoratedElements, ...anchorNodes, ...anchorEdges, ...relationEdges];
+  const referencedNodeIds = new Set();
+  for (const element of combinedElements) {
+    const data = element?.data;
+    if (!data?.source) {
+      continue;
+    }
+    referencedNodeIds.add(data.source);
+    referencedNodeIds.add(data.target);
+  }
+
+  return combinedElements.filter((element) => {
+    const data = element?.data;
+    if (!data) {
+      return false;
+    }
+    if (data.source) {
+      return true;
+    }
+    if (data.termType === 'Literal') {
+      return referencedNodeIds.has(data.id);
+    }
+    if (isGraphSuppressedNode(graphData, data.id)) {
+      return false;
+    }
+    if (data.graphRole === 'edge-anchor' || data.edgeAnchor) {
+      return referencedNodeIds.has(data.id);
+    }
+    return true;
+  });
 }
 
 function applyOwlProjection(graphData, elements) {
@@ -2901,6 +3529,101 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
   });
 }
 
+function filterSchemaProjectionElements(elements) {
+  const allowedNodeIds = new Set();
+
+  const isAllowedSchemaNode = (data) => {
+    if (!data || data.termType === 'Literal' || data.entityCategory === 'literal') {
+      return false;
+    }
+
+    if (
+      data.ontologyKind === 'class' ||
+      data.ontologyKind === 'individual' ||
+      data.ontologyKind === 'object-property' ||
+      data.ontologyKind === 'data-property' ||
+      data.ontologyKind === 'annotation-property' ||
+      data.ontologyKind === 'datatype' ||
+      data.entityCategory === 'datatype'
+    ) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const isAllowedSchemaEdge = (data, nodeElementsById) => {
+    if (!data?.source) {
+      return false;
+    }
+
+    if (data.predicate === RDFS_SUBCLASS_OF) {
+      return true;
+    }
+
+    if (data.predicate === RDFS_DOMAIN || data.predicate === RDFS_RANGE) {
+      return true;
+    }
+
+    if (data.predicate !== RDF_TYPE) {
+      return false;
+    }
+
+    const sourceNode = nodeElementsById.get(data.source)?.data;
+    const targetNode = nodeElementsById.get(data.target)?.data;
+    return sourceNode?.ontologyKind === 'individual' && targetNode?.ontologyKind === 'class';
+  };
+
+  const nodeElementsById = new Map(
+    elements
+      .filter((element) => !element?.data?.source)
+      .map((element) => [element.data.id, element]),
+  );
+
+  const allowedEdgeIds = new Set(
+    elements
+      .filter((element) => {
+    const data = element?.data;
+    if (!isAllowedSchemaEdge(data, nodeElementsById)) {
+      return false;
+    }
+
+    const sourceNode = nodeElementsById.get(data.source)?.data;
+    const targetNode = nodeElementsById.get(data.target)?.data;
+    if (!isAllowedSchemaNode(sourceNode) || !isAllowedSchemaNode(targetNode)) {
+      return false;
+    }
+
+    return true;
+      })
+      .map((element) => element.data.id),
+  );
+
+  for (const element of elements) {
+    const data = element?.data;
+    if (!data?.source && isAllowedSchemaNode(data)) {
+      allowedNodeIds.add(data.id);
+    }
+  }
+
+  return elements.filter((element) => {
+    const data = element?.data;
+    if (!data) {
+      return false;
+    }
+
+    if (data.source) {
+      return allowedEdgeIds.has(data.id);
+    }
+
+    if (!allowedNodeIds.has(data.id)) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
 export function normalizeGraphViewMode(mode) {
   if (mode === GRAPH_VIEW_MODES.RDF || mode === 'kg') {
     return GRAPH_VIEW_MODES.RDF;
@@ -2951,14 +3674,34 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
     applyRelationPalette(
       decorateEdgeAttachedStructures(
         graphData,
-        applyRdfLabels(suppressMetadataEdges(elements)),
+        applyRdfSpecProjection(graphData, applyRdfLabels(suppressMetadataEdges(elements))),
         GRAPH_VIEW_MODES.RDF,
       ),
     ),
   );
 }
 
+export function buildSchemaViewProjection(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
+  const elements = buildFocusedSubset(graphData, focusedNodeIds, {
+    ...viewOptions,
+    projectionMode: GRAPH_VIEW_MODES.OWL,
+  });
+
+  return applyHoverMetadata(
+    graphData,
+    applySelfLoopGeometry(
+      graphData,
+      applyRelationPalette(filterSchemaProjectionElements(suppressMetadataEdges(elements))),
+    ),
+  );
+}
+
 export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
+  const owlProjectionLevel = viewOptions?.owlProjectionLevel ?? OWL_PROJECTION_LEVELS.KG;
+  if (owlProjectionLevel === OWL_PROJECTION_LEVELS.SCHEMA) {
+    return buildSchemaViewProjection(graphData, focusedNodeIds, viewOptions);
+  }
+
   const elements = buildFocusedSubset(graphData, focusedNodeIds, {
     ...viewOptions,
     projectionMode: GRAPH_VIEW_MODES.RDF,
@@ -2967,7 +3710,6 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
   const baseElements = suppressMetadataEdges(elements);
 
   try {
-    const owlProjectionLevel = viewOptions?.owlProjectionLevel ?? OWL_PROJECTION_LEVELS.KG;
     return applyHoverMetadata(
       graphData,
       filterOwlProjectionByLevel(
@@ -3008,7 +3750,23 @@ export function buildProjectedElements(graphData, focusedNodeIds, viewOptions = 
 }
 
 export function getProjectedNodeMetadataRows(graphData, nodeId, mode) {
-  if (!graphData || !nodeId || normalizeGraphViewMode(mode) !== GRAPH_VIEW_MODES.OWL) {
+  if (!graphData || !nodeId) {
+    return [];
+  }
+
+  const descriptors = buildReificationDescriptors(graphData);
+  const reificationDescriptor = descriptors.find(
+    (descriptor) => descriptor.kind === 'reification' && descriptor.reifierId === nodeId,
+  );
+  if (reificationDescriptor) {
+    return reificationDescriptor.metadataRows.map((row) => ({
+      predicate: row.key,
+      predicateLabel: row.key,
+      value: row.value,
+    }));
+  }
+
+  if (normalizeGraphViewMode(mode) !== GRAPH_VIEW_MODES.OWL) {
     return [];
   }
 

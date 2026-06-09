@@ -45,6 +45,7 @@ const GRAPH_PROJECTION_MODES = {
 };
 const OWL_PROJECTION_LEVELS = {
   TAXONOMY: 'taxonomy',
+  SCHEMA: 'schema',
   ONTOLOGY: 'ontology',
   KG: 'kg',
 };
@@ -592,14 +593,22 @@ function runNodeNameFilter(graphData, queryText) {
   return matchedNodeIds;
 }
 
-function buildNeighborRows(selectedNodeId, graphData) {
+function buildNeighborRows(selectedNodeId, graphData, visibleElements) {
   if (!selectedNodeId || !graphData) {
     return [];
   }
 
+  const visibleEdgeIds = new Set(
+    (visibleElements ?? [])
+      .filter((element) => element?.data?.source)
+      .map((element) => element.data.id),
+  );
   const rows = [];
   for (const edge of graphData.objectEdges ?? []) {
     if (edge.category === 'type') {
+      continue;
+    }
+    if (visibleEdgeIds.size > 0 && !visibleEdgeIds.has(edge.id)) {
       continue;
     }
 
@@ -952,6 +961,16 @@ function toViewFlags(projectionMode, owlProjectionLevel) {
         showObjectProperties: false,
         showNamedIndividuals: false,
         showTypeLinks: false,
+      };
+    }
+
+    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.SCHEMA) {
+      return {
+        showDataProperties: true,
+        showAnnotationProperties: true,
+        showObjectProperties: true,
+        showNamedIndividuals: true,
+        showTypeLinks: true,
       };
     }
 
@@ -2560,15 +2579,8 @@ export default function App() {
 
     const baseRows = graphData.nodeMetadata.get(selectedNodeId) ?? [];
     const projectedRows = getProjectedNodeMetadataRows(graphData, selectedNodeId, graphProjectionMode);
-    const annotationRows = selectedNodeAllLiteralProperties
-      .filter((row) => row.category === 'annotation')
-      .map((row) => ({
-        predicate: row.predicate,
-        predicateLabel: row.predicateLabel,
-        value: row.value,
-      }));
 
-    const mergedRows = [...baseRows, ...annotationRows, ...projectedRows];
+    const mergedRows = [...baseRows, ...projectedRows];
     const dedupedRows = [];
     const seen = new Set();
     for (const row of mergedRows) {
@@ -2580,7 +2592,11 @@ export default function App() {
       dedupedRows.push(row);
     }
     return dedupedRows;
-  }, [selectedNodeId, graphData, selectedNodeAllLiteralProperties, graphProjectionMode]);
+  }, [selectedNodeId, graphData, graphProjectionMode]);
+  const selectedNodeAnnotationProperties = useMemo(
+    () => selectedNodeAllLiteralProperties.filter((row) => row.category === 'annotation'),
+    [selectedNodeAllLiteralProperties],
+  );
   const selectedNodeDataProperties = useMemo(
     () => selectedNodeAllLiteralProperties.filter((row) => row.category !== 'annotation'),
     [selectedNodeAllLiteralProperties],
@@ -2636,8 +2652,8 @@ export default function App() {
   }, [selectedEdgeId, graphData, selectedEdge]);
 
   const neighborRows = useMemo(
-    () => buildNeighborRows(selectedNodeId, graphData),
-    [selectedNodeId, graphData],
+    () => buildNeighborRows(selectedNodeId, graphData, visibleElements),
+    [selectedNodeId, graphData, visibleElements],
   );
 
   const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
@@ -2767,6 +2783,31 @@ export default function App() {
             'background-color': '#eee5da',
             'border-color': '#8e7560',
             color: '#1e1b16',
+          },
+        },
+        {
+          selector: 'node[entityCategory = "datatype"][rdfDatatypeDefinedSubtype = 1]',
+          style: {
+            'border-width': 2.2,
+            'background-color': '#f7f2ea',
+          },
+        },
+        {
+          selector: 'node[entityCategory = "rdf-connector"]',
+          style: {
+            shape: 'ellipse',
+            width: 42,
+            height: 42,
+            'background-color': '#fcfaf6',
+            'border-color': '#9aa0a4',
+            'border-width': 1.2,
+            color: '#5c4a39',
+            'font-size': 15,
+            'font-weight': 700,
+            'text-max-width': 34,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-wrap': 'none',
           },
         },
         {
@@ -3015,6 +3056,15 @@ export default function App() {
         },
         {
           selector: 'edge[axiomKind = "SubClassOf"]',
+          style: {
+            'target-arrow-shape': 'hollow-triangle',
+            'target-arrow-fill': 'hollow',
+            'arrow-scale': 1.3,
+            width: 1.8,
+          },
+        },
+        {
+          selector: 'edge[category = "subproperty"], edge[axiomKind = "SubPropertyOf"]',
           style: {
             'target-arrow-shape': 'hollow-triangle',
             'target-arrow-fill': 'hollow',
@@ -5060,6 +5110,15 @@ export default function App() {
                           <input
                             type="radio"
                             name="owl-projection-level"
+                            checked={owlProjectionLevel === OWL_PROJECTION_LEVELS.SCHEMA}
+                            onChange={() => setOwlProjectionLevel(OWL_PROJECTION_LEVELS.SCHEMA)}
+                          />
+                          <span>Schema</span>
+                        </label>
+                        <label className="option-item">
+                          <input
+                            type="radio"
+                            name="owl-projection-level"
                             checked={owlProjectionLevel === OWL_PROJECTION_LEVELS.ONTOLOGY}
                             onChange={() => setOwlProjectionLevel(OWL_PROJECTION_LEVELS.ONTOLOGY)}
                           />
@@ -5785,6 +5844,23 @@ export default function App() {
                         >
                           <div className="property-name">{row.predicateLabel}</div>
                           <div className="property-value breakable">{row.value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <h4>Annotation properties ({selectedNodeAnnotationProperties.length})</h4>
+                    <div className="property-list">
+                      {selectedNodeAnnotationProperties.length === 0 && (
+                        <p className="muted">No annotation properties available for this node.</p>
+                      )}
+                      {selectedNodeAnnotationProperties.map((property, index) => (
+                        <div
+                          key={`${property.predicate}-${property.value.slice(0, 18)}-${index}`}
+                          className="property-row"
+                          title={property.predicate}
+                        >
+                          <div className="property-name">{property.predicateLabel}</div>
+                          <div className="property-value breakable">{property.value}</div>
                         </div>
                       ))}
                     </div>

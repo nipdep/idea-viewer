@@ -1,0 +1,251 @@
+@prefix :      <http://example.org/scoped-ontology#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<http://example.org/scoped-ontology>
+    a owl:Ontology ;
+    rdfs:label "Scoped restriction ontology"@en ;
+    rdfs:comment "Example ontology where some properties deliberately omit global rdfs:domain and rdfs:range, while class restrictions scope the intended subject and object/value types locally."@en ;
+    owl:versionIRI <http://example.org/scoped-ontology/1.0.0> ;
+    owl:versionInfo "1.0.0" ;
+    dcterms:creator "ChatGPT mock ontology generator" .
+
+#################################################################
+# Classes
+#################################################################
+
+:ScholarlyArtifact a owl:Class ;
+    rdfs:label "Scholarly artifact"@en .
+
+:Paper a owl:Class ;
+    rdfs:subClassOf :ScholarlyArtifact ;
+    rdfs:label "Paper"@en .
+
+:Dataset a owl:Class ;
+    rdfs:subClassOf :ScholarlyArtifact ;
+    rdfs:label "Dataset"@en .
+
+:Software a owl:Class ;
+    rdfs:subClassOf :ScholarlyArtifact ;
+    rdfs:label "Software"@en .
+
+:Author a owl:Class ;
+    rdfs:label "Author"@en .
+
+:Institution a owl:Class ;
+    rdfs:label "Institution"@en .
+
+:Venue a owl:Class ;
+    rdfs:label "Venue"@en .
+
+:ConferenceEdition a owl:Class ;
+    rdfs:subClassOf :Venue ;
+    rdfs:label "Conference edition"@en .
+
+:ResearchTopic a owl:Class ;
+    rdfs:label "Research topic"@en .
+
+:Review a owl:Class ;
+    rdfs:label "Review"@en .
+
+:EvaluationResult a owl:Class ;
+    rdfs:label "Evaluation result"@en .
+
+#################################################################
+# Properties with NO global rdfs:domain/rdfs:range
+#################################################################
+# These are intentionally left without domain/range. Their intended
+# subject/object typing is expressed only in class restrictions below.
+
+:hasAuthor a owl:ObjectProperty ;
+    rdfs:label "has author"@en ;
+    rdfs:comment "No global domain or range; scoped by Paper restrictions."@en .
+
+:usesDataset a owl:ObjectProperty ;
+    rdfs:label "uses dataset"@en ;
+    rdfs:comment "No global domain or range; scoped by empirical paper restrictions."@en .
+
+:publishedIn a owl:ObjectProperty ;
+    rdfs:label "published in"@en ;
+    rdfs:comment "No global domain or range; scoped by paper publication restrictions."@en .
+
+:aboutTopic a owl:ObjectProperty ;
+    rdfs:label "about topic"@en ;
+    rdfs:comment "No global domain or range; scoped differently for Paper and Dataset."@en .
+
+:hasEvaluationResult a owl:ObjectProperty ;
+    rdfs:label "has evaluation result"@en ;
+    rdfs:comment "No global domain or range; scoped by SoftwareEvaluationPaper restrictions."@en .
+
+:qualityScore a owl:DatatypeProperty ;
+    rdfs:label "quality score"@en ;
+    rdfs:comment "No global domain or range; scoped by HighQualityPaper data range restriction."@en .
+
+:reviewDecision a owl:DatatypeProperty ;
+    rdfs:label "review decision"@en ;
+    rdfs:comment "No global domain or range; scoped by Review restrictions."@en .
+
+#################################################################
+# Properties WITH global domain/range, for contrast
+#################################################################
+
+:affiliatedWith a owl:ObjectProperty ;
+    rdfs:domain :Author ;
+    rdfs:range :Institution ;
+    rdfs:label "affiliated with"@en .
+
+:title a owl:DatatypeProperty ;
+    rdfs:domain :ScholarlyArtifact ;
+    rdfs:range xsd:string ;
+    rdfs:label "title"@en .
+
+#################################################################
+# Restrictions that locally scope property usage
+#################################################################
+
+# Every Paper must have at least one hasAuthor value that is an Author.
+# This scopes :hasAuthor for Paper without globally saying every subject
+# of :hasAuthor is a Paper, or every object of :hasAuthor is an Author.
+:Paper
+    rdfs:subClassOf
+        [ a owl:Restriction ;
+          owl:onProperty :hasAuthor ;
+          owl:someValuesFrom :Author
+        ] ,
+        [ a owl:Restriction ;
+          owl:onProperty :publishedIn ;
+          owl:allValuesFrom :Venue
+        ] .
+
+# EmpiricalPaper is exactly a Paper that uses at least one Dataset.
+:EmpiricalPaper a owl:Class ;
+    rdfs:label "Empirical paper"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:intersectionOf (
+            :Paper
+            [ a owl:Restriction ;
+              owl:onProperty :usesDataset ;
+              owl:someValuesFrom :Dataset
+            ]
+        )
+    ] .
+
+# A DatasetPaper is a Paper whose aboutTopic values, if present, are ResearchTopics,
+# and that has exactly one publishedIn value that is a ConferenceEdition.
+:DatasetPaper a owl:Class ;
+    rdfs:label "Dataset paper"@en ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :aboutTopic ;
+          owl:allValuesFrom :ResearchTopic
+        ] ,
+        [ a owl:Restriction ;
+          owl:onProperty :publishedIn ;
+          owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+          owl:onClass :ConferenceEdition
+        ] .
+
+# A SoftwareEvaluationPaper has at least one EvaluationResult.
+:SoftwareEvaluationPaper a owl:Class ;
+    rdfs:label "Software evaluation paper"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:intersectionOf (
+            :Paper
+            [ a owl:Restriction ;
+              owl:onProperty :hasEvaluationResult ;
+              owl:someValuesFrom :EvaluationResult
+            ]
+        )
+    ] .
+
+# A HighQualityPaper is a Paper with some qualityScore between 0.80 and 1.00.
+# The data property has no global rdfs:range; the data range is local to this class.
+:HighQualityPaper a owl:Class ;
+    rdfs:label "High-quality paper"@en ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:intersectionOf (
+            :Paper
+            [ a owl:Restriction ;
+              owl:onProperty :qualityScore ;
+              owl:someValuesFrom [
+                  a rdfs:Datatype ;
+                  owl:onDatatype xsd:decimal ;
+                  owl:withRestrictions (
+                      [ xsd:minInclusive "0.80"^^xsd:decimal ]
+                      [ xsd:maxInclusive "1.00"^^xsd:decimal ]
+                  )
+              ]
+            ]
+        )
+    ] .
+
+# ReviewDecision values are scoped only for Review, not globally for the property.
+:Review
+    rdfs:subClassOf
+        [ a owl:Restriction ;
+          owl:onProperty :reviewDecision ;
+          owl:allValuesFrom [
+              a rdfs:Datatype ;
+              owl:oneOf (
+                  "accept"^^xsd:string
+                  "minor-revision"^^xsd:string
+                  "major-revision"^^xsd:string
+                  "reject"^^xsd:string
+              )
+          ]
+        ] .
+
+#################################################################
+# Individuals / sample KG-style assertions
+#################################################################
+
+:alice a :Author ;
+    rdfs:label "Alice"@en ;
+    :affiliatedWith :ExampleUniversity .
+
+:bob a :Author ;
+    rdfs:label "Bob"@en .
+
+:ExampleUniversity a :Institution ;
+    rdfs:label "Example University"@en .
+
+:ISWC2026 a :ConferenceEdition ;
+    rdfs:label "ISWC 2026"@en .
+
+:graphNeuralNetworks a :ResearchTopic ;
+    rdfs:label "Graph neural networks"@en .
+
+:datasetA a :Dataset ;
+    :title "Mock citation network dataset" .
+
+:resultA a :EvaluationResult ;
+    rdfs:label "Evaluation result A"@en .
+
+:paper1 a :EmpiricalPaper, :HighQualityPaper ;
+    :title "A mock empirical paper" ;
+    :hasAuthor :alice, :bob ;
+    :usesDataset :datasetA ;
+    :publishedIn :ISWC2026 ;
+    :aboutTopic :graphNeuralNetworks ;
+    :qualityScore "0.91"^^xsd:decimal .
+
+:paper2 a :SoftwareEvaluationPaper ;
+    :title "A mock software evaluation paper" ;
+    :hasAuthor :alice ;
+    :hasEvaluationResult :resultA ;
+    :publishedIn :ISWC2026 .
+
+:review1 a :Review ;
+    :reviewDecision "accept"^^xsd:string .
+
+#################################################################
+# Explicit note as ontology annotation
+#################################################################
+
+:hasAuthor rdfs:comment "Because this property has no global domain/range, the assertion ':datasetA :hasAuthor :alice' would not by itself imply that :datasetA is a Paper or that :alice is an Author. The Paper restriction only constrains instances already known to be Papers."@en .

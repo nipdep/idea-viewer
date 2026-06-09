@@ -11,14 +11,22 @@ const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 const SKOS_NS = 'http://www.w3.org/2004/02/skos/core#';
 const RDF_DESCRIPTION = `${RDF_NS}Description`;
 const RDF_FIRST = `${RDF_NS}first`;
+const RDF_HTML = `${RDF_NS}HTML`;
+const RDF_LIST = `${RDF_NS}List`;
+const RDF_PROPERTY = `${RDF_NS}Property`;
 const RDF_REST = `${RDF_NS}rest`;
 const RDF_NIL = `${RDF_NS}nil`;
+const RDF_LANG_STRING = `${RDF_NS}langString`;
+const RDF_VALUE = `${RDF_NS}value`;
+const RDF_XML_LITERAL = `${RDF_NS}XMLLiteral`;
 const RDFS_CLASS = `${RDFS_NS}Class`;
 const RDFS_COMMENT = `${RDFS_NS}comment`;
 const RDFS_LABEL = `${RDFS_NS}label`;
 const RDFS_DATATYPE = `${RDFS_NS}Datatype`;
 const RDFS_DOMAIN = `${RDFS_NS}domain`;
 const RDFS_RANGE = `${RDFS_NS}range`;
+const RDFS_RESOURCE = `${RDFS_NS}Resource`;
+const RDFS_MEMBER = `${RDFS_NS}member`;
 const OWL_CLASS = `${OWL_NS}Class`;
 const OWL_DATATYPE = `${OWL_NS}Datatype`;
 const OWL_OBJECT_PROPERTY = `${OWL_NS}ObjectProperty`;
@@ -71,6 +79,7 @@ const OWL_ASYMMETRIC_PROPERTY = `${OWL_NS}AsymmetricProperty`;
 const OWL_INVERSE_FUNCTIONAL_PROPERTY = `${OWL_NS}InverseFunctionalProperty`;
 const OWL_TRANSITIVE_PROPERTY = `${OWL_NS}TransitiveProperty`;
 const OWL_SYMMETRIC_PROPERTY = `${OWL_NS}SymmetricProperty`;
+const PROV_NS = 'http://www.w3.org/ns/prov#';
 const PROV_WAS_DERIVED_FROM = 'http://www.w3.org/ns/prov#wasDerivedFrom';
 const DCT_SOURCE = 'http://purl.org/dc/terms/source';
 const SKOS_PREF_LABEL = `${SKOS_NS}prefLabel`;
@@ -80,10 +89,17 @@ const RDF_PREDICATE = `${RDF_NS}predicate`;
 const RDF_OBJECT = `${RDF_NS}object`;
 
 const CLASS_TYPE_IRIS = new Set([RDFS_CLASS, OWL_CLASS]);
-const DATATYPE_TYPE_IRIS = new Set([RDFS_DATATYPE, OWL_DATATYPE]);
+const DATATYPE_TYPE_IRIS = new Set([
+  RDFS_DATATYPE,
+  OWL_DATATYPE,
+  RDF_LANG_STRING,
+  RDF_HTML,
+  RDF_XML_LITERAL,
+]);
 const BUILTIN_DATATYPE_IRI_PREFIXES = [RDF_NS, RDFS_NS, OWL_NS, XSD_NS];
 const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
   RDF_NIL,
+  RDF_LIST,
   OWL_ANNOTATION_PROPERTY,
   OWL_DATATYPE_PROPERTY,
   OWL_OBJECT_PROPERTY,
@@ -102,6 +118,7 @@ const BUILTIN_ANNOTATION_PREDICATES = new Set([
   RDFS_COMMENT,
   `${RDFS_NS}seeAlso`,
   `${RDFS_NS}isDefinedBy`,
+  RDF_VALUE,
   OWL_VERSION_INFO,
   `${OWL_NS}priorVersion`,
   `${OWL_NS}backwardCompatibleWith`,
@@ -1077,7 +1094,7 @@ function buildBlankExpressionIndex(quads) {
     if (quad.object.termType === 'BlankNode') {
       const objectId = getTermId(quad.object);
 
-      if (quad.predicate.value === RDF_FIRST || quad.predicate.value === RDF_REST) {
+      if (quad.predicate.value === RDF_REST) {
         registerRole(objectId, 'List', 40);
       }
 
@@ -1759,6 +1776,22 @@ function isXmlSchemaDatatypeIri(iri) {
   return iri?.startsWith(XSD_NS);
 }
 
+function isProvIri(iri) {
+  return Boolean(iri) && String(iri).startsWith(PROV_NS);
+}
+
+function isProvNode(node) {
+  if (!node || node.termType !== 'NamedNode') {
+    return false;
+  }
+
+  if (isProvIri(node.iri || node.id)) {
+    return true;
+  }
+
+  return Array.isArray(node.classes) && node.classes.some((classIri) => isProvIri(classIri));
+}
+
 function termIdFromIri(iri) {
   return iri ? getTermId(namedNode(iri)) : '';
 }
@@ -1856,7 +1889,7 @@ export function extractOntologyModel(quads) {
     if (
       quad.predicate.value === RDF_TYPE &&
       quad.object.termType === 'NamedNode' &&
-      quad.object.value === OWL_OBJECT_PROPERTY
+      (quad.object.value === OWL_OBJECT_PROPERTY || quad.object.value === RDF_PROPERTY)
     ) {
       objectPropertyIds.add(getTermId(quad.subject));
       continue;
@@ -2069,7 +2102,7 @@ export function buildGraphData(quads, options = {}) {
 
   for (const quad of graphQuads) {
     if (quad.predicate.value === RDF_TYPE && quad.subject.termType === 'NamedNode' && quad.object.termType === 'NamedNode') {
-      if (quad.object.value === OWL_OBJECT_PROPERTY) {
+      if (quad.object.value === OWL_OBJECT_PROPERTY || quad.object.value === RDF_PROPERTY) {
         objectPropertyIris.add(quad.subject.value);
       } else if (quad.object.value === OWL_DATATYPE_PROPERTY) {
         dataPropertyIris.add(quad.subject.value);
@@ -2427,7 +2460,21 @@ export function buildGraphData(quads, options = {}) {
         node.badgeWidth = 0;
         node.classCount = 0;
         node.classTooltip = '';
+        continue;
       }
+
+      const isDirectResourceInstance = Array.isArray(node.classes) && node.classes.includes(RDFS_RESOURCE);
+      const isInstanceNode = node.classes.length > 0 || isDirectResourceInstance;
+
+      if (isInstanceNode) {
+        node.entityCategory = 'individual';
+        node.graphRole = hasOntology && hasKg ? 'kg-instance' : node.graphRole;
+      } else {
+        node.entityCategory = 'blank';
+      }
+      node.isInstanceNode = isInstanceNode ? 1 : 0;
+      node.isOntologyNode = 0;
+      node.mixedMode = hasOntology && hasKg ? 1 : 0;
       continue;
     }
 
@@ -2442,7 +2489,8 @@ export function buildGraphData(quads, options = {}) {
 
     const isExplicitNamedIndividual = namedIndividualNodeIds.has(node.id);
     const isOntologyNamedIndividual = ontologyNamedIndividualNodeIds.has(node.id);
-    const isInstanceNode = node.classes.length > 0 || isExplicitNamedIndividual;
+    const isDirectResourceInstance = Array.isArray(node.classes) && node.classes.includes(RDFS_RESOURCE);
+    const isInstanceNode = node.classes.length > 0 || isExplicitNamedIndividual || isDirectResourceInstance;
 
     if (ontologyDataPropertyIds.has(node.id) || dataPropertyIris.has(node.id)) {
       node.ontologyKind = 'data-property';
@@ -2717,6 +2765,9 @@ function shouldIncludeStandaloneNode(node, graphData, options) {
   if (!node) {
     return false;
   }
+  if (isProvNode(node)) {
+    return false;
+  }
 
   const isBadgeOnlyClassNode = graphData.badgeClassNodeIds?.has(node.id) && !options.showTypeLinks;
 
@@ -2795,6 +2846,9 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
     if (!node) {
       return false;
     }
+    if (isProvNode(node)) {
+      return false;
+    }
 
     if (node.termType === 'BlankNode') {
       return false;
@@ -2833,6 +2887,9 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
   };
 
   for (const edge of graphData.objectEdges) {
+    if (isProvIri(edge.predicate)) {
+      continue;
+    }
     if (edge.category === 'type') {
       if (!options.showTypeLinks) {
         continue;
@@ -2859,6 +2916,9 @@ function buildKgProjectionSubset(graphData, focusedNodeIds, options) {
   }
 
   for (const edge of graphData.literalEdges) {
+    if (isProvIri(edge.predicate)) {
+      continue;
+    }
     if (!shouldIncludeLiteralEdge(edge, options)) {
       continue;
     }
@@ -2946,6 +3006,9 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
     }
     const sourceNode = graphData.nodeMap.get(nodeId);
     if (!sourceNode) {
+      return null;
+    }
+    if (isProvNode(sourceNode)) {
       return null;
     }
     const node = cloneOwlNode(sourceNode, overrides);
@@ -3096,6 +3159,9 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
   }
 
   for (const edge of graphData.objectEdges) {
+    if (isProvIri(edge.predicate)) {
+      continue;
+    }
     if (edge.predicate === RDF_TYPE) {
       const sourceNode = graphData.nodeMap.get(edge.source);
       const targetNode = graphData.nodeMap.get(edge.target);
@@ -3176,6 +3242,9 @@ function buildOwlViewProjectionElements(graphData, focusedNodeIds, options) {
   }
 
   for (const edge of graphData.literalEdges) {
+    if (isProvIri(edge.predicate)) {
+      continue;
+    }
     const sourceNode = graphData.nodeMap.get(edge.source);
     if (!options.showDataProperties || !isNamedIndividualLike(sourceNode)) {
       continue;

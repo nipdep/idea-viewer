@@ -4,6 +4,10 @@ export const GRAPH_VIEW_MODES = Object.freeze({
   OWL: 'owl',
   RDF: 'rdf',
 });
+const RDF_PROJECTION_LEVELS = Object.freeze({
+  OBJECT: 'object',
+  ALL: 'all',
+});
 const OWL_PROJECTION_LEVELS = Object.freeze({
   TAXONOMY: 'taxonomy',
   SCHEMA: 'schema',
@@ -91,6 +95,10 @@ const RDF_STATEMENT = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement';
 const RDF_SUBJECT = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#subject';
 const RDF_PREDICATE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#predicate';
 const RDF_OBJECT = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#object';
+const SKOS_PREF_LABEL = 'http://www.w3.org/2004/02/skos/core#prefLabel';
+const SKOS_DEFINITION = 'http://www.w3.org/2004/02/skos/core#definition';
+const SCHEMA_NAME = 'http://schema.org/name';
+const FOAF_NAME = 'http://xmlns.com/foaf/0.1/name';
 
 const METADATA_PREDICATES = new Set([
   RDFS_LABEL,
@@ -104,6 +112,21 @@ const METADATA_PREDICATES = new Set([
   OWL_VERSION_INFO,
   PROV_WAS_DERIVED_FROM,
   DCT_SOURCE,
+  SKOS_DEFINITION,
+]);
+
+const DISPLAY_ONLY_NODE_IDS = new Set([
+  RDFS_LABEL,
+  SKOS_PREF_LABEL,
+  SCHEMA_NAME,
+  FOAF_NAME,
+]);
+
+const INFRASTRUCTURE_NODE_IDS = new Set([
+  RDF_PROPERTY,
+  RDF_SEQ,
+  RDF_STATEMENT,
+  OWL_AXIOM,
 ]);
 
 const PROPERTY_CHARACTERISTIC_PREFIXES = new Map([
@@ -264,6 +287,73 @@ function applyRdfLabels(elements) {
     }
 
     return next;
+  });
+}
+
+function filterRdfProjectionByLevel(elements, rdfProjectionLevel) {
+  if (!rdfProjectionLevel || rdfProjectionLevel === RDF_PROJECTION_LEVELS.ALL) {
+    return elements;
+  }
+
+  const nodeElementsById = new Map(
+    elements
+      .filter((element) => !element?.data?.source)
+      .map((element) => [element.data.id, element]),
+  );
+  const allowedEdgeIds = new Set();
+  const referencedNodeIds = new Set();
+
+  const isIndividualLikeNode = (data) =>
+    Boolean(
+      data &&
+        (data.entityCategory === 'individual' ||
+          data.graphRole === 'kg-instance' ||
+          data.ontologyKind === 'individual'),
+    );
+
+  const isConnectorLikeNode = (data) =>
+    Boolean(
+      data &&
+        (data.entityCategory === 'rdf-connector' ||
+          data.entityCategory === 'edge-anchor' ||
+          data.edgeAnchor ||
+          data.rdfConnectorKind),
+    );
+
+  const isAllowedObjectProjectionNode = (data) => isIndividualLikeNode(data) || isConnectorLikeNode(data);
+
+  for (const element of elements) {
+    const data = element?.data;
+    if (!data?.source || data.category !== 'object') {
+      continue;
+    }
+
+    const sourceNode = nodeElementsById.get(data.source)?.data;
+    const targetNode = nodeElementsById.get(data.target)?.data;
+    if (!isAllowedObjectProjectionNode(sourceNode) || !isAllowedObjectProjectionNode(targetNode)) {
+      continue;
+    }
+
+    allowedEdgeIds.add(data.id);
+    referencedNodeIds.add(data.source);
+    referencedNodeIds.add(data.target);
+  }
+
+  return elements.filter((element) => {
+    const data = element?.data;
+    if (!data) {
+      return false;
+    }
+
+    if (data.source) {
+      return allowedEdgeIds.has(data.id);
+    }
+
+    if (isIndividualLikeNode(data)) {
+      return true;
+    }
+
+    return isConnectorLikeNode(data) && referencedNodeIds.has(data.id);
   });
 }
 
@@ -537,6 +627,108 @@ function applyHoverMetadata(graphData, elements) {
       next.data.hoverText = data.fullLabel || data.label || '';
     }
     return next;
+  });
+}
+
+function suppressDisplayOnlyNodes(elements) {
+  return elements.filter((element) => {
+    const data = element?.data;
+    if (!data) {
+      return false;
+    }
+
+    if (!data.source) {
+      return !DISPLAY_ONLY_NODE_IDS.has(data.id);
+    }
+
+    return !DISPLAY_ONLY_NODE_IDS.has(data.source) && !DISPLAY_ONLY_NODE_IDS.has(data.target);
+  });
+}
+
+function stripNodeBadges(elements) {
+  return elements.map((element) => {
+    const data = element?.data;
+    if (!data || data.source) {
+      return element;
+    }
+
+    if (
+      !data.hasClass &&
+      !data.classCount &&
+      !data.classBadge &&
+      !data.badgeSvg &&
+      !data.badgeWidth &&
+      !data.classTooltip
+    ) {
+      return element;
+    }
+
+    const next = cloneElement(element);
+    next.data.hasClass = 0;
+    next.data.classCount = 0;
+    next.data.classBadge = '';
+    next.data.badgeSvg = '';
+    next.data.badgeWidth = 0;
+    next.data.classTooltip = '';
+    return next;
+  });
+}
+
+function isAnnotationLikePredicate(graphData, predicateIri) {
+  if (!predicateIri) {
+    return false;
+  }
+
+  if (METADATA_PREDICATES.has(predicateIri)) {
+    return true;
+  }
+
+  const predicateNode = graphData?.nodeMap?.get(predicateIri);
+  return predicateNode?.ontologyKind === 'annotation-property' || predicateNode?.entityCategory === 'annotation-property';
+}
+
+function suppressInfrastructureNodes(graphData, elements) {
+  const outgoingBySource = buildOutgoingEdgeIndex(graphData);
+  const incomingByTarget = buildIncomingEdgeIndex(graphData);
+  const hiddenNodeIds = new Set();
+
+  for (const element of elements) {
+    const data = element?.data;
+    if (!data || data.source) {
+      continue;
+    }
+
+    if (INFRASTRUCTURE_NODE_IDS.has(data.id)) {
+      hiddenNodeIds.add(data.id);
+      continue;
+    }
+
+    const incoming = incomingByTarget.get(data.id) ?? [];
+    const outgoing = outgoingBySource.get(data.id) ?? [];
+    const hasIncoming = incoming.length > 0;
+    const hasOutgoing = outgoing.length > 0;
+    if (
+      hasIncoming &&
+      !hasOutgoing &&
+      incoming.every((edge) => isAnnotationLikePredicate(graphData, edge.predicate) || isProvIri(edge.predicate))
+    ) {
+      hiddenNodeIds.add(data.id);
+    }
+  }
+
+  if (hiddenNodeIds.size === 0) {
+    return elements;
+  }
+
+  return elements.filter((element) => {
+    const data = element?.data;
+    if (!data) {
+      return false;
+    }
+    if (!data.source) {
+      return !hiddenNodeIds.has(data.id);
+    }
+    return !hiddenNodeIds.has(data.source) && !hiddenNodeIds.has(data.target);
   });
 }
 
@@ -1113,7 +1305,19 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
   const edgeElements = [];
   let edgeCounter = 0;
 
-  const isDisplayOnlyNodeId = (nodeId) => nodeId === RDFS_LABEL;
+  const isDisplayOnlyNodeId = (nodeId) => DISPLAY_ONLY_NODE_IDS.has(nodeId);
+  const isPropertyLikeNode = (node) =>
+    Boolean(
+      node &&
+        (
+          node.ontologyKind === 'object-property' ||
+          node.ontologyKind === 'data-property' ||
+          node.ontologyKind === 'annotation-property' ||
+          node.entityCategory === 'object-property' ||
+          node.entityCategory === 'data-property' ||
+          node.entityCategory === 'annotation-property'
+        ),
+    );
 
   const ensureNodeElement = (term) => {
     if (!term) {
@@ -1123,11 +1327,14 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
     if (isDisplayOnlyNodeId(id)) {
       return null;
     }
+    const existingNode = graphData?.nodeMap?.get(id);
+    if (isPropertyLikeNode(existingNode)) {
+      return null;
+    }
     if (nodeElementsById.has(id)) {
       return nodeElementsById.get(id);
     }
 
-    const existingNode = graphData?.nodeMap?.get(id);
     const element = makeNodeElementFromGraphNode(existingNode) || makeFallbackNodeElement(term);
     if (!element) {
       return null;
@@ -1185,6 +1392,9 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
 
     const sourceNode = graphData?.nodeMap?.get(getTermId(quad.subject));
     const targetNode = graphData?.nodeMap?.get(getTermId(quad.object));
+    if (isPropertyLikeNode(sourceNode) || isPropertyLikeNode(targetNode)) {
+      continue;
+    }
     if (isProvNode(sourceNode) || isProvNode(targetNode)) {
       continue;
     }
@@ -1229,6 +1439,9 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
       continue;
     }
     if (isDisplayOnlyNodeId(node.id)) {
+      continue;
+    }
+    if (isPropertyLikeNode(node)) {
       continue;
     }
     ensureNodeElement({
@@ -2858,7 +3071,9 @@ function buildReificationDescriptors(graphData) {
         structuralPredicates: new Set([OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET]),
         metadataRows,
         attachmentObjectEdges: outgoing.filter(
-          (edge) => ![RDF_TYPE, OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET].includes(edge.predicate),
+          (edge) =>
+            ![RDF_TYPE, OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET].includes(edge.predicate) &&
+            !isAnnotationLikePredicate(graphData, edge.predicate),
         ),
         attachmentLiteralEdges: outgoingLiteral.filter(
           (edge) => ![RDF_TYPE, OWL_ANNOTATED_SOURCE, OWL_ANNOTATED_PROPERTY, OWL_ANNOTATED_TARGET].includes(edge.predicate),
@@ -3539,7 +3754,6 @@ function filterSchemaProjectionElements(elements) {
 
     if (
       data.ontologyKind === 'class' ||
-      data.ontologyKind === 'individual' ||
       data.ontologyKind === 'object-property' ||
       data.ontologyKind === 'data-property' ||
       data.ontologyKind === 'annotation-property' ||
@@ -3568,10 +3782,7 @@ function filterSchemaProjectionElements(elements) {
     if (data.predicate !== RDF_TYPE) {
       return false;
     }
-
-    const sourceNode = nodeElementsById.get(data.source)?.data;
-    const targetNode = nodeElementsById.get(data.target)?.data;
-    return sourceNode?.ontologyKind === 'individual' && targetNode?.ontologyKind === 'class';
+    return false;
   };
 
   const nodeElementsById = new Map(
@@ -3651,6 +3862,7 @@ export function createViewOptions(mode, flags = {}) {
 }
 
 export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
+  const rdfProjectionLevel = viewOptions?.rdfProjectionLevel ?? RDF_PROJECTION_LEVELS.ALL;
   const options = normalizeProjectionFlags({
     ...viewOptions,
     projectionMode: GRAPH_VIEW_MODES.RDF,
@@ -3669,14 +3881,24 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
       : focusedNodeIds;
   const elements = buildRawRdfProjectionElements(graphData, effectiveFocusedNodeIds, options);
 
-  return applySelfLoopGeometry(
+  const projectedElements = applySelfLoopGeometry(
     graphData,
-    applyRelationPalette(
-      decorateEdgeAttachedStructures(
-        graphData,
-        applyRdfSpecProjection(graphData, applyRdfLabels(suppressMetadataEdges(elements))),
-        GRAPH_VIEW_MODES.RDF,
+    filterRdfProjectionByLevel(
+      applyRelationPalette(
+        decorateEdgeAttachedStructures(
+          graphData,
+          applyRdfSpecProjection(graphData, applyRdfLabels(suppressMetadataEdges(elements))),
+          GRAPH_VIEW_MODES.RDF,
+        ),
       ),
+      rdfProjectionLevel,
+    ),
+  );
+
+  return suppressInfrastructureNodes(
+    graphData,
+    suppressDisplayOnlyNodes(
+      rdfProjectionLevel === RDF_PROJECTION_LEVELS.ALL ? stripNodeBadges(projectedElements) : projectedElements,
     ),
   );
 }
@@ -3687,12 +3909,15 @@ export function buildSchemaViewProjection(graphData, focusedNodeIds, viewOptions
     projectionMode: GRAPH_VIEW_MODES.OWL,
   });
 
-  return applyHoverMetadata(
+  return suppressInfrastructureNodes(
     graphData,
-    applySelfLoopGeometry(
+    stripNodeBadges(applyHoverMetadata(
       graphData,
-      applyRelationPalette(filterSchemaProjectionElements(suppressMetadataEdges(elements))),
-    ),
+      applySelfLoopGeometry(
+        graphData,
+        applyRelationPalette(filterSchemaProjectionElements(suppressMetadataEdges(elements))),
+      ),
+    )),
   );
 }
 
@@ -3710,7 +3935,7 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
   const baseElements = suppressMetadataEdges(elements);
 
   try {
-    return applyHoverMetadata(
+    const projectedElements = applyHoverMetadata(
       graphData,
       filterOwlProjectionByLevel(
         applySelfLoopGeometry(
@@ -3726,9 +3951,15 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
         owlProjectionLevel,
       ),
     );
+    return suppressInfrastructureNodes(
+      graphData,
+      stripNodeBadges(projectedElements),
+    );
   } catch (error) {
     console.error('OWL projection failed; falling back to base ontology graph.', error);
-    return applyHoverMetadata(graphData, applySelfLoopGeometry(graphData, applyRelationPalette(baseElements)));
+    return stripNodeBadges(
+      applyHoverMetadata(graphData, applySelfLoopGeometry(graphData, applyRelationPalette(baseElements))),
+    );
   }
 }
 

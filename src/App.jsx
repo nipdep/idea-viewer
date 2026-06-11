@@ -49,6 +49,10 @@ const OWL_PROJECTION_LEVELS = {
   ONTOLOGY: 'ontology',
   KG: 'kg',
 };
+const RDF_PROJECTION_LEVELS = {
+  OBJECT: 'object',
+  ALL: 'all',
+};
 const GRAPH_FILTER_AXES = {
   ALL: 'all',
   TBOX: 't-box',
@@ -1069,13 +1073,24 @@ const EDGE_BEND_HANDLE_RENDER_SIZE = 10;
 const EDGE_BEND_HANDLE_GLYPH = '✥';
 const EDGE_BEND_HANDLE_CENTER_OFFSET = 12;
 
-function toViewFlags(projectionMode, owlProjectionLevel) {
+function toViewFlags(projectionMode, owlProjectionLevel, rdfProjectionLevel) {
   if (projectionMode === GRAPH_PROJECTION_MODES.RDF) {
+    if (rdfProjectionLevel === RDF_PROJECTION_LEVELS.OBJECT) {
+      return {
+        showDataProperties: false,
+        showAnnotationProperties: false,
+        showObjectProperties: true,
+        showNamedIndividuals: true,
+        showTypeLinks: false,
+      };
+    }
+
     return {
       showDataProperties: true,
-      showAnnotationProperties: false,
+      showAnnotationProperties: true,
       showObjectProperties: true,
       showNamedIndividuals: true,
+      showTypeLinks: true,
     };
   }
 
@@ -1095,7 +1110,7 @@ function toViewFlags(projectionMode, owlProjectionLevel) {
         showDataProperties: true,
         showAnnotationProperties: true,
         showObjectProperties: true,
-        showNamedIndividuals: true,
+        showNamedIndividuals: false,
         showTypeLinks: true,
       };
     }
@@ -1120,13 +1135,14 @@ function toViewFlags(projectionMode, owlProjectionLevel) {
   };
 }
 
-function toViewOptions(projectionMode, graphData, owlProjectionLevel) {
-  const flags = toViewFlags(projectionMode, owlProjectionLevel);
+function toViewOptions(projectionMode, graphData, owlProjectionLevel, rdfProjectionLevel) {
+  const flags = toViewFlags(projectionMode, owlProjectionLevel, rdfProjectionLevel);
   if (projectionMode === GRAPH_PROJECTION_MODES.RDF) {
     return createViewOptions(GRAPH_PROJECTION_MODES.RDF, {
       ...flags,
-      showTypeLinks: Boolean(graphData?.hasOntology),
+      showTypeLinks: flags.showTypeLinks && Boolean(graphData?.hasOntology),
       owlProjectionLevel,
+      rdfProjectionLevel,
     });
   }
 
@@ -1174,6 +1190,7 @@ export default function App() {
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
   const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.OWL);
   const [owlProjectionLevel, setOwlProjectionLevel] = useState(OWL_PROJECTION_LEVELS.ONTOLOGY);
+  const [rdfProjectionLevel, setRdfProjectionLevel] = useState(RDF_PROJECTION_LEVELS.ALL);
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
@@ -2587,11 +2604,10 @@ export default function App() {
     }
 
     const classCount = Number(node.data('classCount') ?? node.data('hasClass') ?? 0);
-    const mixedMode = Number(node.data('mixedMode') ?? 0);
     const tooltipText = String(node.data('classTooltip') ?? '');
     const badgeWidth = Number(node.data('badgeWidth') ?? 0);
 
-    if (mixedMode !== 0 || classCount < 2 || !tooltipText || badgeWidth <= 0) {
+    if (classCount < 2 || !tooltipText || badgeWidth <= 0) {
       return null;
     }
 
@@ -4417,8 +4433,10 @@ export default function App() {
       setFilterError('');
 
       try {
-        const viewOptions = toViewOptions(graphProjectionMode, graphData, owlProjectionLevel);
-        const currentProjectionCacheKey = buildProjectionCacheKey(graphProjectionMode, owlProjectionLevel);
+        const currentProjectionLevel =
+          graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? rdfProjectionLevel : owlProjectionLevel;
+        const viewOptions = toViewOptions(graphProjectionMode, graphData, owlProjectionLevel, rdfProjectionLevel);
+        const currentProjectionCacheKey = buildProjectionCacheKey(graphProjectionMode, currentProjectionLevel);
         const projectElements = (focusedNodeIds = null) => {
           let projected;
           if (!focusedNodeIds) {
@@ -4509,7 +4527,11 @@ export default function App() {
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
             applyEdgeCurveOverrides(
-              buildProjectedElements(graphData, null, toViewOptions(graphProjectionMode, graphData, owlProjectionLevel)),
+              buildProjectedElements(
+                graphData,
+                null,
+                toViewOptions(graphProjectionMode, graphData, owlProjectionLevel, rdfProjectionLevel),
+              ),
               edgeCurveOverridesRef.current,
             ),
           );
@@ -4535,6 +4557,7 @@ export default function App() {
     sparqlQuery,
     graphProjectionMode,
     owlProjectionLevel,
+    rdfProjectionLevel,
     showClassTypeFilter,
   ]);
 
@@ -5271,6 +5294,27 @@ export default function App() {
                             onChange={() => setOwlProjectionLevel(OWL_PROJECTION_LEVELS.KG)}
                           />
                           <span>KG</span>
+                        </label>
+                      </div>
+                    ) : graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? (
+                      <div className="option-list" role="radiogroup" aria-label="RDF projection level">
+                        <label className="option-item">
+                          <input
+                            type="radio"
+                            name="rdf-projection-level"
+                            checked={rdfProjectionLevel === RDF_PROJECTION_LEVELS.OBJECT}
+                            onChange={() => setRdfProjectionLevel(RDF_PROJECTION_LEVELS.OBJECT)}
+                          />
+                          <span>Object</span>
+                        </label>
+                        <label className="option-item">
+                          <input
+                            type="radio"
+                            name="rdf-projection-level"
+                            checked={rdfProjectionLevel === RDF_PROJECTION_LEVELS.ALL}
+                            onChange={() => setRdfProjectionLevel(RDF_PROJECTION_LEVELS.ALL)}
+                          />
+                          <span>All</span>
                         </label>
                       </div>
                     ) : (

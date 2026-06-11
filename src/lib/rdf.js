@@ -15,6 +15,7 @@ const RDF_HTML = `${RDF_NS}HTML`;
 const RDF_LIST = `${RDF_NS}List`;
 const RDF_PROPERTY = `${RDF_NS}Property`;
 const RDF_REST = `${RDF_NS}rest`;
+const RDF_SEQ = `${RDF_NS}Seq`;
 const RDF_NIL = `${RDF_NS}nil`;
 const RDF_LANG_STRING = `${RDF_NS}langString`;
 const RDF_VALUE = `${RDF_NS}value`;
@@ -83,6 +84,7 @@ const PROV_NS = 'http://www.w3.org/ns/prov#';
 const PROV_WAS_DERIVED_FROM = 'http://www.w3.org/ns/prov#wasDerivedFrom';
 const DCT_SOURCE = 'http://purl.org/dc/terms/source';
 const SKOS_PREF_LABEL = `${SKOS_NS}prefLabel`;
+const SKOS_DEFINITION = `${SKOS_NS}definition`;
 const RDF_STATEMENT = `${RDF_NS}Statement`;
 const RDF_SUBJECT = `${RDF_NS}subject`;
 const RDF_PREDICATE = `${RDF_NS}predicate`;
@@ -100,6 +102,9 @@ const BUILTIN_DATATYPE_IRI_PREFIXES = [RDF_NS, RDFS_NS, OWL_NS, XSD_NS];
 const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
   RDF_NIL,
   RDF_LIST,
+  RDF_PROPERTY,
+  RDF_SEQ,
+  RDF_STATEMENT,
   OWL_ANNOTATION_PROPERTY,
   OWL_DATATYPE_PROPERTY,
   OWL_OBJECT_PROPERTY,
@@ -126,6 +131,7 @@ const BUILTIN_ANNOTATION_PREDICATES = new Set([
   `${OWL_NS}deprecated`,
   DCT_SOURCE,
   SKOS_PREF_LABEL,
+  SKOS_DEFINITION,
 ]);
 
 const EXPRESSION_NODE_PREDICATE_LABELS = new Map([
@@ -232,6 +238,7 @@ const METADATA_PREDICATES = new Set([
   OWL_VERSION_INFO,
   PROV_WAS_DERIVED_FROM,
   DCT_SOURCE,
+  SKOS_DEFINITION,
 ]);
 
 function collectOntologySubjectIds(quads) {
@@ -2367,20 +2374,23 @@ export function buildGraphData(quads, options = {}) {
       ? labelIndex.get(primaryClass) ?? compactIri(primaryClass)
       : '';
     const hasMultipleClasses = node.classes.length > 1;
-    const shouldUseClassBadges = !hasOntology;
+    const shouldUseClassBadges =
+      node.termType === 'NamedNode' &&
+      node.classes.length > 0 &&
+      !classNodeIds.has(nodeId);
     const classLabelList = node.classes
       .map((classIri) => labelIndex.get(classIri) ?? compactIri(classIri))
       .filter(Boolean)
       .sort((left, right) => left.localeCompare(right));
 
     node.primaryClassLabel = primaryClassLabel;
-    node.classBadge = shouldUseClassBadges ? toClassBadge(primaryClassLabel, !hasOntology && hasMultipleClasses) : '';
+    node.classBadge = shouldUseClassBadges ? toClassBadge(primaryClassLabel, hasMultipleClasses) : '';
     const badge = makeBadgeDataUri(node.classBadge);
     node.badgeSvg = badge.uri;
     node.badgeWidth = badge.width;
     node.hasClass = shouldUseClassBadges ? node.classes.length : 0;
     node.classCount = node.classes.length;
-    node.classTooltip = shouldUseClassBadges && !hasOntology && hasMultipleClasses ? classLabelList.join('\n') : '';
+    node.classTooltip = shouldUseClassBadges && hasMultipleClasses ? classLabelList.join('\n') : '';
 
     if (node.hasClass > 0 && node.termType === 'NamedNode') {
       for (const classIri of classes) {

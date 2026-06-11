@@ -99,6 +99,10 @@ const SKOS_PREF_LABEL = 'http://www.w3.org/2004/02/skos/core#prefLabel';
 const SKOS_DEFINITION = 'http://www.w3.org/2004/02/skos/core#definition';
 const SCHEMA_NAME = 'http://schema.org/name';
 const FOAF_NAME = 'http://xmlns.com/foaf/0.1/name';
+const XSD_MIN_INCLUSIVE = 'http://www.w3.org/2001/XMLSchema#minInclusive';
+const XSD_MAX_INCLUSIVE = 'http://www.w3.org/2001/XMLSchema#maxInclusive';
+const XSD_MIN_EXCLUSIVE = 'http://www.w3.org/2001/XMLSchema#minExclusive';
+const XSD_MAX_EXCLUSIVE = 'http://www.w3.org/2001/XMLSchema#maxExclusive';
 
 const METADATA_PREDICATES = new Set([
   RDFS_LABEL,
@@ -1810,6 +1814,51 @@ function summarizeRestrictionFacetNode(graphData, facetNodeId, outgoingAllBySour
     .join(', ');
 }
 
+function buildDatatypeFacetInterval(graphData, facetNodeIds, outgoingAllBySource) {
+  const bounds = {
+    minInclusive: '',
+    maxInclusive: '',
+    minExclusive: '',
+    maxExclusive: '',
+  };
+
+  for (const facetNodeId of facetNodeIds) {
+    const outgoing = outgoingAllBySource.get(facetNodeId) ?? [];
+    for (const edge of outgoing) {
+      const targetNode = graphData.nodeMap.get(edge.target);
+      const value = String(targetNode?.literalValue || targetNode?.fullLabel || '').trim();
+      if (!value) {
+        continue;
+      }
+      if (edge.predicate === XSD_MIN_INCLUSIVE) {
+        bounds.minInclusive = value;
+      } else if (edge.predicate === XSD_MAX_INCLUSIVE) {
+        bounds.maxInclusive = value;
+      } else if (edge.predicate === XSD_MIN_EXCLUSIVE) {
+        bounds.minExclusive = value;
+      } else if (edge.predicate === XSD_MAX_EXCLUSIVE) {
+        bounds.maxExclusive = value;
+      }
+    }
+  }
+
+  const leftValue = bounds.minInclusive || bounds.minExclusive;
+  const rightValue = bounds.maxInclusive || bounds.maxExclusive;
+  if (!leftValue && !rightValue) {
+    return '';
+  }
+
+  const leftBracket = bounds.minExclusive ? '(' : '[';
+  const rightBracket = bounds.maxExclusive ? ')' : ']';
+  if (leftValue && rightValue) {
+    return `${leftBracket}${leftValue}, ${rightValue}${rightBracket} in`;
+  }
+  if (leftValue) {
+    return `${leftBracket}${leftValue}, ... in`;
+  }
+  return `..., ${rightValue}${rightBracket} in`;
+}
+
 function toCardinalityMarker(predicate, value) {
   const numeric = String(value || '').trim();
   if (!numeric) {
@@ -2149,8 +2198,15 @@ function buildRestrictionTargetSpecs(
       targetSpecs.push({
         targetId: datatypeTargetId,
         predicate: edge.predicate,
-        sourceCardinality: combinedCardinality,
+        sourceCardinality:
+          buildDatatypeFacetInterval(
+            graphData,
+            withRestrictionsEdge ? readListMembers(withRestrictionsEdge.target, outgoingBySource) : [],
+            outgoingAllBySource,
+          ) || combinedCardinality,
         forceStarSuffix: true,
+        forcePlainLabel: true,
+        suppressRestrictionDecoration: true,
         projectedMetadataRows:
           restrictionMembers.length > 0
             ? [
@@ -2339,11 +2395,13 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
         ) {
           continue;
         }
-        const basePredicateLabel = targetSpec.forceStarSuffix
+        const basePredicateLabel = targetSpec.forcePlainLabel
+          ? propertyBaseLabel
+          : targetSpec.forceStarSuffix
           ? propertyBaseLabel
           : `${restrictionPredicatePrefix(targetSpec.predicate)}${propertyBaseLabel}${restrictionPredicateSuffix(targetSpec.predicate)}`;
         const predicateLabel = decorateRelationLabel(basePredicateLabel, {
-          isRestriction: shouldDecorateRestrictionEdge(targetSpec.predicate),
+          isRestriction: targetSpec.suppressRestrictionDecoration ? false : shouldDecorateRestrictionEdge(targetSpec.predicate),
           hasDetailRows: Array.isArray(targetSpec.projectedMetadataRows) && targetSpec.projectedMetadataRows.length > 0,
         });
         synthesizedEdges.push({

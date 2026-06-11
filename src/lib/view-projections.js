@@ -2895,6 +2895,24 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
 
     for (const anchorDescriptor of anchorDescriptors) {
       const anchorSourceId = anchorDescriptor.sourceId;
+      if (config.kind === 'Complement') {
+        for (const member of projectedMembers) {
+          synthesizedEdges.push({
+            data: {
+              id: `owl-complement:${anchorSourceId}:${edge.source}:${member.targetId}`,
+              source: anchorSourceId,
+              target: member.targetId,
+              predicate: OWL_COMPLEMENT_OF,
+              predicateLabel: '¬',
+              category: 'object',
+              axiomKind: 'ClassExpression',
+              owlEdgeStyle: 'dotted',
+              owlSynthesized: 1,
+            },
+          });
+        }
+        continue;
+      }
       const helperNodeId = `owl-expr:${config.kind}:${anchorSourceId}:${edge.source}:${edge.target}`;
       const expressionNodeData = makeExpressionNodeData(helperNodeId, config.label, config.kind);
       const relationKeyword = relationManchesterKeyword(anchorDescriptor.relationPredicate);
@@ -2907,12 +2925,6 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
         )}`;
       } else if (config.kind === 'Union') {
         expressionNodeData.connectorAxiomText = `${sourceText} ${relationKeyword} ${expressionMembersManchester(
-          graphData,
-          memberIds,
-          'or',
-        )}`;
-      } else if (config.kind === 'Complement') {
-        expressionNodeData.connectorAxiomText = `${sourceText} ${relationKeyword} not ${expressionMembersManchester(
           graphData,
           memberIds,
           'or',

@@ -1,0 +1,67 @@
+@prefix : <http://example.org/ontology#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+#################################################################
+# Ontology
+#################################################################
+
+<http://example.org/ontology>
+    a owl:Ontology .
+
+#################################################################
+# Classes
+#################################################################
+
+# Class Axiom 
+:Paper
+    a owl:Class ;
+    owl:equivalentClass :ResearchArticle .
+
+:ResearchArticle
+    a owl:Class .
+
+# Class Description 
+:NonPaperEntity
+    a owl:Class ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:complementOf :Paper
+    ] .
+
+:NonPaperEntity owl:disjointWith :Paper .
+
+:HighQualityAssessment
+    a owl:Class .
+
+# Class Property Restriction
+:HighQualityPaper
+    a owl:Class ;
+    owl:equivalentClass [
+        a owl:Restriction ;
+        owl:onProperty :hasQualityAssessment ;
+        owl:someValuesFrom :HighQualityAssessment
+    ] .
+
+#################################################################
+# Global partition (redundant but legal)
+#################################################################
+
+# Class Constructors
+owl:Thing
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:unionOf (
+            :Paper
+            :NonPaperEntity
+        )
+    ] .
+
+#################################################################
+# Properties
+#################################################################
+
+:hasQualityAssessment
+    a owl:ObjectProperty .

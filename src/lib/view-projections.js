@@ -16,6 +16,7 @@ const OWL_PROJECTION_LEVELS = Object.freeze({
 });
 
 const RDFS_COMMENT = 'http://www.w3.org/2000/01/rdf-schema#comment';
+const RDFS_DATATYPE = 'http://www.w3.org/2000/01/rdf-schema#Datatype';
 const RDFS_DOMAIN = 'http://www.w3.org/2000/01/rdf-schema#domain';
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 const RDFS_MEMBER = 'http://www.w3.org/2000/01/rdf-schema#member';
@@ -599,6 +600,10 @@ function edgeHoverText(graphData, data) {
     return directPredicateMatches.map((row) => row.manchester).join('\n');
   }
 
+  if (data.predicate === OWL_COMPLEMENT_OF) {
+    return 'complement Of';
+  }
+
   return defaultText;
 }
 
@@ -646,6 +651,52 @@ function suppressDisplayOnlyNodes(elements) {
     }
 
     return !DISPLAY_ONLY_NODE_IDS.has(data.source) && !DISPLAY_ONLY_NODE_IDS.has(data.target);
+  });
+}
+
+function annotateRdfNodePresentation(elements) {
+  return elements.map((element) => {
+    const data = element?.data;
+    if (!data || data.source) {
+      return element;
+    }
+
+    const isBlankNode = data.kind === 'blank';
+    const isConnectorNode =
+      data.entityCategory === 'rdf-connector' ||
+      data.entityCategory === 'class-expression-connector' ||
+      data.owlCollectionConnector === 1 ||
+      data.owlExpressionNode === 1;
+    const isStructuralBlankNode =
+      isBlankNode &&
+      Boolean(
+        data.blankExpressionType ||
+          data.restrictionKind ||
+          data.rdfConnectorKind ||
+          data.entityCategory === 'class-expression-connector',
+      );
+
+    if (!isBlankNode && !isConnectorNode && !isStructuralBlankNode) {
+      return element;
+    }
+
+    const next = cloneElement(element);
+    if (isBlankNode) {
+      next.data.rdfBlankNode = 1;
+      next.data.label = '';
+      next.data.fullLabel = '';
+      next.data.nodeWidth = 28;
+      next.data.nodeHeight = 28;
+      next.data.textMaxWidth = 1;
+      next.data.labelLength = 1;
+    }
+    if (isConnectorNode) {
+      next.data.rdfConnectorNode = 1;
+    }
+    if (isStructuralBlankNode) {
+      next.data.rdfStructuralBlankNode = 1;
+    }
+    return next;
   });
 }
 
@@ -1307,6 +1358,7 @@ function detectRawRdfAxiomKind(predicateIri, category) {
 function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
   const nodeElementsById = new Map();
   const edgeElements = [];
+  const typeTargetNodeIds = new Set();
   let edgeCounter = 0;
 
   const isDisplayOnlyNodeId = (nodeId) => DISPLAY_ONLY_NODE_IDS.has(nodeId);
@@ -1393,6 +1445,9 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
     if (!shouldIncludeRawRdfEdge(category, options)) {
       continue;
     }
+    if (quad.predicate.value === RDF_TYPE && quad.object.termType === 'NamedNode') {
+      typeTargetNodeIds.add(getTermId(quad.object));
+    }
 
     const sourceNode = graphData?.nodeMap?.get(getTermId(quad.subject));
     const targetNode = graphData?.nodeMap?.get(getTermId(quad.object));
@@ -1454,6 +1509,26 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
       datatype: { value: node.literalDatatype || '' },
       language: node.literalLanguage || '',
     });
+  }
+
+  for (const [nodeId, nodeElement] of nodeElementsById.entries()) {
+    if (!typeTargetNodeIds.has(nodeId)) {
+      continue;
+    }
+    const data = nodeElement?.data;
+    if (!data || data.termType !== 'NamedNode') {
+      continue;
+    }
+    if (
+      data.ontologyKind === 'object-property' ||
+      data.ontologyKind === 'data-property' ||
+      data.ontologyKind === 'annotation-property' ||
+      data.ontologyKind === 'datatype'
+    ) {
+      continue;
+    }
+    data.ontologyKind = 'class';
+    data.entityCategory = 'class';
   }
 
   return [...nodeElementsById.values(), ...edgeElements];
@@ -3957,7 +4032,9 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
       applyRelationPalette(
         decorateEdgeAttachedStructures(
           graphData,
-          applyRdfSpecProjection(graphData, applyRdfLabels(suppressMetadataEdges(elements))),
+          annotateRdfNodePresentation(
+            applyRdfSpecProjection(graphData, applyRdfLabels(suppressMetadataEdges(elements))),
+          ),
           GRAPH_VIEW_MODES.RDF,
         ),
       ),

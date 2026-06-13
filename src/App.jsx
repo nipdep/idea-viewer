@@ -3148,6 +3148,22 @@ export default function App() {
           },
         },
         {
+          selector:
+            'node[rdfBlankNode = 1], node[rdfConnectorNode = 1], node[rdfStructuralBlankNode = 1]',
+          style: {
+            shape: 'ellipse',
+          },
+        },
+        {
+          selector: 'node[rdfBlankNode = 1]',
+          style: {
+            label: '',
+            width: 28,
+            height: 28,
+            'text-opacity': 0,
+          },
+        },
+        {
           selector: 'edge',
           style: {
             label: 'data(predicateLabel)',

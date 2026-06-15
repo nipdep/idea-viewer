@@ -3518,6 +3518,8 @@ function applyOwlProjection(graphData, elements) {
     elements.filter((element) => !element?.data?.source).map((element) => element.data.id),
   );
   const propertyDeclarations = collectPropertyDeclarations(graphData);
+  const outgoingBySource = buildOutgoingEdgeIndex(graphData);
+  const outgoingAllBySource = buildOutgoingAllEdgeIndex(graphData);
   const propertyNodeIds = new Set(
     elements
       .filter(
@@ -3545,6 +3547,50 @@ function applyOwlProjection(graphData, elements) {
     ...disjointAxiomHiddenNodeIds,
     ...PROPERTY_CHARACTERISTIC_CLASS_IDS,
   ]);
+
+  const datatypeDefinitionBlankNodeIds = new Set();
+  const markDatatypeDefinitionBlankSubtree = (nodeId, seen = new Set()) => {
+    if (!nodeId || seen.has(nodeId)) {
+      return;
+    }
+    seen.add(nodeId);
+    datatypeDefinitionBlankNodeIds.add(nodeId);
+
+    for (const edge of outgoingAllBySource.get(nodeId) ?? []) {
+      const targetNode = graphData?.nodeMap?.get(edge.target);
+      if (targetNode?.termType === 'BlankNode') {
+        markDatatypeDefinitionBlankSubtree(edge.target, seen);
+      }
+    }
+  };
+
+  for (const edge of graphData?.objectEdges ?? []) {
+    if (edge.predicate !== OWL_EQUIVALENT_CLASS && edge.predicate !== RDFS_SUBCLASS_OF) {
+      continue;
+    }
+    const sourceNode = graphData?.nodeMap?.get(edge.source);
+    const targetNode = graphData?.nodeMap?.get(edge.target);
+    if (
+      sourceNode?.entityCategory !== 'datatype' ||
+      targetNode?.termType !== 'BlankNode'
+    ) {
+      continue;
+    }
+
+    const targetOutgoing = outgoingBySource.get(edge.target) ?? [];
+    const hasDatatypeDefinition =
+      targetOutgoing.some((row) => row.predicate === OWL_ON_DATATYPE) ||
+      targetOutgoing.some((row) => row.predicate === OWL_WITH_RESTRICTIONS);
+    if (!hasDatatypeDefinition) {
+      continue;
+    }
+
+    markDatatypeDefinitionBlankSubtree(edge.target);
+  }
+
+  for (const nodeId of datatypeDefinitionBlankNodeIds) {
+    hiddenNodeIds.add(nodeId);
+  }
 
   const filteredElements = elements.filter((element) => {
     const data = element?.data;

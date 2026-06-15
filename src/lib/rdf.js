@@ -2511,6 +2511,9 @@ export function buildGraphData(quads, options = {}) {
     } else if (ontologyAnnotationPropertyIds.has(node.id) || annotationPropertyIris.has(node.id)) {
       node.ontologyKind = 'annotation-property';
       node.entityCategory = 'annotation-property';
+    } else if (datatypeNodeIds.has(node.id) || isXmlSchemaDatatypeIri(node.iri)) {
+      node.ontologyKind = 'datatype';
+      node.entityCategory = 'datatype';
     } else if (ontologyClassIds.has(node.id)) {
       node.ontologyKind = 'class';
       node.entityCategory = 'class';
@@ -2525,9 +2528,6 @@ export function buildGraphData(quads, options = {}) {
       // KG instance nodes that happen to include owl:NamedIndividual.
       node.ontologyKind = isOntologyNamedIndividual ? 'individual' : '';
       node.entityCategory = 'individual';
-    } else if (datatypeNodeIds.has(node.id) || isXmlSchemaDatatypeIri(node.iri)) {
-      node.ontologyKind = 'datatype';
-      node.entityCategory = 'datatype';
     } else {
       node.entityCategory = 'named-entity';
     }

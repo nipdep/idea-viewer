@@ -1,3 +1,19 @@
+@prefix : <http://example.org/ontology#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+#################################################################
+# Ontology
+#################################################################
+
+<http://example.org/ontology>
+    a owl:Ontology .
+
+#################################################################
+# Classes
+#################################################################
 
 :Paper a owl:Class ;
     rdfs:label "Paper"@en . 
@@ -16,7 +32,7 @@
 
 :InfluenceLevel
     a rdfs:Datatype ;
-    rdfs:label "Influence Level datatype"@en ;
+    rdfs:label "Influence Level"@en ;
     owl:equivalentClass [
         a rdfs:Datatype ;
         owl:onDatatype xsd:decimal ;
@@ -26,21 +42,30 @@
         )
     ] .
 
-:HighInflencePaper a owl:Class ;
+:HighInfluencePaper
+    a owl:Class ;
     rdfs:subClassOf :Paper ;
-    rdfs:label "High Influence Paper"@en .
-    owl:equivalantClass [
-        a owl:Restriction 
+    rdfs:label "High Influence Paper"@en ;
+    owl:equivalentClass [
+        a owl:Restriction ;
         owl:onProperty :citedBy ;
-        owl:someValueFrom [
-            a rdfs:Datatype ;
-            owl:onDatatype xsd:decimal ;
+        owl:someValuesFrom [
+            a owl:Restriction ;
+            owl:onProperty :influence ;
+            owl:someValuesFrom [
+                a rdfs:Datatype ;
+                owl:onDatatype :InfluenceLevel ;
                 owl:withRestrictions (
                     [ xsd:minInclusive "0.80"^^xsd:decimal ]
                     [ xsd:maxInclusive "1.00"^^xsd:decimal ]
                 )
+            ]
         ]
     ] .
+
+#################################################################
+# Individuals
+#################################################################
 
 :paperA a :Paper ;
     rdfs:label "Paper A"@en ;

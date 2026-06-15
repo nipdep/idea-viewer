@@ -53,9 +53,11 @@
 # Annotation properties
 :curatorNote a owl:AnnotationProperty ;
     rdfs:label "curator note"@en .
+    
 :confidence a owl:AnnotationProperty ;
     rdfs:label "confidence annotation"@en ;
     rdfs:range :ConfidenceScore .
+
 :sourceSentence a owl:AnnotationProperty ;
     rdfs:label "source sentence"@en ;
     rdfs:subPropertyOf dcterms:source .
@@ -260,7 +262,7 @@
     rdfs:subClassOf :Paper ,
         [ a owl:Restriction ;
           owl:onProperty :publishedIn ;
-          owl:hasValue :ISWC2026
+          owl:hasValue :ISWC
         ] .
 
 :AuthoredPaper
@@ -329,6 +331,18 @@
         owl:hasSelf "true"^^xsd:boolean
     ] .
 
+:TopVenuePaper
+    owl:equivalentClass [
+        owl:onProperty :publishedIn ;
+        owl:someValuesFrom [
+            owl:oneOf (
+                :ISWC
+                :ESWC
+                :WWW
+            )
+        ]
+    ] .
+
 #################################################################
 # 4. Axioms: subclass, equivalence, disjointness, assertions, keys,
 #    property axioms, inverse properties, same/different individuals
@@ -368,7 +382,7 @@
     :hasPrimaryAuthor :alice ;
     :usesDataset :openCitationsDataset ;
     :buildsOnMethod :graphRAG ;
-    :publishedIn :ISWC2026 ;
+    :publishedIn :ISWC ;
     :cites :paperB ;
     :canonicalRecordFor :paperARecord ;
     :curatorNote "This individual demonstrates class assertion, object property assertion, data property assertion, and annotation assertion."@en ;
@@ -409,8 +423,14 @@
 :scientificQA a :Task ;
     rdfs:label "Scientific question answering"@en .
 
-:ISWC2026 a :Venue ;
-    rdfs:label "ISWC 2026"@en .
+:ISWC a :Venue ;
+    rdfs:label "ISWC"@en .
+
+:ESWC a :Venue ;
+    rdfs:label "ESWC"@en .
+
+:WWW a :Venue ;
+    rdfs:label "The Web Conference"@en .
 
 # SameIndividual / DifferentIndividuals
 :aliceSameRecord owl:sameAs :alice .

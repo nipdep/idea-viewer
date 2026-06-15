@@ -1,0 +1,59 @@
+
+:Paper a owl:Class ;
+    rdfs:label "Paper"@en . 
+
+:influence a owl:DatatypeProperty ;
+    rdfs:label "influence annotation"@en ;
+    rdfs:range :InfluenceLevel .
+
+:cites a owl:ObjectProperty, owl:TransitiveProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range :Paper ;
+    rdfs:label "cites"@en .
+
+:citedBy a owl:ObjectProperty ;
+    owl:inverseOf :cites .
+
+:InfluenceLevel
+    a rdfs:Datatype ;
+    rdfs:label "Influence Level datatype"@en ;
+    owl:equivalentClass [
+        a rdfs:Datatype ;
+        owl:onDatatype xsd:decimal ;
+        owl:withRestrictions (
+            [ xsd:minInclusive "0.0"^^xsd:decimal ]
+            [ xsd:maxInclusive "1.0"^^xsd:decimal ]
+        )
+    ] .
+
+:HighInflencePaper a owl:Class ;
+    rdfs:subClassOf :Paper ;
+    rdfs:label "High Influence Paper"@en .
+    owl:equivalantClass [
+        a owl:Restriction 
+        owl:onProperty :citedBy ;
+        owl:someValueFrom [
+            a rdfs:Datatype ;
+            owl:onDatatype xsd:decimal ;
+                owl:withRestrictions (
+                    [ xsd:minInclusive "0.80"^^xsd:decimal ]
+                    [ xsd:maxInclusive "1.00"^^xsd:decimal ]
+                )
+        ]
+    ] .
+
+:paperA a :Paper ;
+    rdfs:label "Paper A"@en ;
+    :cites :paperB ;
+    :citationCount 42 .
+
+:paperB a :Paper ;
+    rdfs:label "Paper B"@en ;
+    :citationCount 12 .
+
+[] a owl:Axiom ;
+   owl:annotatedSource :paperA ;
+   owl:annotatedProperty :cites ;
+   owl:annotatedTarget :paperB ;
+   :sourceSentence "Paper A cites Paper B in the related work section."@en ;
+   :infleunce "0.88"^^xsd:decimal .

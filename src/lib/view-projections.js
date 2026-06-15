@@ -3231,7 +3231,9 @@ function buildReificationDescriptors(graphData) {
 }
 
 function decorateEdgeAttachedStructures(graphData, elements, mode) {
-  const descriptors = buildReificationDescriptors(graphData);
+  const descriptors = buildReificationDescriptors(graphData).filter(
+    (descriptor) => mode !== GRAPH_VIEW_MODES.RDF || descriptor.kind !== 'axiom-annotation',
+  );
   const descriptorsByReifier = new Map(descriptors.map((descriptor) => [descriptor.reifierId, descriptor]));
   const reificationIds = new Set(
     descriptors.filter((descriptor) => descriptor.kind === 'reification').map((descriptor) => descriptor.reifierId),
@@ -3792,6 +3794,7 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
   ]);
   const allowedNodeIds = new Set();
   const excludedNodeIds = new Set();
+  const deferredIndividualNodeIds = new Set();
   const allowedNodeKindsForTaxonomy = new Set([
     'class',
     'class-expression',
@@ -3807,8 +3810,12 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
     }
 
     if (owlProjectionLevel === OWL_PROJECTION_LEVELS.ONTOLOGY) {
-      if (data.entityCategory === 'individual' || data.entityCategory === 'literal' || data.termType === 'Literal') {
+      if (data.entityCategory === 'literal' || data.termType === 'Literal') {
         excludedNodeIds.add(data.id);
+        continue;
+      }
+      if (data.entityCategory === 'individual') {
+        deferredIndividualNodeIds.add(data.id);
         continue;
       }
       allowedNodeIds.add(data.id);
@@ -3824,6 +3831,48 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
         continue;
       }
       allowedNodeIds.add(data.id);
+    }
+  }
+
+  if (owlProjectionLevel === OWL_PROJECTION_LEVELS.ONTOLOGY && deferredIndividualNodeIds.size > 0) {
+    for (const element of elements) {
+      const data = element?.data;
+      if (!data?.source) {
+        continue;
+      }
+
+      const sourceIsDeferredIndividual = deferredIndividualNodeIds.has(data.source);
+      const targetIsDeferredIndividual = deferredIndividualNodeIds.has(data.target);
+      if (!sourceIsDeferredIndividual && !targetIsDeferredIndividual) {
+        continue;
+      }
+
+      const individualNodeId = sourceIsDeferredIndividual ? data.source : data.target;
+      const neighborNodeId = sourceIsDeferredIndividual ? data.target : data.source;
+      const neighborNode = elements.find((entry) => !entry?.data?.source && entry.data.id === neighborNodeId)?.data;
+      if (!neighborNode) {
+        continue;
+      }
+
+      const connectedViaClassConstruct =
+        data.owlSynthesized === 1 &&
+        (
+          helperLikeNodeCategories.has(neighborNode.entityCategory) ||
+          neighborNode.entityCategory === 'class-expression' ||
+          neighborNode.blankExpressionType === 'OneOf' ||
+          neighborNode.owlExpressionNode === 1
+        );
+
+      if (connectedViaClassConstruct) {
+        allowedNodeIds.add(individualNodeId);
+        excludedNodeIds.delete(individualNodeId);
+      }
+    }
+
+    for (const deferredIndividualNodeId of deferredIndividualNodeIds) {
+      if (!allowedNodeIds.has(deferredIndividualNodeId)) {
+        excludedNodeIds.add(deferredIndividualNodeId);
+      }
     }
   }
 

@@ -2555,6 +2555,91 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
   };
 }
 
+function synthesizeDatatypeDefinitionProjection(graphData, visibleNodeIds) {
+  const outgoingBySource = buildOutgoingEdgeIndex(graphData);
+  const outgoingAllBySource = buildOutgoingAllEdgeIndex(graphData);
+  const synthesizedNodes = [];
+  const synthesizedEdges = [];
+  const addedNodeIds = new Set();
+
+  for (const edge of graphData?.objectEdges ?? []) {
+    if (edge.predicate !== OWL_EQUIVALENT_CLASS && edge.predicate !== RDFS_SUBCLASS_OF) {
+      continue;
+    }
+
+    const sourceNode = graphData?.nodeMap?.get(edge.source);
+    const targetNode = graphData?.nodeMap?.get(edge.target);
+    if (sourceNode?.entityCategory !== 'datatype' || targetNode?.termType !== 'BlankNode') {
+      continue;
+    }
+
+    const targetOutgoing = outgoingAllBySource.get(edge.target) ?? [];
+    const onDatatypeEdge = targetOutgoing.find((row) => row.predicate === OWL_ON_DATATYPE);
+    const withRestrictionsEdge = targetOutgoing.find((row) => row.predicate === OWL_WITH_RESTRICTIONS);
+    if (!onDatatypeEdge) {
+      continue;
+    }
+
+    const datatypeTargetId = onDatatypeEdge.target;
+    if (!visibleNodeIds.has(datatypeTargetId) && !addedNodeIds.has(datatypeTargetId)) {
+      const datatypeNode = graphData.nodeMap.get(datatypeTargetId);
+      const datatypeElement = datatypeNode
+        ? {
+            data: {
+              ...makeNodeElementFromGraphNode(datatypeNode)?.data,
+              entityCategory: 'datatype',
+              ontologyKind: 'datatype',
+            },
+          }
+        : null;
+      if (datatypeElement) {
+        synthesizedNodes.push(datatypeElement);
+        addedNodeIds.add(datatypeTargetId);
+      }
+    }
+
+    const intervalLabel = buildDatatypeFacetInterval(
+      graphData,
+      withRestrictionsEdge ? readListMembers(withRestrictionsEdge.target, outgoingBySource) : [],
+      outgoingAllBySource,
+    );
+    const restrictionMembers = withRestrictionsEdge
+      ? readListMembers(withRestrictionsEdge.target, outgoingBySource).map((id) => summarizeRestrictionFacetNode(graphData, id, outgoingAllBySource))
+      : [];
+
+    synthesizedEdges.push({
+      data: {
+        id: `owl-datatype-def:${edge.source}:${edge.target}:${datatypeTargetId}:${edge.predicate}`,
+        source: edge.source,
+        target: datatypeTargetId,
+        predicate: edge.predicate,
+        predicateLabel: edge.predicate === OWL_EQUIVALENT_CLASS ? '=' : 'subDatatypeOf',
+        category: 'object',
+        axiomKind: 'DatatypeDefinition',
+        restrictionKind: '',
+        sourceCardinality: intervalLabel,
+        showSourceCardinality: intervalLabel ? 1 : 0,
+        owlSynthesized: 1,
+        owlEdgeStyle: 'straight',
+        projectedMetadataRows:
+          restrictionMembers.length > 0
+            ? [
+                {
+                  key: 'owl:withRestrictions',
+                  value: `(${restrictionMembers.join(' ; ')})`,
+                },
+              ]
+            : [],
+      },
+    });
+  }
+
+  return {
+    synthesizedNodes,
+    synthesizedEdges,
+  };
+}
+
 function synthesizeCollectionProjection(graphData, visibleNodeIds) {
   const outgoingBySource = buildOutgoingEdgeIndex(graphData);
   const synthesizedNodes = [];
@@ -3536,6 +3621,8 @@ function applyOwlProjection(graphData, elements) {
     synthesizeClassExpressionProjection(graphData, visibleNodeIds, propertyDeclarations);
   const { synthesizedNodes: restrictionNodes, synthesizedEdges: restrictionEdges, hiddenNodeIds: restrictionHiddenNodeIds } =
     synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDeclarations);
+  const { synthesizedNodes: datatypeDefinitionNodes, synthesizedEdges: datatypeDefinitionEdges } =
+    synthesizeDatatypeDefinitionProjection(graphData, visibleNodeIds);
   const { synthesizedNodes: collectionNodes, synthesizedEdges: collectionEdges, hiddenNodeIds: collectionHiddenNodeIds } =
     synthesizeCollectionProjection(graphData, renderableNodeIds);
   const { synthesizedNodes: disjointAxiomNodes, synthesizedEdges: disjointAxiomEdges, hiddenNodeIds: disjointAxiomHiddenNodeIds } =
@@ -3625,6 +3712,8 @@ function applyOwlProjection(graphData, elements) {
     ...classExpressionEdges,
     ...restrictionNodes,
     ...restrictionEdges,
+    ...datatypeDefinitionNodes,
+    ...datatypeDefinitionEdges,
     ...collectionNodes,
     ...collectionEdges,
     ...disjointAxiomNodes,

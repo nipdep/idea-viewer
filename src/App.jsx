@@ -694,6 +694,26 @@ function normalizeSearchText(value) {
   return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+function getNodeSearchFields(node) {
+  const displayLabel = (node?.displayLabel || '').replace(/\n/g, ' ');
+  return [
+    node?.fullLabel || '',
+    displayLabel,
+    node?.classBadge || '',
+    node?.primaryClassLabel || '',
+    node?.iri || '',
+  ];
+}
+
+function doesNodeMatchSearchQuery(node, queryText) {
+  const needle = normalizeSearchText(queryText);
+  if (!needle) {
+    return false;
+  }
+
+  return getNodeSearchFields(node).some((field) => normalizeSearchText(field).includes(needle));
+}
+
 function runNodeNameFilter(graphData, queryText) {
   if (!graphData) {
     return new Set();
@@ -706,16 +726,7 @@ function runNodeNameFilter(graphData, queryText) {
 
   const matchedNodeIds = new Set();
   for (const node of graphData.nodes) {
-    const displayLabel = (node.displayLabel || '').replace(/\n/g, ' ');
-    const fields = [
-      node.fullLabel || '',
-      displayLabel,
-      node.classBadge || '',
-      node.primaryClassLabel || '',
-      node.iri || '',
-    ];
-
-    if (fields.some((field) => normalizeSearchText(field).includes(needle))) {
+    if (doesNodeMatchSearchQuery(node, needle)) {
       matchedNodeIds.add(node.id);
     }
   }
@@ -1156,6 +1167,7 @@ function toViewOptions(projectionMode, graphData, owlProjectionLevel, rdfProject
 export default function App() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
+  const graphSearchInputRef = useRef(null);
   const previousFocusedNodeIdRef = useRef(null);
   const previousFocusedNodeIdsRef = useRef([]);
   const focusedNodeIdRef = useRef(null);
@@ -1176,6 +1188,7 @@ export default function App() {
   const suppressNextTapRef = useRef(false);
   const edgeCurveOverridesRef = useRef(new Map());
   const initialGraphStyleJsonRef = useRef(null);
+  const graphSearchSessionRef = useRef(null);
 
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [graphData, setGraphData] = useState(null);
@@ -1218,6 +1231,10 @@ export default function App() {
   const [isLegendOpen, setIsLegendOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isGraphSearchOpen, setIsGraphSearchOpen] = useState(false);
+  const [graphSearchQuery, setGraphSearchQuery] = useState('');
+  const [debouncedGraphSearchQuery, setDebouncedGraphSearchQuery] = useState('');
+  const [graphSearchActiveIndex, setGraphSearchActiveIndex] = useState(0);
   const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
   const [graphFontSize, setGraphFontSize] = useState(DEFAULT_GRAPH_FONT_SIZE);
   const [graphThemeMode, setGraphThemeMode] = useState(GRAPH_THEME_MODES.CLASSIC);
@@ -1281,8 +1298,82 @@ export default function App() {
     [selectedEdgeId, graphData, visibleElements],
   );
   const isHighContrastGraph = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
+  const graphSearchMatches = useMemo(() => {
+    const normalizedQuery = normalizeSearchText(debouncedGraphSearchQuery);
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    const searchableNodeIds = new Set(
+      visibleElements
+        .filter((entry) => !entry?.data?.source)
+        .map((entry) => entry.data.id),
+    );
+
+    return (graphData?.nodes ?? []).filter((node) => {
+      if (!searchableNodeIds.has(node.id)) {
+        return false;
+      }
+      if (GRAPH_AXIS_HELPER_CATEGORIES.has(node.entityCategory ?? '')) {
+        return false;
+      }
+      if (node.edgeAnchor || node.edgeBendHandle) {
+        return false;
+      }
+      return doesNodeMatchSearchQuery(node, normalizedQuery);
+    });
+  }, [debouncedGraphSearchQuery, graphData, visibleElements]);
+  const activeGraphSearchMatch =
+    graphSearchMatches.length > 0 ? graphSearchMatches[graphSearchActiveIndex] ?? graphSearchMatches[0] : null;
 
   const buildProjectionCacheKey = (projectionMode, projectionLevel) => `${projectionMode}:${projectionLevel}`;
+
+  function openGraphSearch() {
+    if (!graphSearchSessionRef.current) {
+      graphSearchSessionRef.current = {
+        selectedNodeId,
+        selectedEdgeId,
+        focusedNodeId,
+        focusedNodeIds: [...focusedNodeIds],
+      };
+    }
+    setIsGraphSearchOpen(true);
+    setGraphSearchActiveIndex(0);
+  }
+
+  function restoreGraphSearchSessionFocus(snapshot) {
+    if (!snapshot) {
+      clearFocusState();
+      return;
+    }
+
+    setSelectedNodeId(snapshot.selectedNodeId ?? null);
+    setSelectedEdgeId(snapshot.selectedEdgeId ?? null);
+    setFocusedNodeId(snapshot.focusedNodeId ?? null);
+    setFocusedNodeIds(Array.isArray(snapshot.focusedNodeIds) ? snapshot.focusedNodeIds : []);
+  }
+
+  function closeGraphSearch({ restoreFocus = true } = {}) {
+    const sessionSnapshot = graphSearchSessionRef.current;
+    graphSearchSessionRef.current = null;
+    setIsGraphSearchOpen(false);
+    setGraphSearchQuery('');
+    setDebouncedGraphSearchQuery('');
+    setGraphSearchActiveIndex(0);
+    if (restoreFocus) {
+      restoreGraphSearchSessionFocus(sessionSnapshot);
+    }
+  }
+
+  function moveGraphSearchMatch(step) {
+    if (graphSearchMatches.length === 0) {
+      return;
+    }
+    setGraphSearchActiveIndex((current) => {
+      const nextIndex = (current + step + graphSearchMatches.length) % graphSearchMatches.length;
+      return nextIndex;
+    });
+  }
 
   function setSingleFocusedNode(nodeId) {
     setSelectedEdgeId(null);
@@ -3767,6 +3858,119 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isGraphSearchOpen) {
+      setDebouncedGraphSearchQuery('');
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedGraphSearchQuery(graphSearchQuery);
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isGraphSearchOpen, graphSearchQuery]);
+
+  useEffect(() => {
+    if (!isGraphSearchOpen) {
+      return;
+    }
+
+    graphSearchInputRef.current?.focus();
+    graphSearchInputRef.current?.select();
+  }, [isGraphSearchOpen]);
+
+  useEffect(() => {
+    if (!isGraphSearchOpen) {
+      return;
+    }
+
+    if (!debouncedGraphSearchQuery.trim()) {
+      restoreGraphSearchSessionFocus(graphSearchSessionRef.current);
+      return;
+    }
+
+    if (graphSearchMatches.length === 0) {
+      setSelectedEdgeId(null);
+      setSelectedNodeId(null);
+      setFocusedNodeId(null);
+      setFocusedNodeIds([]);
+      return;
+    }
+
+    const safeIndex = Math.min(graphSearchActiveIndex, graphSearchMatches.length - 1);
+    if (safeIndex !== graphSearchActiveIndex) {
+      setGraphSearchActiveIndex(safeIndex);
+      return;
+    }
+
+    const nextNodeId = graphSearchMatches[safeIndex]?.id ?? null;
+    if (nextNodeId) {
+      setSingleFocusedNode(nextNodeId);
+    }
+  }, [isGraphSearchOpen, debouncedGraphSearchQuery, graphSearchMatches, graphSearchActiveIndex]);
+
+  useEffect(() => {
+    if (!isGraphSearchOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event) => {
+      const isFindShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f';
+      if (isFindShortcut) {
+        event.preventDefault();
+        openGraphSearch();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeGraphSearch();
+        return;
+      }
+
+      if (event.key !== 'Enter') {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest('.graph-search-panel')) {
+        return;
+      }
+
+      event.preventDefault();
+      moveGraphSearchMatch(event.shiftKey ? -1 : 1);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isGraphSearchOpen, graphSearchMatches.length]);
+
+  useEffect(() => {
+    if (isGraphSearchOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      const isFindShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f';
+      if (!isFindShortcut) {
+        return;
+      }
+
+      event.preventDefault();
+      openGraphSearch();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isGraphSearchOpen, selectedNodeId, selectedEdgeId, focusedNodeId, focusedNodeIds]);
+
+  useEffect(() => {
     if (!isSettingsOpen) {
       return undefined;
     }
@@ -5026,6 +5230,13 @@ export default function App() {
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
   const settingsButtonLabel = isSettingsOpen ? 'Hide graph settings' : 'Show graph settings';
   const hasExportableGraph = visibleElements.length > 0;
+  const graphSearchMatchCount = graphSearchMatches.length;
+  const graphSearchCounterLabel =
+    graphSearchMatchCount > 0 && activeGraphSearchMatch
+      ? `${graphSearchActiveIndex + 1}/${graphSearchMatchCount}`
+      : graphSearchQuery.trim()
+        ? '0/0'
+        : 'Find';
 
   return (
     <div
@@ -5612,58 +5823,127 @@ export default function App() {
           )}
 
           <div className="graph-tools graph-tools-left">
-            <div
-              className={`projection-toggle theme-switch ${graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'mode-rdf' : 'mode-ontology'
-                }`}
-              role="tablist"
-              aria-label="Graph projection mode"
-            >
-              <span className="projection-switch-thumb" aria-hidden="true" />
-              <button
-                type="button"
-                className={`projection-toggle-button ${graphProjectionMode === GRAPH_PROJECTION_MODES.OWL ? 'active' : ''
+            <div className="graph-tools-left-stack">
+              <div
+                className={`projection-toggle theme-switch ${graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'mode-rdf' : 'mode-ontology'
                   }`}
-                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.OWL)}
-                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.OWL}
-                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.OWL]}
-                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.OWL]}
+                role="tablist"
+                aria-label="Graph projection mode"
               >
-                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
-                  <circle cx="8" cy="3.2" r="1.2" fill="currentColor" />
-                  <circle cx="12.2" cy="5" r="1.1" fill="currentColor" />
-                  <circle cx="12" cy="10.8" r="1.1" fill="currentColor" />
-                  <circle cx="4" cy="10.8" r="1.1" fill="currentColor" />
-                  <circle cx="3.8" cy="5" r="1.1" fill="currentColor" />
-                  <path
-                    d="M8 5.2V6.1M10.2 6.2L9.3 6.9M10 9.9L9.2 9.2M6.8 9.2L6 9.9M6.7 6.9L5.8 6.2"
-                    stroke="currentColor"
-                    strokeWidth="1"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className={`projection-toggle-button ${graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'active' : ''
-                  }`}
-                onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.RDF)}
-                aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.RDF}
-                aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.RDF]}
-                title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.RDF]}
-              >
-                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
-                  <circle cx="12.5" cy="4" r="1.5" fill="currentColor" />
-                  <circle cx="8" cy="12" r="1.8" fill="currentColor" />
-                  <path
-                    d="M4.9 4.9L7.1 10.1M11.1 4.9L8.9 10.1M5.1 4H10.9"
-                    stroke="currentColor"
-                    strokeWidth="1.1"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
+                <span className="projection-switch-thumb" aria-hidden="true" />
+                <button
+                  type="button"
+                  className={`projection-toggle-button ${graphProjectionMode === GRAPH_PROJECTION_MODES.OWL ? 'active' : ''
+                    }`}
+                  onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.OWL)}
+                  aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.OWL}
+                  aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.OWL]}
+                  title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.OWL]}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
+                    <circle cx="8" cy="3.2" r="1.2" fill="currentColor" />
+                    <circle cx="12.2" cy="5" r="1.1" fill="currentColor" />
+                    <circle cx="12" cy="10.8" r="1.1" fill="currentColor" />
+                    <circle cx="4" cy="10.8" r="1.1" fill="currentColor" />
+                    <circle cx="3.8" cy="5" r="1.1" fill="currentColor" />
+                    <path
+                      d="M8 5.2V6.1M10.2 6.2L9.3 6.9M10 9.9L9.2 9.2M6.8 9.2L6 9.9M6.7 6.9L5.8 6.2"
+                      stroke="currentColor"
+                      strokeWidth="1"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`projection-toggle-button ${graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'active' : ''
+                    }`}
+                  onClick={() => setGraphProjectionMode(GRAPH_PROJECTION_MODES.RDF)}
+                  aria-pressed={graphProjectionMode === GRAPH_PROJECTION_MODES.RDF}
+                  aria-label={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.RDF]}
+                  title={PROJECTION_MODE_LABELS[GRAPH_PROJECTION_MODES.RDF]}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="3.5" cy="4" r="1.5" fill="currentColor" />
+                    <circle cx="12.5" cy="4" r="1.5" fill="currentColor" />
+                    <circle cx="8" cy="12" r="1.8" fill="currentColor" />
+                    <path
+                      d="M4.9 4.9L7.1 10.1M11.1 4.9L8.9 10.1M5.1 4H10.9"
+                      stroke="currentColor"
+                      strokeWidth="1.1"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <div className={`graph-search-panel ${isGraphSearchOpen ? 'open' : ''}`}>
+                <button
+                  type="button"
+                  className={`graph-search-launch ${isGraphSearchOpen ? 'active' : ''}`}
+                  onClick={() => {
+                    if (isGraphSearchOpen) {
+                      closeGraphSearch();
+                    } else {
+                      openGraphSearch();
+                    }
+                  }}
+                  aria-label={isGraphSearchOpen ? 'Close graph search' : 'Find nodes in graph'}
+                  title={isGraphSearchOpen ? 'Close search (Esc)' : 'Find nodes (Ctrl+F)'}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="7" cy="7" r="3.9" stroke="currentColor" strokeWidth="1.3" />
+                    <path d="M10.2 10.2L13.4 13.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                  </svg>
+                  <span>{graphSearchCounterLabel}</span>
+                </button>
+
+                {isGraphSearchOpen && (
+                  <div className="graph-search-fields">
+                    <input
+                      ref={graphSearchInputRef}
+                      type="text"
+                      value={graphSearchQuery}
+                      onChange={(event) => {
+                        setGraphSearchQuery(event.target.value);
+                        setGraphSearchActiveIndex(0);
+                      }}
+                      placeholder="Find visible nodes by name..."
+                      aria-label="Find visible nodes by name"
+                    />
+                    <button
+                      type="button"
+                      className="graph-search-nav"
+                      onClick={() => moveGraphSearchMatch(-1)}
+                      disabled={graphSearchMatchCount === 0}
+                      aria-label="Previous match"
+                      title="Previous match (Shift+Enter)"
+                    >
+                      <span aria-hidden="true">↑</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="graph-search-nav"
+                      onClick={() => moveGraphSearchMatch(1)}
+                      disabled={graphSearchMatchCount === 0}
+                      aria-label="Next match"
+                      title="Next match (Enter)"
+                    >
+                      <span aria-hidden="true">↓</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="graph-search-close"
+                      onClick={() => closeGraphSearch()}
+                      aria-label="Close graph search"
+                      title="Close search (Esc)"
+                    >
+                      <span aria-hidden="true">×</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

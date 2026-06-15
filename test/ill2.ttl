@@ -19,7 +19,7 @@
     rdfs:label "Paper"@en . 
 
 :influence a owl:DatatypeProperty ;
-    rdfs:label "influence annotation"@en ;
+    rdfs:label "influence"@en ;
     rdfs:range :InfluenceLevel .
 
 :cites a owl:ObjectProperty, owl:TransitiveProperty ;
@@ -28,6 +28,8 @@
     rdfs:label "cites"@en .
 
 :citedBy a owl:ObjectProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range :Paper ;
     owl:inverseOf :cites .
 
 :InfluenceLevel

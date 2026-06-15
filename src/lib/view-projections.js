@@ -1362,6 +1362,8 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
   let edgeCounter = 0;
 
   const isDisplayOnlyNodeId = (nodeId) => DISPLAY_ONLY_NODE_IDS.has(nodeId);
+  const isSuppressedRdfMetaclassNodeId = (nodeId) =>
+    nodeId === OWL_ASYMMETRIC_PROPERTY || PROPERTY_CHARACTERISTIC_CLASS_IDS.has(nodeId);
   const isPropertyLikeNode = (node) =>
     Boolean(
       node &&
@@ -1381,6 +1383,9 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
     }
     const id = getTermId(term);
     if (isDisplayOnlyNodeId(id)) {
+      return null;
+    }
+    if (isSuppressedRdfMetaclassNodeId(id)) {
       return null;
     }
     const existingNode = graphData?.nodeMap?.get(id);
@@ -1498,6 +1503,9 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
       continue;
     }
     if (isDisplayOnlyNodeId(node.id)) {
+      continue;
+    }
+    if (isSuppressedRdfMetaclassNodeId(node.id)) {
       continue;
     }
     if (isPropertyLikeNode(node)) {

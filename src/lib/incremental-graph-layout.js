@@ -3,25 +3,25 @@ const DEFAULT_CONFIG = Object.freeze({
   massScale: 2.4,
   baseRadius: 24,
   radiusScale: 18,
-  baseRepulsion: 1800,
+  baseRepulsion: 3600,
   repulsionRankScale: 2.2,
-  baseAttraction: 0.04,
+  baseAttraction: 0.08,
   attractionRankScale: 0.9,
-  minNodeSpacing: 16,
-  overlapPenaltyMultiplier: 4.5,
-  preferredEdgeLength: 90,
-  edgeLengthRankScale: 34,
-  damping: 0.82,
-  maxStep: 18,
-  velocityThreshold: 0.18,
-  maxTicks: 420,
+  minNodeSpacing: 24,
+  overlapPenaltyMultiplier: 8,
+  preferredEdgeLength: 130,
+  edgeLengthRankScale: 48,
+  damping: 0.76,
+  maxStep: 10,
+  velocityThreshold: 0.12,
+  maxTicks: 520,
   maxLayoutTimeMs: 160,
   acceptableOverlapThreshold: 2,
   spatialCellSize: 240,
-  fixedNodeSearchPadding: 180,
+  fixedNodeSearchPadding: 260,
   componentSpacing: 260,
   maxComponentRowWidth: 4800,
-  maxBatchSize: 32,
+  maxBatchSize: 12,
   viewport: null,
 });
 
@@ -214,6 +214,8 @@ export class IncrementalGraphLayout {
     };
     this.componentCounter = 0;
     this.parentAngleState = new Map();
+    this.activeComponentId = null;
+    this.layoutCompleted = false;
     this.spatialIndex = new GridSpatialIndex(this.config.spatialCellSize);
     this.normalizeGraphInput(nodes, edges);
     this.computeRanks();
@@ -737,16 +739,102 @@ export class IncrementalGraphLayout {
     }
   }
 
-  computeLayout() {
-    while (this.hasUndiscoveredNodes()) {
-      const seed = this.getHighestRankUndiscoveredNode();
-      if (!seed) {
-        break;
-      }
-      this.initializeComponentSeed(seed);
-      this.expandComponentFromSeed(seed);
-      this.finalizeComponent(seed.componentId);
+  isComplete() {
+    return this.layoutCompleted || !this.hasUndiscoveredNodes();
+  }
+
+  getDiscoveredNodeIds() {
+    return new Set(
+      Array.from(this.nodeMap.values())
+        .filter((node) => node.status !== 'undiscovered' && Number.isFinite(node.x) && Number.isFinite(node.y))
+        .map((node) => node.id),
+    );
+  }
+
+  computeNextBatch() {
+    if (this.layoutCompleted) {
+      return {
+        done: true,
+        changed: false,
+        newNodeIds: [],
+      };
     }
+
+    while (true) {
+      if (!this.activeComponentId) {
+        const seed = this.getHighestRankUndiscoveredNode();
+        if (!seed) {
+          this.layoutCompleted = true;
+          return {
+            done: true,
+            changed: false,
+            newNodeIds: [],
+          };
+        }
+        this.initializeComponentSeed(seed);
+        this.activeComponentId = seed.componentId;
+        return {
+          done: false,
+          changed: true,
+          newNodeIds: [seed.id],
+        };
+      }
+
+      const frontierNodes = this.getFrontierNodesForComponent(this.activeComponentId);
+      if (frontierNodes.length === 0) {
+        this.finalizeComponent(this.activeComponentId);
+        this.activeComponentId = null;
+        if (!this.hasUndiscoveredNodes()) {
+          this.layoutCompleted = true;
+          return {
+            done: true,
+            changed: false,
+            newNodeIds: [],
+          };
+        }
+        continue;
+      }
+
+      const batch = this.collectUndiscoveredOneHopNeighbors(frontierNodes);
+      if (batch.length === 0) {
+        this.updateStatuses(frontierNodes);
+        const nextFrontier = this.getFrontierNodesForComponent(this.activeComponentId);
+        if (nextFrontier.length === 0) {
+          this.finalizeComponent(this.activeComponentId);
+          this.activeComponentId = null;
+        }
+        return {
+          done: this.isComplete(),
+          changed: false,
+          newNodeIds: [],
+        };
+      }
+
+      this.initializeBatchPositions(batch, frontierNodes);
+      for (const node of batch) {
+        node.mutable = true;
+        node.status = 'frontier';
+      }
+      this.runForceSimulation({
+        mutableNodes: batch,
+        fixedNodes: this.getRelevantFixedNodes(batch),
+        edges: this.getRelevantEdges(batch),
+      });
+      this.pinBatch(batch);
+      this.updateStatuses([...frontierNodes, ...batch]);
+      return {
+        done: false,
+        changed: true,
+        newNodeIds: batch.map((node) => node.id),
+      };
+    }
+  }
+
+  computeLayout() {
+    while (!this.isComplete()) {
+      this.computeNextBatch();
+    }
+    this.layoutCompleted = true;
     return this.getFullGraph();
   }
 
@@ -903,19 +991,47 @@ export function applyLayoutPositions(elements, engine) {
     passCount += 1;
   }
 
-  for (const nodeId of unresolvedNodeIds) {
-    const data = nodeDataById.get(nodeId);
-    const jitter = deterministicJitter(`${nodeId}|fallback`, engine.config.preferredEdgeLength);
-    const fallbackBase = data?.anchoredSourceId && positionedNodes.get(data.anchoredSourceId)
-      ? positionedNodes.get(data.anchoredSourceId)
-      : { x: 0, y: 0 };
-    positionedNodes.set(nodeId, {
-      x: fallbackBase.x + jitter.x,
-      y: fallbackBase.y + jitter.y,
-    });
+  const positionedNodeIds = new Set(positionedNodes.keys());
+  const visibleNodeIds = new Set();
+  const resolvedNodeElements = nodeElements
+    .map((element) => {
+      const position = positionedNodes.get(element.data.id);
+      if (!position) {
+        return null;
+      }
+      visibleNodeIds.add(element.data.id);
+      return {
+        ...element,
+        position,
+      };
+    })
+    .filter(Boolean);
+
+  const resolvedEdgeElements = edgeElements.filter((element) => {
+    const data = element?.data;
+    return Boolean(data?.source && visibleNodeIds.has(data.source) && visibleNodeIds.has(data.target));
+  });
+
+  const resolvedNodeIdSet = new Set(resolvedNodeElements.map((element) => element.data.id));
+  const reachableHelperIds = new Set();
+  for (const element of resolvedEdgeElements) {
+    const sourceId = element.data.source;
+    const targetId = element.data.target;
+    if (!positionedNodeIds.has(sourceId)) {
+      reachableHelperIds.add(sourceId);
+    }
+    if (!positionedNodeIds.has(targetId)) {
+      reachableHelperIds.add(targetId);
+    }
   }
 
-  return elements.map((element) => {
+  const filteredNodeElements = resolvedNodeElements.filter((element) => {
+    const data = element.data;
+    const isCanonical = positionedNodeIds.has(data.id);
+    return isCanonical || reachableHelperIds.has(data.id) || resolvedNodeIdSet.has(data.id);
+  });
+
+  return [...filteredNodeElements, ...resolvedEdgeElements].map((element) => {
     const data = element?.data;
     if (!data?.id || data?.source) {
       return element;

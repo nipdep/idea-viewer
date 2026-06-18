@@ -1252,6 +1252,8 @@ export default function App() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
+  const [layoutRevision, setLayoutRevision] = useState(0);
+  const [isLayouting, setIsLayouting] = useState(false);
 
   const selectedNode = useMemo(
     () => {
@@ -3742,19 +3744,6 @@ export default function App() {
         };
         cache.set(node.id(), position);
         canonicalLayoutEngineRef.current?.updateNodePosition(node.id(), position.x, position.y);
-        for (const [cacheKey, cachedElements] of projectedElementsCacheRef.current.entries()) {
-          projectedElementsCacheRef.current.set(
-            cacheKey,
-            cachedElements.map((element) =>
-              !element?.data?.source && element.data.id === node.id()
-                ? {
-                    ...element,
-                    position,
-                  }
-                : element,
-            ),
-          );
-        }
       };
       syncNodePosition(releasedNode);
       const dragState = groupDragStateRef.current;
@@ -4203,16 +4192,63 @@ export default function App() {
     hasAppliedInitialLayoutRef.current = false;
     layoutPositionCacheRef.current.clear();
     projectedElementsCacheRef.current.clear();
-    canonicalLayoutEngineRef.current = graphData
-      ? (() => {
-          const engine = new IncrementalGraphLayout({
-            nodes: graphData.nodes,
-            edges: graphData.edges,
-          });
-          engine.computeLayout();
-          return engine;
-        })()
-      : null;
+    canonicalLayoutEngineRef.current = null;
+    setLayoutRevision((current) => current + 1);
+    setIsLayouting(false);
+
+    if (!graphData) {
+      return undefined;
+    }
+
+    const engine = new IncrementalGraphLayout({
+      nodes: graphData.nodes,
+      edges: graphData.edges,
+    });
+    canonicalLayoutEngineRef.current = engine;
+    setIsLayouting(true);
+
+    let cancelled = false;
+    let timeoutId = null;
+
+    const scheduleNextStep = () => {
+      timeoutId = window.setTimeout(runStep, 0);
+    };
+
+    const runStep = () => {
+      if (cancelled || canonicalLayoutEngineRef.current !== engine) {
+        return;
+      }
+
+      const start = performance.now();
+      let steps = 0;
+      let changed = false;
+
+      while (!engine.isComplete() && steps < 2 && performance.now() - start < 12) {
+        const result = engine.computeNextBatch();
+        changed = changed || result.changed;
+        steps += 1;
+      }
+
+      if (changed || steps > 0) {
+        setLayoutRevision((current) => current + 1);
+      }
+
+      if (engine.isComplete()) {
+        setIsLayouting(false);
+        return;
+      }
+
+      scheduleNextStep();
+    };
+
+    runStep();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
   }, [graphData]);
 
   useEffect(() => {
@@ -4481,33 +4517,29 @@ export default function App() {
         const viewOptions = toViewOptions(graphProjectionMode, graphData, owlProjectionLevel, rdfProjectionLevel);
         const currentProjectionCacheKey = buildProjectionCacheKey(graphProjectionMode, currentProjectionLevel);
         const projectElements = (focusedNodeIds = null) => {
-          let projected;
+          let rawProjected;
           if (!focusedNodeIds) {
             const cachedProjected = projectedElementsCacheRef.current.get(currentProjectionCacheKey);
             if (cachedProjected) {
-              projected = getPositionedProjectionElements(cachedProjected);
-              projectedElementsCacheRef.current.set(currentProjectionCacheKey, projected);
+              rawProjected = cachedProjected;
             }
           }
 
-          if (!projected) {
-            const rawProjected = buildProjectedElements(graphData, focusedNodeIds, viewOptions);
-            projected = rawProjected;
+          if (!rawProjected) {
+            rawProjected = buildProjectedElements(graphData, focusedNodeIds, viewOptions);
             if (
               graphProjectionMode === GRAPH_PROJECTION_MODES.RDF &&
-              projected.length === 0 &&
+              rawProjected.length === 0 &&
               graphData.nodes.length > 0
             ) {
-              projected = buildProjectedElements(graphData, null, viewOptions);
+              rawProjected = buildProjectedElements(graphData, null, viewOptions);
             }
             if (!focusedNodeIds) {
-              projected = getPositionedProjectionElements(projected);
-              projectedElementsCacheRef.current.set(currentProjectionCacheKey, projected);
-            } else {
-              projected = getPositionedProjectionElements(projected);
+              projectedElementsCacheRef.current.set(currentProjectionCacheKey, rawProjected);
             }
           }
 
+          const projected = getPositionedProjectionElements(rawProjected);
           return filterProjectedElementsByGraphAxis(projected, graphFilterAxis);
         };
         const classFilterActive =
@@ -4600,6 +4632,7 @@ export default function App() {
     };
   }, [
     graphData,
+    layoutRevision,
     selectedClassIris,
     selectedBaseIris,
     graphFilterAxis,

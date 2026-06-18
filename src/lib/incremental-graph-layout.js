@@ -14,14 +14,14 @@ const DEFAULT_CONFIG = Object.freeze({
   damping: 0.82,
   maxStep: 18,
   velocityThreshold: 0.18,
-  maxTicks: 160,
-  maxLayoutTimeMs: 24,
+  maxTicks: 420,
+  maxLayoutTimeMs: 160,
   acceptableOverlapThreshold: 2,
   spatialCellSize: 240,
   fixedNodeSearchPadding: 180,
   componentSpacing: 260,
   maxComponentRowWidth: 4800,
-  maxBatchSize: Infinity,
+  maxBatchSize: 32,
   viewport: null,
 });
 
@@ -213,6 +213,7 @@ export class IncrementalGraphLayout {
       rowHeight: 0,
     };
     this.componentCounter = 0;
+    this.parentAngleState = new Map();
     this.spatialIndex = new GridSpatialIndex(this.config.spatialCellSize);
     this.normalizeGraphInput(nodes, edges);
     this.computeRanks();
@@ -355,9 +356,34 @@ export class IncrementalGraphLayout {
       return { x: 0, y: 0 };
     }
 
-    const x = this.componentCursor.x;
-    const y = this.componentCursor.y;
-    return { x, y };
+    const spacing = this.config.componentSpacing;
+    const seedRadius = this.config.preferredEdgeLength * 2;
+    let attempts = 0;
+    while (attempts < 256) {
+      const x = this.componentCursor.x;
+      const y = this.componentCursor.y;
+      const occupied = this.spatialIndex.search(
+        {
+          minX: x - seedRadius,
+          minY: y - seedRadius,
+          maxX: x + seedRadius,
+          maxY: y + seedRadius,
+        },
+        this.nodeMap,
+      );
+      if (occupied.length === 0) {
+        return { x, y };
+      }
+      this.componentCursor.x += spacing;
+      if (this.componentCursor.x > this.config.maxComponentRowWidth) {
+        this.componentCursor.x = 0;
+        this.componentCursor.y += this.componentCursor.rowHeight + spacing;
+        this.componentCursor.rowHeight = 0;
+      }
+      attempts += 1;
+    }
+
+    return { x: this.componentCursor.x, y: this.componentCursor.y };
   }
 
   initializeComponentSeed(seed) {
@@ -440,7 +466,7 @@ export class IncrementalGraphLayout {
         continue;
       }
       const sortedChildren = [...children].sort((left, right) => right.rank - left.rank || left.id.localeCompare(right.id));
-      const baseAngle = deterministicAngle(`${parent.id}|ring`);
+      let nextAngle = this.parentAngleState.get(parent.id) ?? deterministicAngle(`${parent.id}|ring`);
       let ringIndex = 0;
       let offsetInRing = 0;
       let ringRadius = parent.radius + this.config.preferredEdgeLength;
@@ -462,11 +488,14 @@ export class IncrementalGraphLayout {
             Math.floor((2 * Math.PI * ringRadius) / Math.max(24, child.radius * 2 + this.config.minNodeSpacing)),
           );
         }
-        const angle = baseAngle + (offsetInRing / ringCapacity) * Math.PI * 2;
+        const angleStep = (Math.PI * 2) / ringCapacity;
+        const angle = nextAngle + offsetInRing * angleStep;
         child.x = parent.x + Math.cos(angle) * ringRadius;
         child.y = parent.y + Math.sin(angle) * ringRadius;
         offsetInRing += 1;
+        nextAngle = angle + angleStep;
       }
+      this.parentAngleState.set(parent.id, nextAngle);
     }
   }
 
@@ -771,21 +800,133 @@ export function applyLayoutPositions(elements, engine) {
   if (!Array.isArray(elements) || !engine) {
     return Array.isArray(elements) ? elements : [];
   }
+
+  const nodeElements = elements.filter((element) => element?.data?.id && !element?.data?.source);
+  const edgeElements = elements.filter((element) => element?.data?.source);
+  const positionedNodes = new Map();
+  const adjacency = new Map();
+  const nodeDataById = new Map();
+
+  const ensureAdjacency = (nodeId) => {
+    const bucket = adjacency.get(nodeId) ?? [];
+    adjacency.set(nodeId, bucket);
+    return bucket;
+  };
+
+  for (const nodeElement of nodeElements) {
+    const data = nodeElement.data;
+    nodeDataById.set(data.id, data);
+    const canonicalNode = engine.getNodeById(data.id);
+    if (canonicalNode && Number.isFinite(canonicalNode.x) && Number.isFinite(canonicalNode.y)) {
+      positionedNodes.set(data.id, {
+        x: canonicalNode.x,
+        y: canonicalNode.y,
+      });
+    }
+  }
+
+  for (const edgeElement of edgeElements) {
+    const data = edgeElement.data;
+    ensureAdjacency(data.source).push(data.target);
+    ensureAdjacency(data.target).push(data.source);
+  }
+
+  const resolveNodeRadius = (data) => Math.max(Number(data?.nodeWidth ?? 42), Number(data?.nodeHeight ?? 42)) * 0.5;
+
+  const placeBetweenEndpoints = (data) => {
+    const source = positionedNodes.get(data.anchoredSourceId);
+    const target = positionedNodes.get(data.anchoredTargetId);
+    if (!source || !target) {
+      return null;
+    }
+    return {
+      x: (source.x + target.x) * 0.5,
+      y: (source.y + target.y) * 0.5,
+    };
+  };
+
+  const placeFromNeighbors = (nodeId, data) => {
+    const neighborIds = Array.from(new Set(adjacency.get(nodeId) ?? []));
+    const neighborPositions = neighborIds.map((neighborId) => positionedNodes.get(neighborId)).filter(Boolean);
+    if (neighborPositions.length === 0) {
+      return null;
+    }
+
+    if (data.edgeAnchor === 1) {
+      return placeBetweenEndpoints(data) ?? {
+        x: average(neighborPositions.map((entry) => entry.x)),
+        y: average(neighborPositions.map((entry) => entry.y)),
+      };
+    }
+
+    const centroid = {
+      x: average(neighborPositions.map((entry) => entry.x)),
+      y: average(neighborPositions.map((entry) => entry.y)),
+    };
+
+    if (neighborPositions.length >= 2 || data.owlGroupNode === 1 || data.owlCollectionConnector === 1) {
+      const jitter = deterministicJitter(`${nodeId}|centroid`, Math.max(12, resolveNodeRadius(data) * 0.45));
+      return {
+        x: centroid.x + jitter.x,
+        y: centroid.y + jitter.y,
+      };
+    }
+
+    const [anchor] = neighborPositions;
+    const angle = deterministicAngle(`${nodeId}|neighbor`);
+    const radialDistance = resolveNodeRadius(data) + 38;
+    return {
+      x: anchor.x + Math.cos(angle) * radialDistance,
+      y: anchor.y + Math.sin(angle) * radialDistance,
+    };
+  };
+
+  const unresolvedNodeIds = nodeElements
+    .map((element) => element.data.id)
+    .filter((nodeId) => !positionedNodes.has(nodeId));
+
+  let progress = true;
+  let passCount = 0;
+  while (progress && unresolvedNodeIds.length > 0 && passCount < 8) {
+    progress = false;
+    for (let index = unresolvedNodeIds.length - 1; index >= 0; index -= 1) {
+      const nodeId = unresolvedNodeIds[index];
+      const data = nodeDataById.get(nodeId);
+      const position = placeFromNeighbors(nodeId, data);
+      if (!position) {
+        continue;
+      }
+      positionedNodes.set(nodeId, position);
+      unresolvedNodeIds.splice(index, 1);
+      progress = true;
+    }
+    passCount += 1;
+  }
+
+  for (const nodeId of unresolvedNodeIds) {
+    const data = nodeDataById.get(nodeId);
+    const jitter = deterministicJitter(`${nodeId}|fallback`, engine.config.preferredEdgeLength);
+    const fallbackBase = data?.anchoredSourceId && positionedNodes.get(data.anchoredSourceId)
+      ? positionedNodes.get(data.anchoredSourceId)
+      : { x: 0, y: 0 };
+    positionedNodes.set(nodeId, {
+      x: fallbackBase.x + jitter.x,
+      y: fallbackBase.y + jitter.y,
+    });
+  }
+
   return elements.map((element) => {
     const data = element?.data;
     if (!data?.id || data?.source) {
       return element;
     }
-    const node = engine.getNodeById(data.id);
-    if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
+    const position = positionedNodes.get(data.id);
+    if (!position) {
       return element;
     }
     return {
       ...element,
-      position: {
-        x: node.x,
-        y: node.y,
-      },
+      position,
     };
   });
 }

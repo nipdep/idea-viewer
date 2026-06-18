@@ -1181,7 +1181,7 @@ export default function App() {
   const hasAppliedInitialLayoutRef = useRef(false);
   const layoutPositionCacheRef = useRef(new Map());
   const projectedElementsCacheRef = useRef(new Map());
-  const layoutEngineCacheRef = useRef(new Map());
+  const canonicalLayoutEngineRef = useRef(null);
   const groupDragStateRef = useRef(null);
   const groupDragArmRef = useRef(null);
   const shouldFitAfterFocusClearRef = useRef(false);
@@ -1329,22 +1329,11 @@ export default function App() {
     graphSearchMatches.length > 0 ? graphSearchMatches[graphSearchActiveIndex] ?? graphSearchMatches[0] : null;
 
   const buildProjectionCacheKey = (projectionMode, projectionLevel) => `${projectionMode}:${projectionLevel}`;
-  const getPositionedProjectionElements = (projectionCacheKey, rawElements) => {
+  const getPositionedProjectionElements = (rawElements) => {
     if (!Array.isArray(rawElements)) {
       return [];
     }
-
-    let engine = layoutEngineCacheRef.current.get(projectionCacheKey);
-    if (!engine) {
-      engine = new IncrementalGraphLayout({
-        nodes: rawElements.filter((element) => !element?.data?.source),
-        edges: rawElements.filter((element) => element?.data?.source),
-      });
-      engine.computeLayout();
-      layoutEngineCacheRef.current.set(projectionCacheKey, engine);
-    }
-
-    return applyLayoutPositions(rawElements, engine);
+    return applyLayoutPositions(rawElements, canonicalLayoutEngineRef.current);
   };
 
   function openGraphSearch() {
@@ -3752,9 +3741,7 @@ export default function App() {
           y: node.position('y'),
         };
         cache.set(node.id(), position);
-        for (const layoutEngine of layoutEngineCacheRef.current.values()) {
-          layoutEngine.updateNodePosition(node.id(), position.x, position.y);
-        }
+        canonicalLayoutEngineRef.current?.updateNodePosition(node.id(), position.x, position.y);
         for (const [cacheKey, cachedElements] of projectedElementsCacheRef.current.entries()) {
           projectedElementsCacheRef.current.set(
             cacheKey,
@@ -4216,7 +4203,16 @@ export default function App() {
     hasAppliedInitialLayoutRef.current = false;
     layoutPositionCacheRef.current.clear();
     projectedElementsCacheRef.current.clear();
-    layoutEngineCacheRef.current.clear();
+    canonicalLayoutEngineRef.current = graphData
+      ? (() => {
+          const engine = new IncrementalGraphLayout({
+            nodes: graphData.nodes,
+            edges: graphData.edges,
+          });
+          engine.computeLayout();
+          return engine;
+        })()
+      : null;
   }, [graphData]);
 
   useEffect(() => {
@@ -4489,8 +4485,7 @@ export default function App() {
           if (!focusedNodeIds) {
             const cachedProjected = projectedElementsCacheRef.current.get(currentProjectionCacheKey);
             if (cachedProjected) {
-              const layoutEngine = layoutEngineCacheRef.current.get(currentProjectionCacheKey);
-              projected = layoutEngine ? applyLayoutPositions(cachedProjected, layoutEngine) : cachedProjected;
+              projected = getPositionedProjectionElements(cachedProjected);
               projectedElementsCacheRef.current.set(currentProjectionCacheKey, projected);
             }
           }
@@ -4506,11 +4501,10 @@ export default function App() {
               projected = buildProjectedElements(graphData, null, viewOptions);
             }
             if (!focusedNodeIds) {
-              projected = getPositionedProjectionElements(currentProjectionCacheKey, projected);
+              projected = getPositionedProjectionElements(projected);
               projectedElementsCacheRef.current.set(currentProjectionCacheKey, projected);
             } else {
-              const layoutEngine = layoutEngineCacheRef.current.get(currentProjectionCacheKey);
-              projected = layoutEngine ? applyLayoutPositions(projected, layoutEngine) : projected;
+              projected = getPositionedProjectionElements(projected);
             }
           }
 
@@ -4582,10 +4576,6 @@ export default function App() {
           setVisibleElements(
             applyEdgeCurveOverrides(
               getPositionedProjectionElements(
-                buildProjectionCacheKey(
-                  graphProjectionMode,
-                  graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? rdfProjectionLevel : owlProjectionLevel,
-                ),
                 buildProjectedElements(
                   graphData,
                   null,

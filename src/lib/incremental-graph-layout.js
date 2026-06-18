@@ -22,6 +22,10 @@ const DEFAULT_CONFIG = Object.freeze({
   componentSpacing: 260,
   maxComponentRowWidth: 4800,
   maxBatchSize: 12,
+  fixedRefreshInterval: 6,
+  maxSeedPlacementAttempts: 24,
+  minimumAcceptedOverlap: 0.5,
+  finalConstraintPasses: 18,
   viewport: null,
 });
 
@@ -92,6 +96,10 @@ function average(values) {
     return 0;
   }
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function pairPreferredDistance(left, right, config) {
+  return (Number(left?.radius) || 0) + (Number(right?.radius) || 0) + config.minNodeSpacing;
 }
 
 class GridSpatialIndex {
@@ -429,6 +437,7 @@ export class IncrementalGraphLayout {
 
   initializeBatchPositions(batch, anchors) {
     const anchorById = new Map(anchors.map((node) => [node.id, node]));
+    const occupied = [...anchors];
     const multiParentNodes = [];
     const singleParentGroups = new Map();
 
@@ -453,13 +462,31 @@ export class IncrementalGraphLayout {
     for (const { node, parentAnchors } of multiParentNodes) {
       if (parentAnchors.length === 0) {
         const seedJitter = deterministicJitter(node.id, this.config.preferredEdgeLength);
-        node.x = seedJitter.x;
-        node.y = seedJitter.y;
+        const resolved = this.findNonOverlappingPosition(
+          node,
+          { x: seedJitter.x, y: seedJitter.y },
+          occupied,
+          'seed-isolated',
+        );
+        node.x = resolved.x;
+        node.y = resolved.y;
+        occupied.push(node);
         continue;
       }
-      const jitter = deterministicJitter(node.id, Math.max(8, this.config.minNodeSpacing));
-      node.x = average(parentAnchors.map((parent) => parent.x)) + jitter.x;
-      node.y = average(parentAnchors.map((parent) => parent.y)) + jitter.y;
+      const jitter = deterministicJitter(node.id, Math.max(node.radius, this.config.preferredEdgeLength * 0.35));
+      const candidate = {
+        x: average(parentAnchors.map((parent) => parent.x)) + jitter.x,
+        y: average(parentAnchors.map((parent) => parent.y)) + jitter.y,
+      };
+      const resolved = this.findNonOverlappingPosition(
+        node,
+        candidate,
+        [...occupied, ...parentAnchors],
+        `seed-multiparent:${node.id}`,
+      );
+      node.x = resolved.x;
+      node.y = resolved.y;
+      occupied.push(node);
     }
 
     for (const [parentId, children] of singleParentGroups.entries()) {
@@ -492,8 +519,18 @@ export class IncrementalGraphLayout {
         }
         const angleStep = (Math.PI * 2) / ringCapacity;
         const angle = nextAngle + offsetInRing * angleStep;
-        child.x = parent.x + Math.cos(angle) * ringRadius;
-        child.y = parent.y + Math.sin(angle) * ringRadius;
+        const resolved = this.findNonOverlappingPosition(
+          child,
+          {
+            x: parent.x + Math.cos(angle) * ringRadius,
+            y: parent.y + Math.sin(angle) * ringRadius,
+          },
+          occupied,
+          `seed-singleparent:${parent.id}`,
+        );
+        child.x = resolved.x;
+        child.y = resolved.y;
+        occupied.push(child);
         offsetInRing += 1;
         nextAngle = angle + angleStep;
       }
@@ -539,6 +576,169 @@ export class IncrementalGraphLayout {
     return Array.from(fixedNodes.values());
   }
 
+  getBatchBounds(nodes, padding = 0) {
+    const bounds = createBounds();
+    for (const node of nodes) {
+      if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) {
+        continue;
+      }
+      extendBounds(bounds, node.x, node.y, node.radius + padding);
+    }
+    return isFiniteBounds(bounds) ? bounds : null;
+  }
+
+  measureNodeViolation(node, obstacles) {
+    let maxViolation = 0;
+    let totalViolation = 0;
+    let count = 0;
+    for (const obstacle of obstacles) {
+      if (!obstacle || obstacle.id === node.id || !Number.isFinite(obstacle.x) || !Number.isFinite(obstacle.y)) {
+        continue;
+      }
+      const distance = Math.max(0.001, Math.hypot((node.x ?? 0) - obstacle.x, (node.y ?? 0) - obstacle.y));
+      const preferred = pairPreferredDistance(node, obstacle, this.config);
+      const violation = preferred - distance;
+      if (violation > 0) {
+        maxViolation = Math.max(maxViolation, violation);
+        totalViolation += violation;
+        count += 1;
+      }
+    }
+    return {
+      maxViolation,
+      totalViolation,
+      count,
+    };
+  }
+
+  violatesSpacing(node, obstacles) {
+    return this.measureNodeViolation(node, obstacles).maxViolation > 0;
+  }
+
+  refreshFixedNodesForMutableBatch(mutableNodes) {
+    const mutableIds = new Set(mutableNodes.map((node) => node.id));
+    const fixedNodes = new Map();
+    for (const node of mutableNodes) {
+      for (const neighborId of node.neighborIds) {
+        const neighbor = this.nodeMap.get(neighborId);
+        if (!neighbor || mutableIds.has(neighbor.id) || !Number.isFinite(neighbor.x) || !Number.isFinite(neighbor.y)) {
+          continue;
+        }
+        fixedNodes.set(neighbor.id, neighbor);
+      }
+    }
+
+    const bounds = this.getBatchBounds(mutableNodes, this.config.fixedNodeSearchPadding);
+    if (bounds) {
+      for (const node of this.spatialIndex.search(bounds, this.nodeMap)) {
+        if (!mutableIds.has(node.id)) {
+          fixedNodes.set(node.id, node);
+        }
+      }
+    }
+
+    return Array.from(fixedNodes.values());
+  }
+
+  moveNodeOutsideObstacles(node, obstacles, attemptKey = '') {
+    let moved = false;
+    for (let pass = 0; pass < this.config.finalConstraintPasses; pass += 1) {
+      let forceX = 0;
+      let forceY = 0;
+      let maxViolation = 0;
+
+      for (const obstacle of obstacles) {
+        if (!obstacle || obstacle.id === node.id || !Number.isFinite(obstacle.x) || !Number.isFinite(obstacle.y)) {
+          continue;
+        }
+        let dx = (node.x ?? 0) - obstacle.x;
+        let dy = (node.y ?? 0) - obstacle.y;
+        let distance = Math.hypot(dx, dy);
+        const preferred = pairPreferredDistance(node, obstacle, this.config);
+        if (distance === 0) {
+          const angle = deterministicAngle(`${attemptKey}|${node.id}|${obstacle.id}|${pass}`);
+          dx = Math.cos(angle);
+          dy = Math.sin(angle);
+          distance = 1;
+        }
+        const violation = preferred - distance;
+        if (violation <= 0) {
+          continue;
+        }
+        maxViolation = Math.max(maxViolation, violation);
+        const scale = (violation + this.config.minNodeSpacing * 0.25) / distance;
+        forceX += dx * scale;
+        forceY += dy * scale;
+      }
+
+      if (maxViolation <= this.config.minimumAcceptedOverlap) {
+        break;
+      }
+
+      const clamped = clampMagnitude(forceX, forceY, Math.max(node.radius, this.config.preferredEdgeLength * 0.35));
+      node.x = (node.x ?? 0) + clamped.x;
+      node.y = (node.y ?? 0) + clamped.y;
+      moved = true;
+    }
+
+    return moved;
+  }
+
+  findNonOverlappingPosition(node, candidate, obstacles, attemptKey = '') {
+    const baseDistance = Math.max(node.radius + this.config.minNodeSpacing, this.config.preferredEdgeLength * 0.6);
+    for (let attempt = 0; attempt < this.config.maxSeedPlacementAttempts; attempt += 1) {
+      const angle = deterministicAngle(`${attemptKey}|${node.id}|${attempt}`);
+      const distance = baseDistance + attempt * Math.max(this.config.minNodeSpacing, node.radius * 0.6);
+      const proposed = attempt === 0
+        ? { x: candidate.x, y: candidate.y }
+        : {
+            x: candidate.x + Math.cos(angle) * distance,
+            y: candidate.y + Math.sin(angle) * distance,
+          };
+      node.x = proposed.x;
+      node.y = proposed.y;
+      this.moveNodeOutsideObstacles(node, obstacles, `${attemptKey}|${attempt}`);
+      if (!this.violatesSpacing(node, obstacles)) {
+        return {
+          x: node.x,
+          y: node.y,
+        };
+      }
+    }
+
+    return {
+      x: node.x,
+      y: node.y,
+    };
+  }
+
+  collectSimulationDiagnostics(mutableNodes, fixedNodes) {
+    let maxViolation = 0;
+    let totalViolation = 0;
+    let violationCount = 0;
+    const mutableSet = new Set(mutableNodes.map((node) => node.id));
+
+    for (let index = 0; index < mutableNodes.length; index += 1) {
+      const node = mutableNodes[index];
+      const mutablePeers = mutableNodes.slice(index + 1);
+      const mutableStats = this.measureNodeViolation(node, mutablePeers);
+      maxViolation = Math.max(maxViolation, mutableStats.maxViolation);
+      totalViolation += mutableStats.totalViolation;
+      violationCount += mutableStats.count;
+
+      const fixedStats = this.measureNodeViolation(node, fixedNodes.filter((entry) => !mutableSet.has(entry.id)));
+      maxViolation = Math.max(maxViolation, fixedStats.maxViolation);
+      totalViolation += fixedStats.totalViolation;
+      violationCount += fixedStats.count;
+    }
+
+    return {
+      maxViolation,
+      averageOverlap: violationCount > 0 ? totalViolation / violationCount : 0,
+      violationCount,
+    };
+  }
+
   getRelevantEdges(batch) {
     const mutableIds = new Set(batch.map((node) => node.id));
     return Array.from(this.edgeMap.values()).filter(
@@ -549,17 +749,22 @@ export class IncrementalGraphLayout {
   runForceSimulation({ mutableNodes, fixedNodes, edges }) {
     const startTime = Date.now();
     const mutableById = new Map(mutableNodes.map((node) => [node.id, node]));
-    const fixedById = new Map(fixedNodes.map((node) => [node.id, node]));
     const velocities = new Map(mutableNodes.map((node) => [node.id, { x: 0, y: 0 }]));
     let tickCount = 0;
     let averageVelocity = Infinity;
     let averageOverlap = Infinity;
+    let currentFixedNodes = [...fixedNodes];
+    let fixedById = new Map(currentFixedNodes.map((node) => [node.id, node]));
 
     while (
       tickCount < this.config.maxTicks &&
       averageVelocity > this.config.velocityThreshold &&
       Date.now() - startTime < this.config.maxLayoutTimeMs
     ) {
+      if (tickCount === 0 || tickCount % this.config.fixedRefreshInterval === 0) {
+        currentFixedNodes = this.refreshFixedNodesForMutableBatch(mutableNodes);
+        fixedById = new Map(currentFixedNodes.map((node) => [node.id, node]));
+      }
       const forces = new Map(mutableNodes.map((node) => [node.id, { x: 0, y: 0 }]));
       let overlapAccumulator = 0;
       let overlapCount = 0;
@@ -571,8 +776,11 @@ export class IncrementalGraphLayout {
           const dx = (right.x ?? 0) - (left.x ?? 0);
           const dy = (right.y ?? 0) - (left.y ?? 0);
           const distance = Math.max(0.001, Math.hypot(dx, dy));
-          const preferred = left.radius + right.radius + this.config.minNodeSpacing;
-          let repulsion = ((left.repulsionStrength + right.repulsionStrength) * 0.5) / (distance * distance);
+          const preferred = pairPreferredDistance(left, right, this.config);
+          const normalizedDistance = distance / preferred;
+          let repulsion =
+            ((left.repulsionStrength + right.repulsionStrength) * 0.5) /
+            Math.max(preferred * preferred * normalizedDistance * normalizedDistance, 1);
           if (distance < preferred) {
             repulsion *= this.config.overlapPenaltyMultiplier * (preferred / distance);
             overlapAccumulator += preferred - distance;
@@ -588,13 +796,15 @@ export class IncrementalGraphLayout {
       }
 
       for (const mutableNode of mutableNodes) {
-        for (const fixedNode of fixedNodes) {
+        for (const fixedNode of currentFixedNodes) {
           const dx = (mutableNode.x ?? 0) - (fixedNode.x ?? 0);
           const dy = (mutableNode.y ?? 0) - (fixedNode.y ?? 0);
           const distance = Math.max(0.001, Math.hypot(dx, dy));
-          const preferred = mutableNode.radius + fixedNode.radius + this.config.minNodeSpacing;
+          const preferred = pairPreferredDistance(mutableNode, fixedNode, this.config);
+          const normalizedDistance = distance / preferred;
           let repulsion =
-            ((mutableNode.repulsionStrength + fixedNode.repulsionStrength) * 0.5) / (distance * distance);
+            ((mutableNode.repulsionStrength + fixedNode.repulsionStrength) * 0.5) /
+            Math.max(preferred * preferred * normalizedDistance * normalizedDistance, 1);
           if (distance < preferred) {
             repulsion *= this.config.overlapPenaltyMultiplier * (preferred / distance);
             overlapAccumulator += preferred - distance;
@@ -657,6 +867,27 @@ export class IncrementalGraphLayout {
       }
       tickCount += 1;
     }
+
+    currentFixedNodes = this.refreshFixedNodesForMutableBatch(mutableNodes);
+    for (let pass = 0; pass < this.config.finalConstraintPasses; pass += 1) {
+      let moved = false;
+      for (const mutableNode of mutableNodes) {
+        const peers = [
+          ...mutableNodes.filter((candidate) => candidate.id !== mutableNode.id),
+          ...currentFixedNodes,
+        ];
+        moved = this.moveNodeOutsideObstacles(mutableNode, peers, `final-pass:${pass}`) || moved;
+      }
+      const diagnostics = this.collectSimulationDiagnostics(mutableNodes, currentFixedNodes);
+      if (diagnostics.maxViolation <= this.config.minimumAcceptedOverlap) {
+        return diagnostics;
+      }
+      if (!moved) {
+        return diagnostics;
+      }
+    }
+
+    return this.collectSimulationDiagnostics(mutableNodes, currentFixedNodes);
   }
 
   pinBatch(batch) {
@@ -703,11 +934,19 @@ export class IncrementalGraphLayout {
         node.mutable = true;
         node.status = 'frontier';
       }
-      this.runForceSimulation({
+      let diagnostics = this.runForceSimulation({
         mutableNodes: batch,
         fixedNodes: this.getRelevantFixedNodes(batch),
         edges: this.getRelevantEdges(batch),
       });
+      if (diagnostics.maxViolation > this.config.minimumAcceptedOverlap) {
+        const retryFixedNodes = this.refreshFixedNodesForMutableBatch(batch);
+        diagnostics = this.runForceSimulation({
+          mutableNodes: batch,
+          fixedNodes: retryFixedNodes,
+          edges: this.getRelevantEdges(batch),
+        });
+      }
       this.pinBatch(batch);
       this.updateStatuses([...frontierNodes, ...batch]);
     }
@@ -815,11 +1054,19 @@ export class IncrementalGraphLayout {
         node.mutable = true;
         node.status = 'frontier';
       }
-      this.runForceSimulation({
+      let diagnostics = this.runForceSimulation({
         mutableNodes: batch,
         fixedNodes: this.getRelevantFixedNodes(batch),
         edges: this.getRelevantEdges(batch),
       });
+      if (diagnostics.maxViolation > this.config.minimumAcceptedOverlap) {
+        const retryFixedNodes = this.refreshFixedNodesForMutableBatch(batch);
+        diagnostics = this.runForceSimulation({
+          mutableNodes: batch,
+          fixedNodes: retryFixedNodes,
+          edges: this.getRelevantEdges(batch),
+        });
+      }
       this.pinBatch(batch);
       this.updateStatuses([...frontierNodes, ...batch]);
       return {
@@ -989,6 +1236,50 @@ export function applyLayoutPositions(elements, engine) {
       progress = true;
     }
     passCount += 1;
+  }
+
+  const canonicalNodeIds = new Set(
+    nodeElements
+      .map((element) => element.data.id)
+      .filter((nodeId) => {
+        const canonicalNode = engine.getNodeById(nodeId);
+        return Boolean(canonicalNode && Number.isFinite(canonicalNode.x) && Number.isFinite(canonicalNode.y));
+      }),
+  );
+
+  const helperNodeIds = nodeElements
+    .map((element) => element.data.id)
+    .filter((nodeId) => positionedNodes.has(nodeId) && !canonicalNodeIds.has(nodeId));
+
+  for (let pass = 0; pass < 8; pass += 1) {
+    let moved = false;
+    for (const helperNodeId of helperNodeIds) {
+      const helperData = nodeDataById.get(helperNodeId);
+      const helperNode = {
+        id: helperNodeId,
+        ...positionedNodes.get(helperNodeId),
+        radius: resolveNodeRadius(helperData),
+      };
+      const obstacles = Array.from(positionedNodes.entries())
+        .filter(([nodeId]) => nodeId !== helperNodeId)
+        .map(([nodeId, position]) => ({
+          id: nodeId,
+          x: position.x,
+          y: position.y,
+          radius: resolveNodeRadius(nodeDataById.get(nodeId)),
+        }));
+      const didMove = engine.moveNodeOutsideObstacles(helperNode, obstacles, `helper-pass:${pass}`);
+      if (didMove) {
+        positionedNodes.set(helperNodeId, {
+          x: helperNode.x,
+          y: helperNode.y,
+        });
+        moved = true;
+      }
+    }
+    if (!moved) {
+      break;
+    }
   }
 
   const positionedNodeIds = new Set(positionedNodes.keys());

@@ -9,6 +9,7 @@ import {
   getProjectedNodeMetadataRows,
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
+import { applyLayoutPositions, IncrementalGraphLayout } from './lib/incremental-graph-layout';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -1180,6 +1181,7 @@ export default function App() {
   const hasAppliedInitialLayoutRef = useRef(false);
   const layoutPositionCacheRef = useRef(new Map());
   const projectedElementsCacheRef = useRef(new Map());
+  const layoutEngineCacheRef = useRef(new Map());
   const groupDragStateRef = useRef(null);
   const groupDragArmRef = useRef(null);
   const shouldFitAfterFocusClearRef = useRef(false);
@@ -1327,6 +1329,23 @@ export default function App() {
     graphSearchMatches.length > 0 ? graphSearchMatches[graphSearchActiveIndex] ?? graphSearchMatches[0] : null;
 
   const buildProjectionCacheKey = (projectionMode, projectionLevel) => `${projectionMode}:${projectionLevel}`;
+  const getPositionedProjectionElements = (projectionCacheKey, rawElements) => {
+    if (!Array.isArray(rawElements)) {
+      return [];
+    }
+
+    let engine = layoutEngineCacheRef.current.get(projectionCacheKey);
+    if (!engine) {
+      engine = new IncrementalGraphLayout({
+        nodes: rawElements.filter((element) => !element?.data?.source),
+        edges: rawElements.filter((element) => element?.data?.source),
+      });
+      engine.computeLayout();
+      layoutEngineCacheRef.current.set(projectionCacheKey, engine);
+    }
+
+    return applyLayoutPositions(rawElements, engine);
+  };
 
   function openGraphSearch() {
     if (!graphSearchSessionRef.current) {
@@ -3727,10 +3746,39 @@ export default function App() {
       synchronizeEdgeBendHandle(cy);
       const cache = layoutPositionCacheRef.current;
       const releasedNode = event.target;
-      cache.set(releasedNode.id(), {
-        x: releasedNode.position('x'),
-        y: releasedNode.position('y'),
-      });
+      const syncNodePosition = (node) => {
+        const position = {
+          x: node.position('x'),
+          y: node.position('y'),
+        };
+        cache.set(node.id(), position);
+        for (const layoutEngine of layoutEngineCacheRef.current.values()) {
+          layoutEngine.updateNodePosition(node.id(), position.x, position.y);
+        }
+        for (const [cacheKey, cachedElements] of projectedElementsCacheRef.current.entries()) {
+          projectedElementsCacheRef.current.set(
+            cacheKey,
+            cachedElements.map((element) =>
+              !element?.data?.source && element.data.id === node.id()
+                ? {
+                    ...element,
+                    position,
+                  }
+                : element,
+            ),
+          );
+        }
+      };
+      syncNodePosition(releasedNode);
+      const dragState = groupDragStateRef.current;
+      if (dragState?.followerIds?.length) {
+        for (const followerId of dragState.followerIds) {
+          const follower = cy.$id(followerId);
+          if (!follower.empty()) {
+            syncNodePosition(follower);
+          }
+        }
+      }
     });
 
     const updateNodeHoverTooltips = (event) => {
@@ -4168,12 +4216,10 @@ export default function App() {
     hasAppliedInitialLayoutRef.current = false;
     layoutPositionCacheRef.current.clear();
     projectedElementsCacheRef.current.clear();
+    layoutEngineCacheRef.current.clear();
   }, [graphData]);
 
   useEffect(() => {
-    // Switching between OWL and RDF can change the node/edge population a lot.
-    // Force a fresh layout so we do not reuse stale cached geometry from the
-    // previous projection mode.
     hasAppliedInitialLayoutRef.current = false;
     layoutPositionCacheRef.current.clear();
   }, [graphProjectionMode]);
@@ -4222,13 +4268,6 @@ export default function App() {
     }
 
     const positionCache = layoutPositionCacheRef.current;
-    const timeoutIds = [];
-    let animationFrameId = 0;
-    let cancelled = false;
-    let layoutCompleted = false;
-    let layout = null;
-    let layoutAttempts = 0;
-
     cy.stop(true, true);
     cy.batch(() => {
       cy.elements().remove();
@@ -4254,26 +4293,8 @@ export default function App() {
       });
     };
 
-    const restoreCachedPositions = () => {
-      let restoredCount = 0;
-      cy.batch(() => {
-        cy.nodes().not('[edgeAnchor = 1]').forEach((node) => {
-          const cached = positionCache.get(node.id());
-          if (!cached) {
-            return;
-          }
-          if (!Number.isFinite(cached.x) || !Number.isFinite(cached.y)) {
-            return;
-          }
-          node.position({ x: cached.x, y: cached.y });
-          restoredCount += 1;
-        });
-      });
-      return restoredCount;
-    };
-
     const fitGraph = (duration = 0) => {
-      if (cancelled || cy.destroyed() || cy.elements().empty()) {
+      if (cy.destroyed() || cy.elements().empty()) {
         return;
       }
       cy.resize();
@@ -4284,227 +4305,33 @@ export default function App() {
       }
     };
 
-    const runLayout = () => {
-      if (cancelled || cy.destroyed()) {
-        return;
-      }
-
-      cy.resize();
-      const { width, height } = graphContainerRef.current?.getBoundingClientRect() ?? {};
-      if ((width ?? 0) < 20 || (height ?? 0) < 20) {
-        layoutAttempts += 1;
-        if (layoutAttempts < 30) {
-          animationFrameId = requestAnimationFrame(runLayout);
-        }
-        return;
-      }
-
-      const useMagneticInitialLayout = shouldUseMagneticInitialLayout();
-      const useSimplifiedRdfLayout = graphProjectionMode === GRAPH_PROJECTION_MODES.RDF;
-      const visibleLayoutNodes = cy
-        .nodes(':visible')
-        .not('[edgeAnchor = 1]')
-        .not('[edgeBendHandle = 1]');
-      const visibleLayoutEdges = cy
-        .edges(':visible')
-        .not('[edgeAnchorTether = 1]')
-        .not('[edgeAttachedConnector = 1]')
-        .not('[owlRelationConnector = 1]');
-      const useLargeOwlFallbackLayout =
-        !useSimplifiedRdfLayout &&
-        (visibleLayoutNodes.length >= LARGE_OWL_LAYOUT_NODE_THRESHOLD ||
-          visibleLayoutEdges.length >= LARGE_OWL_LAYOUT_EDGE_THRESHOLD);
-      let initialPositionsAreFinite = false;
-
-      if (restoreCachedPositions() > 0) {
-        initialPositionsAreFinite = hasFiniteNodePositions(cy);
-      }
-
-      if (useLargeOwlFallbackLayout && !initialPositionsAreFinite) {
-        applySpiralSeedLayout(cy, {
-          compactness: 0.92,
-        });
-        initialPositionsAreFinite = hasFiniteNodePositions(cy);
-      }
-
-      if (useMagneticInitialLayout && !useSimplifiedRdfLayout && !useLargeOwlFallbackLayout) {
-        initialPositionsAreFinite = applyMagneticInitialLayout(cy);
-      }
-
-      if (!initialPositionsAreFinite || !hasFiniteNodePositions(cy)) {
-        applySpiralSeedLayout(cy, {
-          compactness: useSimplifiedRdfLayout ? 0.44 : 1,
-        });
-        initialPositionsAreFinite = hasFiniteNodePositions(cy);
-      }
-
-      if (useSimplifiedRdfLayout && initialPositionsAreFinite) {
-        applySimpleRdfForceLayout(cy, {
-          iterations: 84,
-          attractionStrength: 0.015,
-          repulsionStrength: 12000,
-          targetEdgeLength: 98,
-          maxStep: 16,
-          centeringStrength: 0.003,
-        });
-      }
-
-      if (useLargeOwlFallbackLayout && initialPositionsAreFinite) {
-        applySimpleRdfForceLayout(cy, {
-          iterations: visibleLayoutNodes.length > 420 ? 12 : 18,
-          attractionStrength: 0.011,
-          repulsionStrength: visibleLayoutNodes.length > 420 ? 5200 : 6400,
-          targetEdgeLength: 132,
-          maxStep: 5,
-          centeringStrength: 0.0012,
-        });
-      }
-
-      const layoutCollection = cy
-        .elements(':visible')
-        .not('[edgeAnchor = 1]')
-        .not('[edgeAnchorTether = 1]')
-        .not('[edgeAttachedConnector = 1]')
-        .not('[owlRelationConnector = 1]');
-
-      layout = layoutCollection.layout(
-        useSimplifiedRdfLayout
-          ? {
-              name: 'preset',
-              animate: false,
-              fit: true,
-              padding: 42,
-            }
-          : useLargeOwlFallbackLayout
-            ? {
-                name: 'preset',
-                animate: false,
-                fit: true,
-                padding: 42,
-              }
-          : {
-              name: 'cose',
-              animate: false,
-              fit: true,
-              padding: 42,
-              randomize: !initialPositionsAreFinite,
-              idealEdgeLength: useMagneticInitialLayout ? 54 : 110,
-              edgeElasticity: useMagneticInitialLayout ? 240 : 80,
-              nodeRepulsion: useMagneticInitialLayout ? 4200 : 20000,
-              gravity: useMagneticInitialLayout ? 0.5 : 0.25,
-              numIter: useMagneticInitialLayout ? 220 : 1000,
-              coolingFactor: useMagneticInitialLayout ? 0.96 : 0.99,
-            },
-      );
-
-      layout.one('layoutstop', () => {
-        if (cancelled || cy.destroyed()) {
+    const timeoutIds = [
+      setTimeout(() => {
+        if (cy.destroyed()) {
           return;
-        }
-        layoutCompleted = true;
-        if (!hasFiniteNodePositions(cy)) {
-          applySpiralSeedLayout(cy);
-        }
-        if (useMagneticInitialLayout && !useSimplifiedRdfLayout && !useLargeOwlFallbackLayout) {
-          applyMagneticInitialLayout(cy, {
-            preserveCurrentPositions: true,
-            compactness: 0.96,
-            iterationBoost: 0.82,
-          });
-          enforceRankAwareSpacing(cy, 12, 16);
-          applyMagneticInitialLayout(cy, {
-            preserveCurrentPositions: true,
-            compactness: 0.9,
-            iterationBoost: 0.62,
-          });
-          expandHighRankCore(cy, {
-            maxNodes: 9,
-            rankThreshold: 0.7,
-            blend: 0.46,
-            minSpacing: 128,
-          });
-        }
-        resolveNodeOverlaps(cy, useMagneticInitialLayout ? 20 : 12, useMagneticInitialLayout ? 26 : 18);
-        if (useMagneticInitialLayout && !useSimplifiedRdfLayout) {
-          enforceRankAwareSpacing(cy, 8, 14);
-          resolveNodeOverlaps(cy, 10, 24);
-        }
-        if (useSimplifiedRdfLayout) {
-          resolveNodeOverlaps(cy, 18, 8);
-          compactLayoutUntilNoOverlapBoundary(cy, {
-            passes: 18,
-            scaleStep: 0.92,
-            spacing: 6,
-            resolvePasses: 18,
-          });
-        }
-        if (useLargeOwlFallbackLayout) {
-          resolveNodeOverlaps(cy, 4, 10);
         }
         synchronizeEdgeAnchorPositions(cy);
         synchronizeEdgeBendHandle(cy);
-        fitGraph(0);
+        if (!hasAppliedInitialLayoutRef.current) {
+          fitGraph(0);
+        }
         cacheCurrentPositions();
         hasAppliedInitialLayoutRef.current = true;
-        timeoutIds.push(setTimeout(() => fitGraph(120), 80));
-        timeoutIds.push(setTimeout(() => fitGraph(0), 320));
-      });
-
-      layout.run();
-      timeoutIds.push(
-        setTimeout(() => {
-          if (layoutCompleted || cancelled || cy.destroyed()) {
-            return;
-          }
-          layoutCompleted = true;
-          if (!hasFiniteNodePositions(cy)) {
-            applySpiralSeedLayout(cy);
-          }
-          if (useMagneticInitialLayout && !useLargeOwlFallbackLayout) {
-            applyMagneticInitialLayout(cy, {
-              preserveCurrentPositions: true,
-              compactness: 0.96,
-              iterationBoost: 0.82,
-            });
-            enforceRankAwareSpacing(cy, 12, 16);
-            applyMagneticInitialLayout(cy, {
-              preserveCurrentPositions: true,
-              compactness: 0.9,
-              iterationBoost: 0.62,
-            });
-            expandHighRankCore(cy, {
-              maxNodes: 9,
-              rankThreshold: 0.7,
-              blend: 0.46,
-              minSpacing: 128,
-            });
-            resolveNodeOverlaps(cy, 20, 26);
-          }
-          if (useLargeOwlFallbackLayout) {
-            resolveNodeOverlaps(cy, 4, 10);
-          }
-          synchronizeEdgeAnchorPositions(cy);
-          synchronizeEdgeBendHandle(cy);
-          fitGraph(0);
-          cacheCurrentPositions();
-          hasAppliedInitialLayoutRef.current = true;
-        }, 160),
-      );
-    };
-
-    animationFrameId = requestAnimationFrame(runLayout);
+      }, 0),
+      setTimeout(() => {
+        if (cy.destroyed()) {
+          return;
+        }
+        synchronizeEdgeAnchorPositions(cy);
+        synchronizeEdgeBendHandle(cy);
+        cacheCurrentPositions();
+      }, 80),
+    ];
 
     return () => {
-      cancelled = true;
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-      if (layout) {
-        layout.stop();
-      }
       timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
     };
-  }, [visibleElements, graphProjectionMode]);
+  }, [visibleElements]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -4662,12 +4489,15 @@ export default function App() {
           if (!focusedNodeIds) {
             const cachedProjected = projectedElementsCacheRef.current.get(currentProjectionCacheKey);
             if (cachedProjected) {
-              projected = cachedProjected;
+              const layoutEngine = layoutEngineCacheRef.current.get(currentProjectionCacheKey);
+              projected = layoutEngine ? applyLayoutPositions(cachedProjected, layoutEngine) : cachedProjected;
+              projectedElementsCacheRef.current.set(currentProjectionCacheKey, projected);
             }
           }
 
           if (!projected) {
-            projected = buildProjectedElements(graphData, focusedNodeIds, viewOptions);
+            const rawProjected = buildProjectedElements(graphData, focusedNodeIds, viewOptions);
+            projected = rawProjected;
             if (
               graphProjectionMode === GRAPH_PROJECTION_MODES.RDF &&
               projected.length === 0 &&
@@ -4676,7 +4506,11 @@ export default function App() {
               projected = buildProjectedElements(graphData, null, viewOptions);
             }
             if (!focusedNodeIds) {
+              projected = getPositionedProjectionElements(currentProjectionCacheKey, projected);
               projectedElementsCacheRef.current.set(currentProjectionCacheKey, projected);
+            } else {
+              const layoutEngine = layoutEngineCacheRef.current.get(currentProjectionCacheKey);
+              projected = layoutEngine ? applyLayoutPositions(projected, layoutEngine) : projected;
             }
           }
 
@@ -4747,10 +4581,16 @@ export default function App() {
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
             applyEdgeCurveOverrides(
-              buildProjectedElements(
-                graphData,
-                null,
-                toViewOptions(graphProjectionMode, graphData, owlProjectionLevel, rdfProjectionLevel),
+              getPositionedProjectionElements(
+                buildProjectionCacheKey(
+                  graphProjectionMode,
+                  graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? rdfProjectionLevel : owlProjectionLevel,
+                ),
+                buildProjectedElements(
+                  graphData,
+                  null,
+                  toViewOptions(graphProjectionMode, graphData, owlProjectionLevel, rdfProjectionLevel),
+                ),
               ),
               edgeCurveOverridesRef.current,
             ),

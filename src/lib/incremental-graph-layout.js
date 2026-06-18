@@ -102,6 +102,25 @@ function pairPreferredDistance(left, right, config) {
   return (Number(left?.radius) || 0) + (Number(right?.radius) || 0) + config.minNodeSpacing;
 }
 
+function pairRadiusSum(left, right) {
+  return (Number(left?.radius) || 0) + (Number(right?.radius) || 0);
+}
+
+function pairGeometry(left, right) {
+  const dx = (right.x ?? 0) - (left.x ?? 0);
+  const dy = (right.y ?? 0) - (left.y ?? 0);
+  const centerDistance = Math.max(0.001, Math.hypot(dx, dy));
+  const radiusSum = pairRadiusSum(left, right);
+  const surfaceDistance = centerDistance - radiusSum;
+  return {
+    dx,
+    dy,
+    centerDistance,
+    radiusSum,
+    surfaceDistance,
+  };
+}
+
 class GridSpatialIndex {
   constructor(cellSize) {
     this.cellSize = Math.max(24, Number(cellSize) || DEFAULT_CONFIG.spatialCellSize);
@@ -653,20 +672,20 @@ export class IncrementalGraphLayout {
         }
         let dx = (node.x ?? 0) - obstacle.x;
         let dy = (node.y ?? 0) - obstacle.y;
-        let distance = Math.hypot(dx, dy);
+        let centerDistance = Math.hypot(dx, dy);
         const preferred = pairPreferredDistance(node, obstacle, this.config);
-        if (distance === 0) {
+        if (centerDistance === 0) {
           const angle = deterministicAngle(`${attemptKey}|${node.id}|${obstacle.id}|${pass}`);
           dx = Math.cos(angle);
           dy = Math.sin(angle);
-          distance = 1;
+          centerDistance = 1;
         }
-        const violation = preferred - distance;
+        const violation = preferred - centerDistance;
         if (violation <= 0) {
           continue;
         }
         maxViolation = Math.max(maxViolation, violation);
-        const scale = (violation + this.config.minNodeSpacing * 0.25) / distance;
+        const scale = (violation + this.config.minNodeSpacing * 0.25) / centerDistance;
         forceX += dx * scale;
         forceY += dy * scale;
       }
@@ -773,21 +792,23 @@ export class IncrementalGraphLayout {
         const left = mutableNodes[leftIndex];
         for (let rightIndex = leftIndex + 1; rightIndex < mutableNodes.length; rightIndex += 1) {
           const right = mutableNodes[rightIndex];
-          const dx = (right.x ?? 0) - (left.x ?? 0);
-          const dy = (right.y ?? 0) - (left.y ?? 0);
-          const distance = Math.max(0.001, Math.hypot(dx, dy));
+          const { dx, dy, centerDistance, radiusSum, surfaceDistance } = pairGeometry(left, right);
           const preferred = pairPreferredDistance(left, right, this.config);
-          const normalizedDistance = distance / preferred;
+          const preferredSurfaceDistance = preferred - radiusSum;
+          const effectiveSurfaceDistance = Math.max(surfaceDistance, 0.001);
+          const normalizedDistance = effectiveSurfaceDistance / Math.max(preferredSurfaceDistance, 1);
           let repulsion =
             ((left.repulsionStrength + right.repulsionStrength) * 0.5) /
-            Math.max(preferred * preferred * normalizedDistance * normalizedDistance, 1);
-          if (distance < preferred) {
-            repulsion *= this.config.overlapPenaltyMultiplier * (preferred / distance);
-            overlapAccumulator += preferred - distance;
+            Math.max(preferredSurfaceDistance * preferredSurfaceDistance * normalizedDistance * normalizedDistance, 1);
+          if (centerDistance < preferred) {
+            repulsion *=
+              this.config.overlapPenaltyMultiplier *
+              (Math.max(preferredSurfaceDistance, this.config.minNodeSpacing) / effectiveSurfaceDistance);
+            overlapAccumulator += preferred - centerDistance;
             overlapCount += 1;
           }
-          const fx = (dx / distance) * repulsion;
-          const fy = (dy / distance) * repulsion;
+          const fx = (dx / centerDistance) * repulsion;
+          const fy = (dy / centerDistance) * repulsion;
           forces.get(left.id).x -= fx;
           forces.get(left.id).y -= fy;
           forces.get(right.id).x += fx;
@@ -797,21 +818,23 @@ export class IncrementalGraphLayout {
 
       for (const mutableNode of mutableNodes) {
         for (const fixedNode of currentFixedNodes) {
-          const dx = (mutableNode.x ?? 0) - (fixedNode.x ?? 0);
-          const dy = (mutableNode.y ?? 0) - (fixedNode.y ?? 0);
-          const distance = Math.max(0.001, Math.hypot(dx, dy));
+          const { dx, dy, centerDistance, radiusSum, surfaceDistance } = pairGeometry(fixedNode, mutableNode);
           const preferred = pairPreferredDistance(mutableNode, fixedNode, this.config);
-          const normalizedDistance = distance / preferred;
+          const preferredSurfaceDistance = preferred - radiusSum;
+          const effectiveSurfaceDistance = Math.max(surfaceDistance, 0.001);
+          const normalizedDistance = effectiveSurfaceDistance / Math.max(preferredSurfaceDistance, 1);
           let repulsion =
             ((mutableNode.repulsionStrength + fixedNode.repulsionStrength) * 0.5) /
-            Math.max(preferred * preferred * normalizedDistance * normalizedDistance, 1);
-          if (distance < preferred) {
-            repulsion *= this.config.overlapPenaltyMultiplier * (preferred / distance);
-            overlapAccumulator += preferred - distance;
+            Math.max(preferredSurfaceDistance * preferredSurfaceDistance * normalizedDistance * normalizedDistance, 1);
+          if (centerDistance < preferred) {
+            repulsion *=
+              this.config.overlapPenaltyMultiplier *
+              (Math.max(preferredSurfaceDistance, this.config.minNodeSpacing) / effectiveSurfaceDistance);
+            overlapAccumulator += preferred - centerDistance;
             overlapCount += 1;
           }
-          forces.get(mutableNode.id).x += (dx / distance) * repulsion;
-          forces.get(mutableNode.id).y += (dy / distance) * repulsion;
+          forces.get(mutableNode.id).x += (dx / centerDistance) * repulsion;
+          forces.get(mutableNode.id).y += (dy / centerDistance) * repulsion;
         }
       }
 
@@ -826,16 +849,15 @@ export class IncrementalGraphLayout {
         if (!sourceMutable && !targetMutable) {
           continue;
         }
-        const dx = (target.x ?? 0) - (source.x ?? 0);
-        const dy = (target.y ?? 0) - (source.y ?? 0);
-        const distance = Math.max(0.001, Math.hypot(dx, dy));
-        const desiredLength =
+        const { dx, dy, centerDistance, radiusSum } = pairGeometry(source, target);
+        const desiredSurfaceDistance =
           this.config.preferredEdgeLength +
           (1 - ((source.normalizedRank + target.normalizedRank) * 0.5)) * this.config.edgeLengthRankScale;
+        const desiredCenterDistance = radiusSum + desiredSurfaceDistance;
         const attractionStrength = ((source.attractionStrength + target.attractionStrength) * 0.5) * edge.weight;
-        const springForce = attractionStrength * (distance - desiredLength);
-        const fx = (dx / distance) * springForce;
-        const fy = (dy / distance) * springForce;
+        const springForce = attractionStrength * (centerDistance - desiredCenterDistance);
+        const fx = (dx / centerDistance) * springForce;
+        const fy = (dy / centerDistance) * springForce;
         if (sourceMutable) {
           forces.get(source.id).x += fx;
           forces.get(source.id).y += fy;

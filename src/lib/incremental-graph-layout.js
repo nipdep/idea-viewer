@@ -1191,7 +1191,16 @@ export function applyLayoutPositions(elements, engine) {
     ensureAdjacency(data.target).push(data.source);
   }
 
-  const resolveNodeRadius = (data) => Math.max(Number(data?.nodeWidth ?? 42), Number(data?.nodeHeight ?? 42)) * 0.5;
+  const resolveNodeRadius = (data) => {
+    if (!data?.id) {
+      return Math.max(Number(data?.nodeWidth ?? 56), Number(data?.nodeHeight ?? 56)) * 0.5 + 10;
+    }
+    const canonicalNode = engine.getNodeById?.(data.id);
+    if (canonicalNode?.radius) {
+      return canonicalNode.radius;
+    }
+    return Math.max(Number(data?.nodeWidth ?? 56), Number(data?.nodeHeight ?? 56)) * 0.5 + 10;
+  };
 
   const placeBetweenEndpoints = (data) => {
     const source = positionedNodes.get(data.anchoredSourceId);

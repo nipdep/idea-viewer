@@ -4,12 +4,12 @@ import createForceLayout from 'ngraph.forcelayout';
 const DEFAULT_CONFIG = Object.freeze({
   baseMass: 1,
   massScale: 2.4,
-  baseRadius: 24,
-  radiusScale: 18,
-  baseRepulsion: 3600,
-  repulsionRankScale: 2.2,
-  baseAttraction: 0.08,
-  attractionRankScale: 0.9,
+  baseRadius: 34,
+  radiusScale: 28,
+  baseRepulsion: 2400,
+  repulsionRankScale: 0.8,
+  baseAttraction: 0.12,
+  attractionRankScale: 0.45,
   minNodeSpacing: 24,
   overlapPenaltyMultiplier: 8,
   preferredEdgeLength: 130,
@@ -26,6 +26,10 @@ const DEFAULT_CONFIG = Object.freeze({
   ngraphMinStepsPerBatch: 120,
   ngraphMaxBatchTimeMs: 64,
   ngraphStepMovementThreshold: 0.0025,
+  rippleStepsPerLayer: 220,
+  rippleMinStepsPerLayer: 72,
+  rippleMaxLayerTimeMs: 36,
+  rippleStepMovementThreshold: 0.003,
   ngraphSpringLength: 130,
   ngraphSpringCoefficient: 0.75,
   ngraphGravity: -18,
@@ -268,6 +272,7 @@ export class NgraphIncrementalLayout {
         mutable: false,
         status: 'undiscovered',
         componentId: null,
+        hopDepth: null,
         label: data?.label ?? '',
         shape: data?.shape ?? '',
         annotations: data,
@@ -327,11 +332,14 @@ export class NgraphIncrementalLayout {
   derivePhysicsProperties() {
     for (const node of this.nodeMap.values()) {
       const visualRadius = Math.max(Number(node.renderWidth) || 0, Number(node.renderHeight) || 0) * 0.5;
-      const rankRadius = this.config.baseRadius + this.config.radiusScale * node.normalizedRank;
-      node.mass = this.config.baseMass + this.config.massScale * node.normalizedRank;
-      node.radius = Math.max(visualRadius, this.config.baseRadius) + rankRadius;
-      node.repulsionStrength = 1 + node.normalizedRank;
-      node.attractionStrength = 1 - node.normalizedRank * 0.35;
+      const normalizedRank = node.normalizedRank;
+      const rankRadius = this.config.baseRadius + this.config.radiusScale * normalizedRank;
+      node.mass = this.config.baseMass + this.config.massScale * normalizedRank;
+      node.radius = Math.max(visualRadius + this.config.baseRadius * 0.35, this.config.baseRadius) + rankRadius;
+      node.repulsionStrength =
+        this.config.baseRepulsion * (1 + this.config.repulsionRankScale * normalizedRank);
+      node.attractionStrength =
+        this.config.baseAttraction * Math.max(0.4, 1 - this.config.attractionRankScale * normalizedRank);
     }
     for (const edge of this.edgeMap.values()) {
       const source = this.nodeMap.get(edge.sourceId);
@@ -412,6 +420,7 @@ export class NgraphIncrementalLayout {
     seed.mutable = false;
     seed.status = 'frontier';
     seed.componentId = componentId;
+    seed.hopDepth = 0;
     this.ensureLayoutNode(seed);
     this.pinLayoutNode(seed.id, true);
     this.spatialIndex.insert(seed);
@@ -434,6 +443,8 @@ export class NgraphIncrementalLayout {
           continue;
         }
         neighbor.componentId = frontierNode.componentId;
+        const candidateDepth = (Number.isFinite(frontierNode.hopDepth) ? frontierNode.hopDepth : 0) + 1;
+        neighbor.hopDepth = Number.isFinite(neighbor.hopDepth) ? Math.min(neighbor.hopDepth, candidateDepth) : candidateDepth;
         seen.add(neighborId);
         batch.push(neighbor);
         if (batch.length >= this.config.maxBatchSize) {
@@ -647,7 +658,7 @@ export class NgraphIncrementalLayout {
     this.layout.pinNode(layoutNode, isPinned);
   }
 
-  runForceSimulation({ mutableNodes, fixedNodes }) {
+  runForceSimulation({ mutableNodes, fixedNodes, pinMutableOnFinish = true, simulationConfig = null }) {
     const neighborhood = [...fixedNodes, ...mutableNodes];
     this.syncLayoutNeighborhood(neighborhood);
 
@@ -661,17 +672,24 @@ export class NgraphIncrementalLayout {
       this.pinLayoutNode(mutableNode.id, false);
     }
 
+    const config = simulationConfig ?? {
+      maxSteps: this.config.ngraphStepsPerBatch,
+      minSteps: this.config.ngraphMinStepsPerBatch,
+      maxTimeMs: this.config.ngraphMaxBatchTimeMs,
+      movementThreshold: this.config.ngraphStepMovementThreshold,
+    };
+
     const startedAt = performance.now();
     let steps = 0;
     let stable = false;
     while (
-      steps < this.config.ngraphStepsPerBatch &&
-      performance.now() - startedAt < this.config.ngraphMaxBatchTimeMs
+      steps < config.maxSteps &&
+      performance.now() - startedAt < config.maxTimeMs
     ) {
       stable = this.layout.step();
       steps += 1;
 
-      if (steps < this.config.ngraphMinStepsPerBatch) {
+      if (steps < config.minSteps) {
         continue;
       }
 
@@ -679,7 +697,7 @@ export class NgraphIncrementalLayout {
         break;
       }
 
-      if ((this.layout.lastMove ?? Infinity) <= this.config.ngraphStepMovementThreshold) {
+      if ((this.layout.lastMove ?? Infinity) <= config.movementThreshold) {
         break;
       }
     }
@@ -690,7 +708,7 @@ export class NgraphIncrementalLayout {
       mutableNode.y = position.y;
     }
 
-    const currentFixedNodes = this.refreshFixedNodesForMutableBatch(mutableNodes);
+    const currentFixedNodes = fixedNodes.length > 0 ? fixedNodes : [];
     for (let pass = 0; pass < this.config.finalConstraintPasses; pass += 1) {
       let moved = false;
       for (const mutableNode of mutableNodes) {
@@ -707,7 +725,7 @@ export class NgraphIncrementalLayout {
 
     for (const mutableNode of mutableNodes) {
       this.layout.setNodePosition(mutableNode.id, mutableNode.x ?? 0, mutableNode.y ?? 0);
-      this.pinLayoutNode(mutableNode.id, true);
+      this.pinLayoutNode(mutableNode.id, pinMutableOnFinish);
     }
 
     return {
@@ -723,6 +741,85 @@ export class NgraphIncrementalLayout {
       this.pinLayoutNode(node.id, true);
       this.spatialIndex.insert(node);
     }
+  }
+
+  updateSpatialIndexForNodes(nodes) {
+    for (const node of nodes) {
+      if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
+        continue;
+      }
+      this.spatialIndex.remove(node);
+      this.spatialIndex.insert(node);
+    }
+  }
+
+  getComponentNodes(componentId) {
+    return Array.from(this.nodeMap.values())
+      .filter((node) => node.componentId === componentId && node.status !== 'undiscovered' && Number.isFinite(node.x) && Number.isFinite(node.y));
+  }
+
+  runBackwardRipple(componentId) {
+    const componentNodes = this.getComponentNodes(componentId);
+    if (componentNodes.length <= 1) {
+      return false;
+    }
+
+    let maxHopDepth = 0;
+    for (const node of componentNodes) {
+      if (Number.isFinite(node.hopDepth)) {
+        maxHopDepth = Math.max(maxHopDepth, node.hopDepth);
+      }
+    }
+
+    let changed = false;
+    for (let depth = maxHopDepth; depth >= 0; depth -= 1) {
+      const layerNodes = componentNodes.filter((node) => node.hopDepth === depth);
+      if (layerNodes.length === 0) {
+        continue;
+      }
+      const layerIds = new Set(layerNodes.map((node) => node.id));
+      const fixedNodes = componentNodes.filter((node) => !layerIds.has(node.id));
+      for (const node of layerNodes) {
+        node.mutable = true;
+      }
+      const result = this.runForceSimulation({
+        mutableNodes: layerNodes,
+        fixedNodes,
+        pinMutableOnFinish: true,
+        simulationConfig: {
+          maxSteps: this.config.rippleStepsPerLayer,
+          minSteps: this.config.rippleMinStepsPerLayer,
+          maxTimeMs: this.config.rippleMaxLayerTimeMs,
+          movementThreshold: this.config.rippleStepMovementThreshold,
+        },
+      });
+      for (const node of layerNodes) {
+        node.mutable = false;
+      }
+      this.updateSpatialIndexForNodes(layerNodes);
+      changed = result.changed || changed;
+    }
+
+    const finalMutable = [...componentNodes];
+    for (const node of finalMutable) {
+      node.mutable = true;
+    }
+    const finalResult = this.runForceSimulation({
+      mutableNodes: finalMutable,
+      fixedNodes: [],
+      pinMutableOnFinish: true,
+      simulationConfig: {
+        maxSteps: Math.max(this.config.rippleStepsPerLayer, 260),
+        minSteps: Math.max(this.config.rippleMinStepsPerLayer, 96),
+        maxTimeMs: Math.max(this.config.rippleMaxLayerTimeMs, 48),
+        movementThreshold: Math.min(this.config.rippleStepMovementThreshold, 0.0025),
+      },
+    });
+    for (const node of finalMutable) {
+      node.mutable = false;
+    }
+    this.updateSpatialIndexForNodes(finalMutable);
+    return changed || finalResult.changed;
   }
 
   allNeighborsDiscovered(node) {
@@ -794,13 +891,14 @@ export class NgraphIncrementalLayout {
 
       const frontierNodes = this.getFrontierNodesForComponent(this.activeComponentId);
       if (frontierNodes.length === 0) {
+        const rippleChanged = this.runBackwardRipple(this.activeComponentId);
         this.finalizeComponent(this.activeComponentId);
         this.activeComponentId = null;
         if (!this.hasUndiscoveredNodes()) {
           this.layoutCompleted = true;
-          return { done: true, changed: false, newNodeIds: [] };
+          return { done: true, changed: rippleChanged, newNodeIds: [] };
         }
-        continue;
+        return { done: false, changed: rippleChanged, newNodeIds: [] };
       }
 
       const batch = this.collectUndiscoveredOneHopNeighbors(frontierNodes);
@@ -808,8 +906,10 @@ export class NgraphIncrementalLayout {
         this.updateStatuses(frontierNodes);
         const nextFrontier = this.getFrontierNodesForComponent(this.activeComponentId);
         if (nextFrontier.length === 0) {
+          const rippleChanged = this.runBackwardRipple(this.activeComponentId);
           this.finalizeComponent(this.activeComponentId);
           this.activeComponentId = null;
+          return { done: this.isComplete(), changed: rippleChanged, newNodeIds: [] };
         }
         return { done: this.isComplete(), changed: false, newNodeIds: [] };
       }

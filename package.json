@@ -15,6 +15,8 @@
     "@vercel/analytics": "^1.5.0",
     "cytoscape": "^3.30.0",
     "n3": "^1.20.0",
+    "ngraph.forcelayout": "^3.3.1",
+    "ngraph.graph": "^20.1.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.30.1"

@@ -10,6 +10,7 @@ import {
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
 import { applyLayoutPositions, IncrementalGraphLayout } from './lib/incremental-graph-layout';
+import { NgraphIncrementalLayout } from './lib/ngraph-incremental-layout';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -101,6 +102,7 @@ const GRAPH_AXIS_HELPER_CATEGORIES = new Set([
   'class-expression-connector',
   'rdf-connector',
 ]);
+const CANONICAL_LAYOUT_BACKEND = 'ngraph';
 
 const { blankNode, literal, namedNode, quad } = DataFactory;
 
@@ -4200,7 +4202,8 @@ export default function App() {
       return undefined;
     }
 
-    const engine = new IncrementalGraphLayout({
+    const LayoutEngine = CANONICAL_LAYOUT_BACKEND === 'ngraph' ? NgraphIncrementalLayout : IncrementalGraphLayout;
+    const engine = new LayoutEngine({
       nodes: graphData.nodes,
       edges: graphData.edges,
     });

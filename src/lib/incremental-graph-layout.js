@@ -1,3 +1,6 @@
+import createGraph from 'ngraph.graph';
+import createForceLayout from 'ngraph.forcelayout';
+
 const DEFAULT_CONFIG = Object.freeze({
   baseMass: 1,
   massScale: 2.4,
@@ -1269,176 +1272,95 @@ export function applyLayoutPositions(elements, engine) {
       }),
   );
 
-  const helperNodeIds = nodeElements
+  const projectedMovableNodeIds = nodeElements
     .map((element) => element.data.id)
     .filter((nodeId) => positionedNodes.has(nodeId) && !canonicalNodeIds.has(nodeId));
 
-  for (let pass = 0; pass < 8; pass += 1) {
-    let moved = false;
-    for (const helperNodeId of helperNodeIds) {
-      const helperData = nodeDataById.get(helperNodeId);
-      const helperNode = {
-        id: helperNodeId,
-        ...positionedNodes.get(helperNodeId),
-        radius: resolveNodeRadius(helperData),
-      };
-      const obstacles = Array.from(positionedNodes.entries())
-        .filter(([nodeId]) => nodeId !== helperNodeId)
-        .map(([nodeId, position]) => ({
-          id: nodeId,
-          x: position.x,
-          y: position.y,
-          radius: resolveNodeRadius(nodeDataById.get(nodeId)),
-        }));
-      const didMove = engine.moveNodeOutsideObstacles(helperNode, obstacles, `helper-pass:${pass}`);
-      if (didMove) {
-        positionedNodes.set(helperNodeId, {
-          x: helperNode.x,
-          y: helperNode.y,
-        });
-        moved = true;
-      }
-    }
-    if (!moved) {
-      break;
-    }
-  }
-
-  const isProjectedBlankLikeNode = (data) =>
-    Boolean(
-      data &&
-        (
-          data.termType === 'BlankNode' ||
-          data.rdfBlankNode === 1 ||
-          data.rdfConnectorNode === 1 ||
-          data.rdfStructuralBlankNode === 1 ||
-          data.owlExpressionNode === 1 ||
-          data.owlHelper === 1 ||
-          data.owlGroupNode === 1 ||
-          data.owlCollectionConnector === 1 ||
-          String(data.entityCategory || '').includes('connector')
-        ),
-    );
-
-  const projectedDynamicNodeIds = nodeElements
-    .map((element) => element.data.id)
-    .filter((nodeId) => positionedNodes.has(nodeId) && !canonicalNodeIds.has(nodeId) && isProjectedBlankLikeNode(nodeDataById.get(nodeId)));
-
-  const projectedDynamicSet = new Set(projectedDynamicNodeIds);
-  const projectedVelocities = new Map(projectedDynamicNodeIds.map((nodeId) => [nodeId, { x: 0, y: 0 }]));
   const resolvedEdgeList = edgeElements.filter((element) => {
     const data = element?.data;
     return Boolean(data?.source && positionedNodes.has(data.source) && positionedNodes.has(data.target));
   });
 
-  for (let iteration = 0; iteration < 28 && projectedDynamicNodeIds.length > 0; iteration += 1) {
-    const forces = new Map(projectedDynamicNodeIds.map((nodeId) => [nodeId, { x: 0, y: 0 }]));
+  if (projectedMovableNodeIds.length > 0) {
+    const projectionGraph = createGraph();
+    const movableSet = new Set(projectedMovableNodeIds);
+    const allProjectedNodeIds = Array.from(positionedNodes.keys());
 
-    for (let leftIndex = 0; leftIndex < projectedDynamicNodeIds.length; leftIndex += 1) {
-      const leftId = projectedDynamicNodeIds[leftIndex];
-      const leftData = nodeDataById.get(leftId);
-      const leftNode = {
-        id: leftId,
-        ...positionedNodes.get(leftId),
-        radius: resolveNodeRadius(leftData),
-        repulsionStrength: engine.config.baseRepulsion,
-      };
+    const nodeMass = (nodeId) => {
+      const canonicalNode = canonicalNodeIds.has(nodeId) ? engine.getNodeById(nodeId) : null;
+      const normalizedRank = canonicalNode?.normalizedRank ?? 0.5;
+      return (engine.config.baseMass ?? 1) + (engine.config.massScale ?? 0) * normalizedRank;
+    };
 
-      const otherNodeIds = Array.from(positionedNodes.keys()).filter((nodeId) => nodeId !== leftId);
-      for (const rightId of otherNodeIds) {
-        const rightData = nodeDataById.get(rightId);
-        const rightNode = {
-          id: rightId,
-          ...positionedNodes.get(rightId),
-          radius: resolveNodeRadius(rightData),
-          repulsionStrength: canonicalNodeIds.has(rightId)
-            ? engine.getNodeById(rightId)?.repulsionStrength ?? engine.config.baseRepulsion
-            : engine.config.baseRepulsion,
-        };
-        const { dx, dy, centerDistance, radiusSum, surfaceDistance } = pairGeometry(leftNode, rightNode);
-        const preferred = pairPreferredDistance(leftNode, rightNode, engine.config);
-        const preferredSurfaceDistance = preferred - radiusSum;
-        const effectiveSurfaceDistance = Math.max(surfaceDistance, 0.001);
-        const normalizedDistance = effectiveSurfaceDistance / Math.max(preferredSurfaceDistance, 1);
-        let repulsion =
-          ((leftNode.repulsionStrength + rightNode.repulsionStrength) * 0.5) /
-          Math.max(preferredSurfaceDistance * preferredSurfaceDistance * normalizedDistance * normalizedDistance, 1);
-        if (centerDistance < preferred) {
-          repulsion *=
-            engine.config.overlapPenaltyMultiplier *
-            (Math.max(preferredSurfaceDistance, engine.config.minNodeSpacing) / effectiveSurfaceDistance);
-        }
-        forces.get(leftId).x -= (dx / centerDistance) * repulsion;
-        forces.get(leftId).y -= (dy / centerDistance) * repulsion;
-      }
+    const projectionLayout = createForceLayout(projectionGraph, {
+      springLength: engine.config.preferredEdgeLength,
+      springCoefficient: 0.75,
+      gravity: -18,
+      theta: 0.9,
+      dragCoefficient: 0.12,
+      timeStep: 0.45,
+      adaptiveTimeStepWeight: 0,
+      nodeMass,
+      springTransform: (link, spring) => {
+        const sourceData = nodeDataById.get(link.fromId);
+        const targetData = nodeDataById.get(link.toId);
+        const sourceRadius = resolveNodeRadius(sourceData);
+        const targetRadius = resolveNodeRadius(targetData);
+        spring.length = engine.config.preferredEdgeLength + sourceRadius + targetRadius;
+        spring.coefficient = 0.75;
+      },
+    });
+
+    for (const nodeId of allProjectedNodeIds) {
+      const position = positionedNodes.get(nodeId);
+      const layoutNode = projectionGraph.addNode(nodeId, {
+        isPinned: !movableSet.has(nodeId),
+      });
+      layoutNode.position = { x: position.x, y: position.y };
+      layoutNode.isPinned = !movableSet.has(nodeId);
     }
 
     for (const edgeElement of resolvedEdgeList) {
       const data = edgeElement.data;
-      const sourceMovable = projectedDynamicSet.has(data.source);
-      const targetMovable = projectedDynamicSet.has(data.target);
-      if (!sourceMovable && !targetMovable) {
+      if (!projectionGraph.getNode(data.source) || !projectionGraph.getNode(data.target)) {
         continue;
       }
-      const sourceData = nodeDataById.get(data.source);
-      const targetData = nodeDataById.get(data.target);
-      const sourceNode = {
-        id: data.source,
-        ...positionedNodes.get(data.source),
-        radius: resolveNodeRadius(sourceData),
-        normalizedRank: canonicalNodeIds.has(data.source) ? engine.getNodeById(data.source)?.normalizedRank ?? 0.5 : 0.5,
-        attractionStrength: canonicalNodeIds.has(data.source) ? engine.getNodeById(data.source)?.attractionStrength ?? engine.config.baseAttraction : engine.config.baseAttraction,
-      };
-      const targetNode = {
-        id: data.target,
-        ...positionedNodes.get(data.target),
-        radius: resolveNodeRadius(targetData),
-        normalizedRank: canonicalNodeIds.has(data.target) ? engine.getNodeById(data.target)?.normalizedRank ?? 0.5 : 0.5,
-        attractionStrength: canonicalNodeIds.has(data.target) ? engine.getNodeById(data.target)?.attractionStrength ?? engine.config.baseAttraction : engine.config.baseAttraction,
-      };
-      const { dx, dy, centerDistance, radiusSum } = pairGeometry(sourceNode, targetNode);
-      const desiredSurfaceDistance =
-        engine.config.preferredEdgeLength +
-        (1 - ((sourceNode.normalizedRank + targetNode.normalizedRank) * 0.5)) * engine.config.edgeLengthRankScale;
-      const desiredCenterDistance = radiusSum + desiredSurfaceDistance;
-      const attractionStrength = ((sourceNode.attractionStrength + targetNode.attractionStrength) * 0.5);
-      const springForce = attractionStrength * (centerDistance - desiredCenterDistance);
-      const fx = (dx / centerDistance) * springForce;
-      const fy = (dy / centerDistance) * springForce;
-      if (sourceMovable) {
-        forces.get(data.source).x += fx;
-        forces.get(data.source).y += fy;
-      }
-      if (targetMovable) {
-        forces.get(data.target).x -= fx;
-        forces.get(data.target).y -= fy;
+      projectionGraph.addLink(data.source, data.target, { edgeId: data.id });
+    }
+
+    for (const nodeId of allProjectedNodeIds) {
+      const position = positionedNodes.get(nodeId);
+      projectionLayout.setNodePosition(nodeId, position.x, position.y);
+      projectionLayout.pinNode(projectionGraph.getNode(nodeId), !movableSet.has(nodeId));
+    }
+
+    let steps = 0;
+    let stable = false;
+    while (steps < 180) {
+      stable = projectionLayout.step();
+      steps += 1;
+      if (steps >= 48 && (stable || (projectionLayout.lastMove ?? Infinity) <= 0.0035)) {
+        break;
       }
     }
 
-    for (const nodeId of projectedDynamicNodeIds) {
-      const velocity = projectedVelocities.get(nodeId);
-      const force = forces.get(nodeId);
-      velocity.x = (velocity.x + force.x) * 0.68;
-      velocity.y = (velocity.y + force.y) * 0.68;
-      const clamped = clampMagnitude(velocity.x, velocity.y, 8);
-      velocity.x = clamped.x;
-      velocity.y = clamped.y;
-      const currentPosition = positionedNodes.get(nodeId);
+    for (const nodeId of projectedMovableNodeIds) {
+      const position = projectionLayout.getNodePosition(nodeId);
       const nextNode = {
         id: nodeId,
-        x: currentPosition.x + velocity.x,
-        y: currentPosition.y + velocity.y,
+        x: position.x,
+        y: position.y,
         radius: resolveNodeRadius(nodeDataById.get(nodeId)),
       };
       const obstacles = Array.from(positionedNodes.entries())
         .filter(([otherId]) => otherId !== nodeId)
-        .map(([otherId, position]) => ({
+        .map(([otherId, otherPosition]) => ({
           id: otherId,
-          x: position.x,
-          y: position.y,
+          x: movableSet.has(otherId) ? projectionLayout.getNodePosition(otherId).x : otherPosition.x,
+          y: movableSet.has(otherId) ? projectionLayout.getNodePosition(otherId).y : otherPosition.y,
           radius: resolveNodeRadius(nodeDataById.get(otherId)),
         }));
-      engine.moveNodeOutsideObstacles(nextNode, obstacles, `projected-blank:${iteration}:${nodeId}`);
+      engine.moveNodeOutsideObstacles(nextNode, obstacles, `projected-ngraph:${nodeId}`);
       positionedNodes.set(nodeId, {
         x: nextNode.x,
         y: nextNode.y,

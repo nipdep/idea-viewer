@@ -5,3 +5,4 @@ node_modules/
 
 # ignore dist folder
 dist/*
+temp/

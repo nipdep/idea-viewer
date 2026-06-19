@@ -22,9 +22,10 @@ const DEFAULT_CONFIG = Object.freeze({
   finalConstraintPasses: 18,
   fixedNodeSearchPadding: 260,
   spatialCellSize: 240,
-  ngraphStepsPerBatch: 120,
-  ngraphMaxBatchTimeMs: 20,
-  ngraphStepMovementThreshold: 0.015,
+  ngraphStepsPerBatch: 480,
+  ngraphMinStepsPerBatch: 120,
+  ngraphMaxBatchTimeMs: 64,
+  ngraphStepMovementThreshold: 0.0025,
   ngraphSpringLength: 130,
   ngraphSpringCoefficient: 0.75,
   ngraphGravity: -18,
@@ -664,12 +665,20 @@ export class NgraphIncrementalLayout {
     let steps = 0;
     let stable = false;
     while (
-      !stable &&
       steps < this.config.ngraphStepsPerBatch &&
       performance.now() - startedAt < this.config.ngraphMaxBatchTimeMs
     ) {
       stable = this.layout.step();
       steps += 1;
+
+      if (steps < this.config.ngraphMinStepsPerBatch) {
+        continue;
+      }
+
+      if (stable) {
+        break;
+      }
+
       if ((this.layout.lastMove ?? Infinity) <= this.config.ngraphStepMovementThreshold) {
         break;
       }

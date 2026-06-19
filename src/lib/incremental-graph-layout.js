@@ -1283,8 +1283,9 @@ export function applyLayoutPositions(elements, engine) {
 
   if (projectedMovableNodeIds.length > 0) {
     const projectionGraph = createGraph();
-    const movableSet = new Set(projectedMovableNodeIds);
     const allProjectedNodeIds = Array.from(positionedNodes.keys());
+    const movableSet = new Set(allProjectedNodeIds);
+    const nodeRadiusMap = new Map(allProjectedNodeIds.map((nodeId) => [nodeId, resolveNodeRadius(nodeDataById.get(nodeId))]));
 
     const nodeMass = (nodeId) => {
       const canonicalNode = canonicalNodeIds.has(nodeId) ? engine.getNodeById(nodeId) : null;
@@ -1294,30 +1295,26 @@ export function applyLayoutPositions(elements, engine) {
 
     const projectionLayout = createForceLayout(projectionGraph, {
       springLength: engine.config.preferredEdgeLength,
-      springCoefficient: 0.75,
-      gravity: -18,
-      theta: 0.9,
-      dragCoefficient: 0.12,
-      timeStep: 0.45,
+      springCoefficient: 0.6,
+      gravity: -28,
+      theta: 0.95,
+      dragCoefficient: 0.16,
+      timeStep: 0.5,
       adaptiveTimeStepWeight: 0,
       nodeMass,
       springTransform: (link, spring) => {
-        const sourceData = nodeDataById.get(link.fromId);
-        const targetData = nodeDataById.get(link.toId);
-        const sourceRadius = resolveNodeRadius(sourceData);
-        const targetRadius = resolveNodeRadius(targetData);
+        const sourceRadius = nodeRadiusMap.get(link.fromId) ?? 0;
+        const targetRadius = nodeRadiusMap.get(link.toId) ?? 0;
         spring.length = engine.config.preferredEdgeLength + sourceRadius + targetRadius;
-        spring.coefficient = 0.75;
+        spring.coefficient = 0.6;
       },
     });
 
     for (const nodeId of allProjectedNodeIds) {
       const position = positionedNodes.get(nodeId);
-      const layoutNode = projectionGraph.addNode(nodeId, {
-        isPinned: !movableSet.has(nodeId),
-      });
+      const layoutNode = projectionGraph.addNode(nodeId, { isPinned: false });
       layoutNode.position = { x: position.x, y: position.y };
-      layoutNode.isPinned = !movableSet.has(nodeId);
+      layoutNode.isPinned = false;
     }
 
     for (const edgeElement of resolvedEdgeList) {
@@ -1331,40 +1328,93 @@ export function applyLayoutPositions(elements, engine) {
     for (const nodeId of allProjectedNodeIds) {
       const position = positionedNodes.get(nodeId);
       projectionLayout.setNodePosition(nodeId, position.x, position.y);
-      projectionLayout.pinNode(projectionGraph.getNode(nodeId), !movableSet.has(nodeId));
+      projectionLayout.pinNode(projectionGraph.getNode(nodeId), false);
     }
+
+    projectionLayout.simulator.addForce('surfaceRepulsion', () => {
+      for (let leftIndex = 0; leftIndex < allProjectedNodeIds.length; leftIndex += 1) {
+        const leftId = allProjectedNodeIds[leftIndex];
+        const leftBody = projectionLayout.getBody(leftId);
+        const leftRadius = nodeRadiusMap.get(leftId) ?? 0;
+        if (!leftBody) {
+          continue;
+        }
+        for (let rightIndex = leftIndex + 1; rightIndex < allProjectedNodeIds.length; rightIndex += 1) {
+          const rightId = allProjectedNodeIds[rightIndex];
+          const rightBody = projectionLayout.getBody(rightId);
+          const rightRadius = nodeRadiusMap.get(rightId) ?? 0;
+          if (!rightBody) {
+            continue;
+          }
+
+          let dx = rightBody.pos.x - leftBody.pos.x;
+          let dy = rightBody.pos.y - leftBody.pos.y;
+          let distance = Math.hypot(dx, dy);
+          if (distance === 0) {
+            const angle = deterministicAngle(`${leftId}|${rightId}|surface`);
+            dx = Math.cos(angle);
+            dy = Math.sin(angle);
+            distance = 1;
+          }
+
+          const preferred = leftRadius + rightRadius + engine.config.minNodeSpacing;
+          const overlap = preferred - distance;
+          const baseScale = (engine.config.baseRepulsion ?? 3600) * 0.000035;
+          const strength = overlap > 0
+            ? baseScale * (1 + overlap * 0.12)
+            : baseScale * 0.22 / Math.max(distance / Math.max(preferred, 1), 1.15);
+          const fx = (dx / distance) * strength;
+          const fy = (dy / distance) * strength;
+
+          leftBody.force.x -= fx;
+          leftBody.force.y -= fy;
+          rightBody.force.x += fx;
+          rightBody.force.y += fy;
+        }
+      }
+    });
 
     let steps = 0;
     let stable = false;
-    while (steps < 180) {
+    while (steps < 260) {
       stable = projectionLayout.step();
       steps += 1;
-      if (steps >= 48 && (stable || (projectionLayout.lastMove ?? Infinity) <= 0.0035)) {
+      if (steps >= 96 && (stable || (projectionLayout.lastMove ?? Infinity) <= 0.0025)) {
         break;
       }
     }
 
-    for (const nodeId of projectedMovableNodeIds) {
+    for (const nodeId of allProjectedNodeIds) {
       const position = projectionLayout.getNodePosition(nodeId);
-      const nextNode = {
-        id: nodeId,
+      positionedNodes.set(nodeId, {
         x: position.x,
         y: position.y,
-        radius: resolveNodeRadius(nodeDataById.get(nodeId)),
-      };
-      const obstacles = Array.from(positionedNodes.entries())
-        .filter(([otherId]) => otherId !== nodeId)
-        .map(([otherId, otherPosition]) => ({
-          id: otherId,
-          x: movableSet.has(otherId) ? projectionLayout.getNodePosition(otherId).x : otherPosition.x,
-          y: movableSet.has(otherId) ? projectionLayout.getNodePosition(otherId).y : otherPosition.y,
-          radius: resolveNodeRadius(nodeDataById.get(otherId)),
-        }));
-      engine.moveNodeOutsideObstacles(nextNode, obstacles, `projected-ngraph:${nodeId}`);
-      positionedNodes.set(nodeId, {
-        x: nextNode.x,
-        y: nextNode.y,
       });
+    }
+
+    for (let pass = 0; pass < 4; pass += 1) {
+      let moved = false;
+      for (const nodeId of allProjectedNodeIds) {
+        const nextNode = {
+          id: nodeId,
+          x: positionedNodes.get(nodeId).x,
+          y: positionedNodes.get(nodeId).y,
+          radius: nodeRadiusMap.get(nodeId) ?? resolveNodeRadius(nodeDataById.get(nodeId)),
+        };
+        const obstacles = allProjectedNodeIds
+          .filter((otherId) => otherId !== nodeId)
+          .map((otherId) => ({
+            id: otherId,
+            x: positionedNodes.get(otherId).x,
+            y: positionedNodes.get(otherId).y,
+            radius: nodeRadiusMap.get(otherId) ?? resolveNodeRadius(nodeDataById.get(otherId)),
+          }));
+        moved = engine.moveNodeOutsideObstacles(nextNode, obstacles, `projected-ngraph:${pass}:${nodeId}`) || moved;
+        positionedNodes.set(nodeId, { x: nextNode.x, y: nextNode.y });
+      }
+      if (!moved) {
+        break;
+      }
     }
   }
 

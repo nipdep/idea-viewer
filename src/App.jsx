@@ -11,6 +11,7 @@ import {
 } from './lib/view-projections';
 import { applyLayoutPositions, IncrementalGraphLayout } from './lib/incremental-graph-layout';
 import { NgraphIncrementalLayout } from './lib/ngraph-incremental-layout';
+import { exportTelemetrySession, telemetry } from './telemetry';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -1193,6 +1194,19 @@ export default function App() {
   const edgeCurveOverridesRef = useRef(new Map());
   const initialGraphStyleJsonRef = useRef(null);
   const graphSearchSessionRef = useRef(null);
+  const pendingRenderSpanRef = useRef(null);
+  const pendingFirstViewSpanRef = useRef(null);
+  const layoutSpanRef = useRef(null);
+  const settleSpanRef = useRef(null);
+  const graphSearchInputAtRef = useRef(0);
+  const graphSearchTelemetrySignatureRef = useRef('');
+  const graphSearchMetricsRef = useRef({
+    durationMs: 0,
+    matchCount: 0,
+    queryLength: 0,
+  });
+  const zoomInteractionRef = useRef(null);
+  const telemetryContextRef = useRef({});
 
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [graphData, setGraphData] = useState(null);
@@ -1305,8 +1319,14 @@ export default function App() {
   );
   const isHighContrastGraph = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
   const graphSearchMatches = useMemo(() => {
+    const startedAt = performance.now();
     const normalizedQuery = normalizeSearchText(debouncedGraphSearchQuery);
     if (!normalizedQuery) {
+      graphSearchMetricsRef.current = {
+        durationMs: 0,
+        matchCount: 0,
+        queryLength: 0,
+      };
       return [];
     }
 
@@ -1316,7 +1336,7 @@ export default function App() {
         .map((entry) => entry.data.id),
     );
 
-    return (graphData?.nodes ?? []).filter((node) => {
+    const matches = (graphData?.nodes ?? []).filter((node) => {
       if (!searchableNodeIds.has(node.id)) {
         return false;
       }
@@ -1328,11 +1348,40 @@ export default function App() {
       }
       return doesNodeMatchSearchQuery(node, normalizedQuery);
     });
+    graphSearchMetricsRef.current = {
+      durationMs: Number((performance.now() - startedAt).toFixed(3)),
+      matchCount: matches.length,
+      queryLength: debouncedGraphSearchQuery.trim().length,
+    };
+    return matches;
   }, [debouncedGraphSearchQuery, graphData, visibleElements]);
   const activeGraphSearchMatch =
     graphSearchMatches.length > 0 ? graphSearchMatches[graphSearchActiveIndex] ?? graphSearchMatches[0] : null;
 
   const buildProjectionCacheKey = (projectionMode, projectionLevel) => `${projectionMode}:${projectionLevel}`;
+  const countRenderableElements = (elements) => {
+    const renderedNodeCount = elements.filter(
+      (entry) => !entry?.data?.source && entry?.data?.edgeAnchor !== 1 && entry?.data?.edgeBendHandle !== 1,
+    ).length;
+    const renderedEdgeCount = elements.filter(
+      (entry) => entry?.data?.source && entry?.data?.edgeAnchorTether !== 1,
+    ).length;
+    return {
+      renderedNodeCount,
+      renderedEdgeCount,
+    };
+  };
+  const buildTelemetryContext = (elements = visibleElements, extra = {}) => ({
+    projectionMode: graphProjectionMode,
+    projectionLevel:
+      graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? rdfProjectionLevel : owlProjectionLevel,
+    datasetTripletCount: graphData?.store?.size ?? 0,
+    visibleTripletCount: graphData?.store?.size ?? 0,
+    graphFilterAxis,
+    ...countRenderableElements(elements),
+    ...extra,
+  });
+  telemetryContextRef.current = buildTelemetryContext();
   const getPositionedProjectionElements = (rawElements) => {
     if (!Array.isArray(rawElements)) {
       return [];
@@ -1535,6 +1584,15 @@ export default function App() {
     } catch (error) {
       setStatus(`Export failed: ${error.message || 'Unexpected export error.'}`);
     }
+  }
+
+  function handleTelemetryExport() {
+    if (!exportTelemetrySession(telemetry)) {
+      setStatus('Telemetry export is disabled.');
+      return;
+    }
+    setStatus(`Exported telemetry log ${telemetry.session.fileName}.`);
+    setIsExportMenuOpen(false);
   }
 
   function fitCurrentGraphViewport(cy, duration = 250) {
@@ -3785,6 +3843,24 @@ export default function App() {
       setMultiClassBadgeTooltip(null);
       setRestrictionNodeTooltip(null);
       setHoverTooltip(null);
+      const activeZoomInteraction = zoomInteractionRef.current;
+      if (activeZoomInteraction) {
+        activeZoomInteraction.lastZoom = cy.zoom();
+        if (activeZoomInteraction.timeoutId !== null) {
+          window.clearTimeout(activeZoomInteraction.timeoutId);
+        }
+        activeZoomInteraction.timeoutId = window.setTimeout(() => {
+          activeZoomInteraction.span.end({
+            context: {
+              ...telemetryContextRef.current,
+              fromZoom: activeZoomInteraction.fromZoom,
+              toZoom: activeZoomInteraction.lastZoom,
+              zoomDelta: Number((activeZoomInteraction.lastZoom - activeZoomInteraction.fromZoom).toFixed(4)),
+            },
+          });
+          zoomInteractionRef.current = null;
+        }, 80);
+      }
     });
 
     const container = cy.container();
@@ -3855,11 +3931,23 @@ export default function App() {
         event.preventDefault();
       }
     };
+    const onWheel = () => {
+      if (zoomInteractionRef.current) {
+        return;
+      }
+      zoomInteractionRef.current = {
+        fromZoom: cy.zoom(),
+        lastZoom: cy.zoom(),
+        timeoutId: null,
+        span: telemetry.startSpan('interaction.zoom.latency', telemetryContextRef.current),
+      };
+    };
 
     container.addEventListener('mousedown', onMouseDownCapture, true);
     container.addEventListener('mousemove', onMouseMove);
     container.addEventListener('mouseleave', onMouseLeave);
     container.addEventListener('contextmenu', onContextMenu);
+    container.addEventListener('wheel', onWheel, { passive: true });
 
     cyRef.current = cy;
     if (!initialGraphStyleJsonRef.current && typeof cy.style().json === 'function') {
@@ -3871,6 +3959,7 @@ export default function App() {
       container.removeEventListener('mousemove', onMouseMove);
       container.removeEventListener('mouseleave', onMouseLeave);
       container.removeEventListener('contextmenu', onContextMenu);
+      container.removeEventListener('wheel', onWheel);
       groupDragStateRef.current = null;
       groupDragArmRef.current = null;
       shouldFitAfterFocusClearRef.current = false;
@@ -3878,6 +3967,11 @@ export default function App() {
       detachedPanModeRef.current = false;
       detachedPanLastMouseRef.current = null;
       suppressNextTapRef.current = false;
+      if (zoomInteractionRef.current?.timeoutId !== null) {
+        window.clearTimeout(zoomInteractionRef.current.timeoutId);
+      }
+      zoomInteractionRef.current?.span.fail(new Error('Zoom interaction cancelled'));
+      zoomInteractionRef.current = null;
       cyRef.current = null;
       cy.destroy();
     };
@@ -3897,6 +3991,30 @@ export default function App() {
       window.clearTimeout(timeoutId);
     };
   }, [isGraphSearchOpen, graphSearchQuery]);
+
+  useEffect(() => {
+    if (!isGraphSearchOpen || !debouncedGraphSearchQuery.trim()) {
+      graphSearchTelemetrySignatureRef.current = '';
+      return;
+    }
+
+    const signature = `${debouncedGraphSearchQuery}|${graphSearchActiveIndex}|${graphSearchMatches.length}`;
+    if (graphSearchTelemetrySignatureRef.current === signature) {
+      return;
+    }
+    graphSearchTelemetrySignatureRef.current = signature;
+
+    const perceivedLatencyMs =
+      graphSearchInputAtRef.current > 0 ? Number((performance.now() - graphSearchInputAtRef.current).toFixed(3)) : 0;
+    telemetry.recordEvent('search.compute', {
+      searchKind: 'graph-search',
+      queryLength: graphSearchMetricsRef.current.queryLength,
+      matchCount: graphSearchMetricsRef.current.matchCount,
+      computeDurationMs: graphSearchMetricsRef.current.durationMs,
+      perceivedLatencyMs,
+      ...buildTelemetryContext(),
+    });
+  }, [isGraphSearchOpen, debouncedGraphSearchQuery, graphSearchMatches, graphSearchActiveIndex]);
 
   useEffect(() => {
     if (!isGraphSearchOpen) {
@@ -4197,6 +4315,8 @@ export default function App() {
     canonicalLayoutEngineRef.current = null;
     setLayoutRevision((current) => current + 1);
     setIsLayouting(false);
+    layoutSpanRef.current = null;
+    settleSpanRef.current = null;
 
     if (!graphData) {
       return undefined;
@@ -4209,6 +4329,14 @@ export default function App() {
     });
     canonicalLayoutEngineRef.current = engine;
     setIsLayouting(true);
+    layoutSpanRef.current = telemetry.startSpan('layout.compute.total', buildTelemetryContext([], {
+      datasetTripletCount: graphData.store?.size ?? 0,
+      layoutBackend: CANONICAL_LAYOUT_BACKEND,
+    }));
+    settleSpanRef.current = telemetry.startSpan('view.settle.total', buildTelemetryContext([], {
+      datasetTripletCount: graphData.store?.size ?? 0,
+      layoutBackend: CANONICAL_LAYOUT_BACKEND,
+    }));
 
     let cancelled = false;
     let timeoutId = null;
@@ -4238,6 +4366,29 @@ export default function App() {
 
       if (engine.isComplete()) {
         setIsLayouting(false);
+        const layoutSpan = layoutSpanRef.current;
+        layoutSpanRef.current = null;
+        layoutSpan?.end(buildTelemetryContext(visibleElements, {
+          layoutBackend: CANONICAL_LAYOUT_BACKEND,
+        }));
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (cancelled) {
+              return;
+            }
+            const settleSpan = settleSpanRef.current;
+            settleSpanRef.current = null;
+            settleSpan?.end(buildTelemetryContext(visibleElements, {
+              layoutBackend: CANONICAL_LAYOUT_BACKEND,
+            }));
+            void telemetry.captureMemory({
+              phase: 'post-layout-settle',
+              ...buildTelemetryContext(visibleElements, {
+                layoutBackend: CANONICAL_LAYOUT_BACKEND,
+              }),
+            });
+          });
+        });
         return;
       }
 
@@ -4251,6 +4402,10 @@ export default function App() {
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId);
       }
+      layoutSpanRef.current?.fail(new Error('Layout cancelled'));
+      settleSpanRef.current?.fail(new Error('Settle cancelled'));
+      layoutSpanRef.current = null;
+      settleSpanRef.current = null;
     };
   }, [graphData]);
 
@@ -4352,6 +4507,12 @@ export default function App() {
         }
         cacheCurrentPositions();
         hasAppliedInitialLayoutRef.current = true;
+        const renderSpan = pendingRenderSpanRef.current;
+        pendingRenderSpanRef.current = null;
+        renderSpan?.end(buildTelemetryContext(visibleElements));
+        const firstViewSpan = pendingFirstViewSpanRef.current;
+        pendingFirstViewSpanRef.current = null;
+        firstViewSpan?.end(buildTelemetryContext(visibleElements));
       }, 0),
       setTimeout(() => {
         if (cy.destroyed()) {
@@ -4513,6 +4674,13 @@ export default function App() {
     const applyFilters = async () => {
       setIsFiltering(true);
       setFilterError('');
+      const filterSpan = telemetry.startSpan('filter.apply.total', buildTelemetryContext([], {
+        hasClassFilter: selectedClassIris.length > 0,
+        hasBaseIriFilter: selectedBaseIris.length > 0,
+        hasGraphAxisFilter: graphFilterAxis !== GRAPH_FILTER_AXES.ALL,
+        hasNodeNameFilter: nodeNameQuery.trim().length > 0,
+        hasSparqlFilter: sparqlQuery.trim().length > 0,
+      }));
 
       try {
         const currentProjectionLevel =
@@ -4520,6 +4688,9 @@ export default function App() {
         const viewOptions = toViewOptions(graphProjectionMode, graphData, owlProjectionLevel, rdfProjectionLevel);
         const currentProjectionCacheKey = buildProjectionCacheKey(graphProjectionMode, currentProjectionLevel);
         const projectElements = (focusedNodeIds = null) => {
+          const projectionSpan = telemetry.startSpan('view.projection.build', buildTelemetryContext([], {
+            focusedNodeCount: Array.isArray(focusedNodeIds) ? focusedNodeIds.length : 0,
+          }));
           let rawProjected;
           if (!focusedNodeIds) {
             const cachedProjected = projectedElementsCacheRef.current.get(currentProjectionCacheKey);
@@ -4543,7 +4714,11 @@ export default function App() {
           }
 
           const projected = getPositionedProjectionElements(rawProjected);
-          return filterProjectedElementsByGraphAxis(projected, graphFilterAxis);
+          const filteredProjection = filterProjectedElementsByGraphAxis(projected, graphFilterAxis);
+          projectionSpan.end(buildTelemetryContext(filteredProjection, {
+            focusedNodeCount: Array.isArray(focusedNodeIds) ? focusedNodeIds.length : 0,
+          }));
+          return filteredProjection;
         };
         const classFilterActive =
           showClassTypeFilter &&
@@ -4557,12 +4732,20 @@ export default function App() {
 
         if (!classFilterActive && !baseIriFilterActive && !graphAxisActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
-            setVisibleElements(
-              applyEdgeCurveOverrides(
-                projectElements(null),
-                edgeCurveOverridesRef.current,
-              ),
+            const nextVisibleElements = applyEdgeCurveOverrides(
+              projectElements(null),
+              edgeCurveOverridesRef.current,
             );
+            pendingRenderSpanRef.current = telemetry.startSpan('view.render.apply', buildTelemetryContext(nextVisibleElements));
+            if (!pendingFirstViewSpanRef.current && !hasAppliedInitialLayoutRef.current) {
+              pendingFirstViewSpanRef.current = telemetry.startSpan('view.first_render.total', buildTelemetryContext(nextVisibleElements));
+            }
+            setVisibleElements(nextVisibleElements);
+            filterSpan.end({
+              context: buildTelemetryContext(nextVisibleElements, {
+                resultEntityCount: 0,
+              }),
+            });
           }
           return;
         }
@@ -4571,42 +4754,86 @@ export default function App() {
         let selectedEntities = null;
 
         if (baseIriFilterActive) {
+          const baseFilterSpan = telemetry.startSpan('filter.baseIri', buildTelemetryContext());
           selectedEntities = runBaseIriFilter(graphData, selectedBaseIris);
+          baseFilterSpan.end({
+            context: {
+              resultEntityCount: selectedEntities.size,
+            },
+          });
         }
 
         if (graphAxisActive) {
+          const axisFilterSpan = telemetry.startSpan('filter.graphAxis', buildTelemetryContext());
           const axisMatches = runGraphAxisFilter(graphData, graphFilterAxis);
+          axisFilterSpan.end({
+            context: {
+              resultEntityCount: axisMatches.size,
+            },
+          });
           selectedEntities = selectedEntities ? intersectSets(selectedEntities, axisMatches) : axisMatches;
         }
 
         if (classFilterActive) {
+          const classFilterSpan = telemetry.startSpan('filter.class', buildTelemetryContext());
           const classMatches = expandClassFilterMatches(
             graphData,
             runClassFilter(graphData, selectedClassIris),
           );
+          classFilterSpan.end({
+            context: {
+              resultEntityCount: classMatches.size,
+            },
+          });
           selectedEntities = selectedEntities ? intersectSets(selectedEntities, classMatches) : classMatches;
         }
 
         if (nodeNameFilterActive) {
+          const nodeNameFilterSpan = telemetry.startSpan('filter.nodeName', buildTelemetryContext());
           const nameMatches = runNodeNameFilter(graphData, nodeNameQuery);
+          nodeNameFilterSpan.end({
+            context: {
+              resultEntityCount: nameMatches.size,
+            },
+          });
           selectedEntities = selectedEntities ? intersectSets(selectedEntities, nameMatches) : nameMatches;
         }
 
         if (sparqlActive) {
+          const sparqlFilterSpan = telemetry.startSpan('filter.sparql.total', buildTelemetryContext([], {
+            queryLength: sparqlQuery.trim().length,
+          }));
           const sparqlResult = await runSparqlFilter(engine, graphData.store, sparqlQuery);
+          sparqlFilterSpan.end({
+            context: {
+              resultEntityCount: sparqlResult.size,
+              queryLength: sparqlQuery.trim().length,
+            },
+          });
           selectedEntities = selectedEntities ? intersectSets(selectedEntities, sparqlResult) : sparqlResult;
         }
 
         if (!cancelled) {
-          setVisibleElements(
-            applyEdgeCurveOverrides(
-              projectElements(selectedEntities),
-              edgeCurveOverridesRef.current,
-            ),
+          const nextVisibleElements = applyEdgeCurveOverrides(
+            projectElements(selectedEntities),
+            edgeCurveOverridesRef.current,
           );
+          pendingRenderSpanRef.current = telemetry.startSpan('view.render.apply', buildTelemetryContext(nextVisibleElements));
+          if (!pendingFirstViewSpanRef.current && !hasAppliedInitialLayoutRef.current) {
+            pendingFirstViewSpanRef.current = telemetry.startSpan('view.first_render.total', buildTelemetryContext(nextVisibleElements));
+          }
+          setVisibleElements(nextVisibleElements);
+          filterSpan.end({
+            context: buildTelemetryContext(nextVisibleElements, {
+              resultEntityCount: selectedEntities?.size ?? 0,
+            }),
+          });
         }
       } catch (error) {
         if (!cancelled) {
+          filterSpan.fail(error, {
+            context: buildTelemetryContext(),
+          });
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(
             applyEdgeCurveOverrides(
@@ -4739,8 +4966,15 @@ export default function App() {
       setLoadError('');
       setFilterError('');
       setOntologyMetadataRows([]);
+      const loadSpan = telemetry.startSpan('dataset.load.total', {
+        uploadedFileCount: uploadedFiles.length,
+        fileSizes: uploadedFiles.map((file) => file.size),
+      });
 
       try {
+        const readSpan = telemetry.startSpan('dataset.read_and_parse', {
+          uploadedFileCount: uploadedFiles.length,
+        });
         const parsedFiles = await Promise.all(
           uploadedFiles.map(async (file) => {
             const text = await file.text();
@@ -4749,6 +4983,7 @@ export default function App() {
             return { fileName: file.name, headerQuads, contentQuads };
           }),
         );
+        readSpan.end();
 
         if (cancelled) {
           return;
@@ -4771,7 +5006,14 @@ export default function App() {
           });
         }
 
+        const modelSpan = telemetry.startSpan('dataset.model.extract', {
+          datasetTripletCount: mergedQuads.length,
+        });
         const ontologyModel = extractOntologyModel(mergedQuads);
+        modelSpan.end();
+        const graphBuildSpan = telemetry.startSpan('dataset.graph.build', {
+          datasetTripletCount: mergedQuads.length,
+        });
         const nextGraphData = buildGraphData(mergedQuads, {
           // Stop classifying uploads as "ontology" vs "KG".
           // We always render uploaded data through the ontology-style path,
@@ -4779,6 +5021,13 @@ export default function App() {
           hasKg: false,
           hasOntology: true,
           ontologyModel,
+        });
+        graphBuildSpan.end({
+          context: {
+            datasetTripletCount: mergedQuads.length,
+            nodeCount: nextGraphData.nodes.length,
+            edgeCount: nextGraphData.edges.length,
+          },
         });
         const derivedPrefixRows = nextGraphData.baseIris.map((entry, index) => {
           const prefix = getPrefixFromBaseIri(entry.id);
@@ -4813,10 +5062,26 @@ export default function App() {
         setStatus(
           `Loaded ${nextGraphData.nodes.length} nodes and ${nextGraphData.edges.length} edges from ${uploadedFiles.length} file${uploadedFiles.length === 1 ? '' : 's'}`,
         );
+        loadSpan.end({
+          context: {
+            datasetTripletCount: mergedQuads.length,
+            nodeCount: nextGraphData.nodes.length,
+            edgeCount: nextGraphData.edges.length,
+          },
+        });
+        void telemetry.captureMemory({
+          phase: 'post-dataset-load',
+          datasetTripletCount: mergedQuads.length,
+        });
       } catch (error) {
         if (cancelled) {
           return;
         }
+        loadSpan.fail(error, {
+          context: {
+            uploadedFileCount: uploadedFiles.length,
+          },
+        });
         setLoadError(error.message || 'Unable to parse one of the uploaded files.');
         setOntologyMetadataRows([]);
       } finally {
@@ -5096,6 +5361,7 @@ export default function App() {
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
   const settingsButtonLabel = isSettingsOpen ? 'Hide graph settings' : 'Show graph settings';
   const hasExportableGraph = visibleElements.length > 0;
+  const canOpenExportMenu = hasExportableGraph || telemetry.enabled;
   const graphSearchMatchCount = graphSearchMatches.length;
   const graphSearchCounterLabel =
     graphSearchMatchCount > 0 && activeGraphSearchMatch
@@ -5772,6 +6038,7 @@ export default function App() {
                       type="text"
                       value={graphSearchQuery}
                       onChange={(event) => {
+                        graphSearchInputAtRef.current = performance.now();
                         setGraphSearchQuery(event.target.value);
                         setGraphSearchActiveIndex(0);
                       }}
@@ -5867,7 +6134,7 @@ export default function App() {
                 aria-label={exportButtonLabel}
                 title={exportButtonLabel}
                 aria-pressed={isExportMenuOpen}
-                disabled={!hasExportableGraph}
+                disabled={!canOpenExportMenu}
               >
                 <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                   <path
@@ -5886,20 +6153,23 @@ export default function App() {
                 </svg>
               </button>
 
-              {isExportMenuOpen && hasExportableGraph && (
+              {isExportMenuOpen && canOpenExportMenu && (
                 <div className="graph-export-popover" role="dialog" aria-label="Export current view">
                   <div className="graph-export-title">Export current view</div>
                   <div className="graph-export-actions">
-                    <button type="button" className="graph-export-action" onClick={() => handleExport('csv')}>
+                    <button type="button" className="graph-export-action" onClick={() => handleTelemetryExport()}>
+                      Telemetry log
+                    </button>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('csv')} disabled={!hasExportableGraph}>
                       CSV
                     </button>
-                    <button type="button" className="graph-export-action" onClick={() => handleExport('ttl')}>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('ttl')} disabled={!hasExportableGraph}>
                       TTL
                     </button>
-                    <button type="button" className="graph-export-action" onClick={() => handleExport('png')}>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('png')} disabled={!hasExportableGraph}>
                       PNG
                     </button>
-                    <button type="button" className="graph-export-action" onClick={() => handleExport('html')}>
+                    <button type="button" className="graph-export-action" onClick={() => handleExport('html')} disabled={!hasExportableGraph}>
                       HTML
                     </button>
                   </div>

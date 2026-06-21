@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { telemetry } from './telemetry';
 
 const rootElement = document.getElementById('root');
 
@@ -112,25 +113,42 @@ class AppErrorBoundary extends React.Component {
 }
 
 async function boot() {
-  const [{ default: App }, { Analytics }] = await Promise.all([
-    import('./App'),
-    import('@vercel/analytics/react'),
-  ]);
-  const analyticsEnabledByEnv = ['1', 'true', 'yes', 'on'].includes(
-    String(import.meta.env.VITE_ENABLE_VERCEL_ANALYTICS ?? '')
-      .trim()
-      .toLowerCase(),
-  );
-  const enableVercelAnalytics =
-    import.meta.env.PROD && __VERCEL_DEPLOYMENT__ && analyticsEnabledByEnv;
+  const startupSpan = telemetry.startSpan('app.startup.total');
+  const importsSpan = telemetry.startSpan('app.startup.imports');
 
-  reactStarted = true;
-  ReactDOM.createRoot(rootElement).render(
-    <AppErrorBoundary>
-      <App />
-      {enableVercelAnalytics ? <Analytics mode="production" /> : null}
-    </AppErrorBoundary>,
-  );
+  try {
+    const [{ default: App }, { Analytics }] = await Promise.all([
+      import('./App'),
+      import('@vercel/analytics/react'),
+    ]);
+    importsSpan.end();
+    const analyticsEnabledByEnv = ['1', 'true', 'yes', 'on'].includes(
+      String(import.meta.env.VITE_ENABLE_VERCEL_ANALYTICS ?? '')
+        .trim()
+        .toLowerCase(),
+    );
+    const enableVercelAnalytics =
+      import.meta.env.PROD && __VERCEL_DEPLOYMENT__ && analyticsEnabledByEnv;
+
+    reactStarted = true;
+    ReactDOM.createRoot(rootElement).render(
+      <AppErrorBoundary>
+        <App />
+        {enableVercelAnalytics ? <Analytics mode="production" /> : null}
+      </AppErrorBoundary>,
+    );
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resolve);
+      });
+    });
+    startupSpan.end();
+    void telemetry.captureMemory({ phase: 'post-startup' });
+  } catch (error) {
+    importsSpan.fail(error);
+    startupSpan.fail(error);
+    throw error;
+  }
 }
 
 let reactStarted = false;

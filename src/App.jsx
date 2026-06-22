@@ -1207,6 +1207,8 @@ export default function App() {
   });
   const zoomInteractionRef = useRef(null);
   const telemetryContextRef = useRef({});
+  const firstVisualizationRecordedRef = useRef(false);
+  const previousFilterRunRef = useRef(null);
 
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [graphData, setGraphData] = useState(null);
@@ -1359,6 +1361,17 @@ export default function App() {
     graphSearchMatches.length > 0 ? graphSearchMatches[graphSearchActiveIndex] ?? graphSearchMatches[0] : null;
 
   const buildProjectionCacheKey = (projectionMode, projectionLevel) => `${projectionMode}:${projectionLevel}`;
+  const buildFilterSelectionSignature = () => JSON.stringify({
+    selectedClassIris: [...selectedClassIris].sort(),
+    selectedBaseIris: [...selectedBaseIris].sort(),
+    graphFilterAxis,
+    nodeNameQuery: nodeNameQuery.trim(),
+    sparqlQuery: sparqlQuery.trim(),
+    graphProjectionMode,
+    owlProjectionLevel,
+    rdfProjectionLevel,
+    showClassTypeFilter,
+  });
   const countRenderableElements = (elements) => {
     const renderedNodeCount = elements.filter(
       (entry) => !entry?.data?.source && entry?.data?.edgeAnchor !== 1 && entry?.data?.edgeBendHandle !== 1,
@@ -4006,12 +4019,13 @@ export default function App() {
 
     const perceivedLatencyMs =
       graphSearchInputAtRef.current > 0 ? Number((performance.now() - graphSearchInputAtRef.current).toFixed(3)) : 0;
-    telemetry.recordEvent('search.compute', {
+    telemetry.recordEvent('search.latency', {
       searchKind: 'graph-search',
       queryLength: graphSearchMetricsRef.current.queryLength,
       matchCount: graphSearchMetricsRef.current.matchCount,
       computeDurationMs: graphSearchMetricsRef.current.durationMs,
       perceivedLatencyMs,
+      latencyMs: perceivedLatencyMs,
       ...buildTelemetryContext(),
     });
   }, [isGraphSearchOpen, debouncedGraphSearchQuery, graphSearchMatches, graphSearchActiveIndex]);
@@ -4310,6 +4324,7 @@ export default function App() {
 
   useEffect(() => {
     hasAppliedInitialLayoutRef.current = false;
+    firstVisualizationRecordedRef.current = false;
     layoutPositionCacheRef.current.clear();
     projectedElementsCacheRef.current.clear();
     canonicalLayoutEngineRef.current = null;
@@ -4513,6 +4528,9 @@ export default function App() {
         const firstViewSpan = pendingFirstViewSpanRef.current;
         pendingFirstViewSpanRef.current = null;
         firstViewSpan?.end(buildTelemetryContext(visibleElements));
+        if (firstViewSpan) {
+          firstVisualizationRecordedRef.current = true;
+        }
       }, 0),
       setTimeout(() => {
         if (cy.destroyed()) {
@@ -4674,7 +4692,40 @@ export default function App() {
     const applyFilters = async () => {
       setIsFiltering(true);
       setFilterError('');
+      const graphDataKey = `${graphData?.store?.size ?? 0}:${graphData?.nodes?.length ?? 0}:${graphData?.edges?.length ?? 0}`;
+      const filterSelectionSignature = buildFilterSelectionSignature();
+      const previousFilterRun = previousFilterRunRef.current;
+      let filterTrigger = 'filter-change';
+      if (!previousFilterRun || previousFilterRun.graphDataKey !== graphDataKey) {
+        filterTrigger = 'dataset-load';
+      } else if (
+        previousFilterRun.filterSelectionSignature === filterSelectionSignature &&
+        previousFilterRun.layoutRevision !== layoutRevision
+      ) {
+        filterTrigger = 'layout-sync';
+      } else if (
+        previousFilterRun.graphProjectionMode !== graphProjectionMode ||
+        previousFilterRun.owlProjectionLevel !== owlProjectionLevel ||
+        previousFilterRun.rdfProjectionLevel !== rdfProjectionLevel
+      ) {
+        filterTrigger = 'projection-change';
+      }
+      previousFilterRunRef.current = {
+        graphDataKey,
+        filterSelectionSignature,
+        layoutRevision,
+        graphProjectionMode,
+        owlProjectionLevel,
+        rdfProjectionLevel,
+      };
+      const projectionChangeSpan =
+        filterTrigger === 'projection-change'
+          ? telemetry.startSpan('projection.change.total', buildTelemetryContext([], {
+            filterTrigger,
+          }))
+          : null;
       const filterSpan = telemetry.startSpan('filter.apply.total', buildTelemetryContext([], {
+        filterTrigger,
         hasClassFilter: selectedClassIris.length > 0,
         hasBaseIriFilter: selectedBaseIris.length > 0,
         hasGraphAxisFilter: graphFilterAxis !== GRAPH_FILTER_AXES.ALL,
@@ -4737,14 +4788,18 @@ export default function App() {
               edgeCurveOverridesRef.current,
             );
             pendingRenderSpanRef.current = telemetry.startSpan('view.render.apply', buildTelemetryContext(nextVisibleElements));
-            if (!pendingFirstViewSpanRef.current && !hasAppliedInitialLayoutRef.current) {
+            if (!pendingFirstViewSpanRef.current && !firstVisualizationRecordedRef.current) {
               pendingFirstViewSpanRef.current = telemetry.startSpan('view.first_render.total', buildTelemetryContext(nextVisibleElements));
             }
             setVisibleElements(nextVisibleElements);
+            const successContext = buildTelemetryContext(nextVisibleElements, {
+              resultEntityCount: 0,
+            });
             filterSpan.end({
-              context: buildTelemetryContext(nextVisibleElements, {
-                resultEntityCount: 0,
-              }),
+              context: successContext,
+            });
+            projectionChangeSpan?.end({
+              context: successContext,
             });
           }
           return;
@@ -4823,16 +4878,24 @@ export default function App() {
             pendingFirstViewSpanRef.current = telemetry.startSpan('view.first_render.total', buildTelemetryContext(nextVisibleElements));
           }
           setVisibleElements(nextVisibleElements);
+          const successContext = buildTelemetryContext(nextVisibleElements, {
+            resultEntityCount: selectedEntities?.size ?? 0,
+          });
           filterSpan.end({
-            context: buildTelemetryContext(nextVisibleElements, {
-              resultEntityCount: selectedEntities?.size ?? 0,
-            }),
+            context: successContext,
+          });
+          projectionChangeSpan?.end({
+            context: successContext,
           });
         }
       } catch (error) {
         if (!cancelled) {
+          const failureContext = buildTelemetryContext();
           filterSpan.fail(error, {
-            context: buildTelemetryContext(),
+            context: failureContext,
+          });
+          projectionChangeSpan?.fail(error, {
+            context: failureContext,
           });
           setFilterError(error.message || 'SPARQL filter failed.');
           setVisibleElements(

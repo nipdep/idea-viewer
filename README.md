@@ -369,6 +369,80 @@ Preview production build:
 npm run preview
 ```
 
+## Telemetry Log Analysis
+
+The app can record a per-run telemetry session in memory and export it as a single `.ndjson` file.
+
+### Enable telemetry
+
+Telemetry is enabled by default. To disable it:
+
+```dotenv
+VITE_ENABLE_TELEMETRY=false
+```
+
+### Record a telemetry run
+
+1. Start the app normally:
+
+```bash
+npm run dev
+```
+
+2. Use the app in the way you want to profile:
+   - upload RDF / OWL data
+   - switch RDF / OWL views
+   - apply base filters
+   - run SPARQL filters
+   - search in the graph
+   - zoom and pan
+
+3. Open the graph export menu in the UI.
+4. Click `Telemetry log`.
+
+That downloads one NDJSON file for the current app run.
+
+### Analyze a telemetry log
+
+Run the analysis script on an exported NDJSON file:
+
+```bash
+node scripts/analyze-telemetry-log.mjs "temp/Idea Viewer June 21 2026.ndjson"
+```
+
+Bucket results by node-count ranges:
+
+```bash
+node scripts/analyze-telemetry-log.mjs "temp/Idea Viewer June 21 2026.ndjson" --bucket-size 25
+```
+
+Emit JSON instead of table output:
+
+```bash
+node scripts/analyze-telemetry-log.mjs "temp/Idea Viewer June 21 2026.ndjson" --json
+```
+
+### What the script reports
+
+The script groups metrics by effective node count and prints summary statistics for:
+
+- span durations such as startup, dataset load, view generation, filtering, layout settle, search, and zoom
+- memory usage samples by phase such as post-startup, post-dataset-load, and post-layout-settle
+
+For each group it reports:
+
+- sample count
+- average
+- median
+- p95
+- min
+- max
+
+Important:
+- view/layout/filter metrics are usually grouped by rendered node count
+- dataset-load metrics are usually grouped by dataset node count
+- the script also carries forward the latest dataset triplet count so timing can be interpreted relative to source size
+
 ## Vercel Analytics
 
 `idea* viewer` supports [Vercel Analytics](https://vercel.com/docs/analytics) behind an explicit Vite env flag.

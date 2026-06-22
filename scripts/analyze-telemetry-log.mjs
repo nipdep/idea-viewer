@@ -6,11 +6,11 @@ import path from 'node:path';
 function usage() {
   console.error(
     [
-      'Usage: node scripts/analyze-telemetry-log.mjs <log.ndjson> [--bucket-size N] [--json]',
+      'Usage: node scripts/analyze-telemetry-log.mjs <log.ndjson> [--json]',
       '',
       'Examples:',
       '  node scripts/analyze-telemetry-log.mjs "temp/Idea Viewer June 21 2026.ndjson"',
-      '  node scripts/analyze-telemetry-log.mjs telemetry.ndjson --bucket-size 25',
+      '  node scripts/analyze-telemetry-log.mjs telemetry.ndjson --json',
     ].join('\n'),
   );
 }
@@ -18,20 +18,9 @@ function usage() {
 function parseArgs(argv) {
   const args = argv.slice(2);
   let filePath = null;
-  let bucketSize = 1;
   let json = false;
 
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === '--bucket-size') {
-      const next = Number.parseInt(args[index + 1], 10);
-      if (!Number.isFinite(next) || next <= 0) {
-        throw new Error('Expected a positive integer after --bucket-size');
-      }
-      bucketSize = next;
-      index += 1;
-      continue;
-    }
+  for (const arg of args) {
     if (arg === '--json') {
       json = true;
       continue;
@@ -48,11 +37,7 @@ function parseArgs(argv) {
     process.exit(1);
   }
 
-  return {
-    filePath,
-    bucketSize,
-    json,
-  };
+  return { filePath, json };
 }
 
 function parseNdjson(filePath) {
@@ -74,298 +59,320 @@ function isFiniteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-function createStats() {
-  return {
-    count: 0,
-    sum: 0,
-    min: Infinity,
-    max: -Infinity,
-    values: [],
-  };
+function createSeries() {
+  return [];
 }
 
-function addValue(stats, value) {
-  stats.count += 1;
-  stats.sum += value;
-  stats.min = Math.min(stats.min, value);
-  stats.max = Math.max(stats.max, value);
-  stats.values.push(value);
-}
-
-function finalizeStats(stats) {
-  if (stats.count === 0) {
-    return {
-      count: 0,
-      avg: null,
-      min: null,
-      max: null,
-      median: null,
-      p95: null,
-    };
+function addSeriesValue(series, value) {
+  if (isFiniteNumber(value)) {
+    series.push(value);
   }
+}
 
-  const sorted = [...stats.values].sort((left, right) => left - right);
+function summarizeSeries(values) {
+  if (!values.length) {
+    return null;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const sum = sorted.reduce((acc, value) => acc + value, 0);
   const middle = Math.floor(sorted.length / 2);
-  const percentileIndex = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
-
   return {
-    count: stats.count,
-    avg: stats.sum / stats.count,
-    min: stats.min,
-    max: stats.max,
-    median:
-      sorted.length % 2 === 0
-        ? (sorted[middle - 1] + sorted[middle]) / 2
-        : sorted[middle],
-    p95: sorted[percentileIndex],
+    count: sorted.length,
+    avg: sum / sorted.length,
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    median: sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle],
   };
 }
 
-function formatNumber(value, digits = 2) {
-  if (!isFiniteNumber(value)) {
-    return '-';
-  }
-  return value.toFixed(digits);
+function formatMs(value) {
+  return isFiniteNumber(value) ? `${value.toFixed(2)} ms` : '-';
 }
 
-function bucketNodeCount(value, bucketSize) {
-  if (!isFiniteNumber(value) || value < 0) {
-    return 'unknown';
-  }
-  if (bucketSize <= 1) {
-    return String(value);
-  }
-  const start = Math.floor(value / bucketSize) * bucketSize;
-  const end = start + bucketSize - 1;
-  return `${start}-${end}`;
+function formatMb(bytes) {
+  return isFiniteNumber(bytes) ? `${(bytes / (1024 * 1024)).toFixed(2)} MB` : '-';
 }
 
-function ensureNestedMap(rootMap, key) {
-  if (!rootMap.has(key)) {
-    rootMap.set(key, new Map());
+function extractDatasetTripletCount(records) {
+  let triplets = null;
+  for (const record of records) {
+    const value = record?.context?.datasetTripletCount;
+    if (isFiniteNumber(value)) {
+      triplets = Math.max(triplets ?? value, value);
+    }
   }
-  return rootMap.get(key);
+  return triplets;
 }
 
-function updateStateFromRecord(state, record) {
-  const context = record.context ?? {};
-
-  if (isFiniteNumber(context.datasetTripletCount)) {
-    state.lastDatasetTripletCount = context.datasetTripletCount;
-  }
-  if (isFiniteNumber(context.nodeCount)) {
-    state.lastNodeCount = context.nodeCount;
-  }
-  if (isFiniteNumber(context.edgeCount)) {
-    state.lastEdgeCount = context.edgeCount;
-  }
-  if (isFiniteNumber(context.renderedNodeCount) && context.renderedNodeCount > 0) {
-    state.lastRenderedNodeCount = context.renderedNodeCount;
-  }
-  if (isFiniteNumber(context.renderedEdgeCount) && context.renderedEdgeCount >= 0) {
-    state.lastRenderedEdgeCount = context.renderedEdgeCount;
-  }
+function firstSpanDuration(records, name) {
+  const match = records.find((record) => record.type === 'span' && record.name === name && isFiniteNumber(record.durationMs));
+  return match?.durationMs ?? null;
 }
 
-function resolveEffectiveCounts(state, record) {
-  const context = record.context ?? {};
+function firstGaugeValue(records, name, phase) {
+  const match = records.find(
+    (record) =>
+      record.type === 'gauge' &&
+      record.name === name &&
+      record.context?.phase === phase &&
+      isFiniteNumber(record.value),
+  );
+  return match?.value ?? null;
+}
 
-  const directRenderedNodeCount =
-    isFiniteNumber(context.renderedNodeCount) && context.renderedNodeCount > 0
-      ? context.renderedNodeCount
-      : null;
-  const directNodeCount = isFiniteNumber(context.nodeCount) ? context.nodeCount : null;
-  const directDatasetTripletCount = isFiniteNumber(context.datasetTripletCount)
-    ? context.datasetTripletCount
-    : null;
-
+function averageOfMatching(records, predicate, extractor) {
+  const values = [];
+  for (const record of records) {
+    if (!predicate(record)) {
+      continue;
+    }
+    const value = extractor(record);
+    if (isFiniteNumber(value)) {
+      values.push(value);
+    }
+  }
+  const summary = summarizeSeries(values);
   return {
-    effectiveNodeCount:
-      directRenderedNodeCount ??
-      directNodeCount ??
-      state.lastRenderedNodeCount ??
-      state.lastNodeCount ??
-      null,
-    effectiveEdgeCount:
-      (isFiniteNumber(context.renderedEdgeCount) ? context.renderedEdgeCount : null) ??
-      (isFiniteNumber(context.edgeCount) ? context.edgeCount : null) ??
-      state.lastRenderedEdgeCount ??
-      state.lastEdgeCount ??
-      null,
-    effectiveTripletCount: directDatasetTripletCount ?? state.lastDatasetTripletCount ?? null,
+    count: values.length,
+    avg: summary?.avg ?? null,
+    min: summary?.min ?? null,
+    max: summary?.max ?? null,
+    median: summary?.median ?? null,
   };
 }
 
-function analyzeRecords(records, bucketSize) {
-  const sortedRecords = [...records].sort((left, right) => {
-    const leftTs = isFiniteNumber(left.ts) ? left.ts : 0;
-    const rightTs = isFiniteNumber(right.ts) ? right.ts : 0;
-    return leftTs - rightTs;
-  });
+function buildSessionSummary(records) {
+  const datasetTripletCount = extractDatasetTripletCount(records);
+  const parseTimeMs = firstSpanDuration(records, 'dataset.read_and_parse');
+  const timeToFirstVisualizationMs = firstSpanDuration(records, 'view.first_render.total');
+  const fullLayoutVisualizationTimeMs =
+    firstSpanDuration(records, 'view.settle.total') ?? firstSpanDuration(records, 'layout.compute.total');
 
-  const sessionState = new Map();
-  const spanStats = new Map();
-  const memoryStats = new Map();
+  const zoomLatency = averageOfMatching(
+    records,
+    (record) => record.type === 'span' && record.name === 'interaction.zoom.latency',
+    (record) => record.durationMs,
+  );
 
-  for (const record of sortedRecords) {
-    const sessionId = record.sessionId ?? 'default';
-    const state = sessionState.get(sessionId) ?? {
-      lastDatasetTripletCount: null,
-      lastNodeCount: null,
-      lastEdgeCount: null,
-      lastRenderedNodeCount: null,
-      lastRenderedEdgeCount: null,
-    };
-    sessionState.set(sessionId, state);
+  const searchLatency = averageOfMatching(
+    records,
+    (record) => record.type === 'event' && (record.name === 'search.latency' || record.name === 'search.compute'),
+    (record) => record.context?.latencyMs ?? record.context?.perceivedLatencyMs,
+  );
 
-    const counts = resolveEffectiveCounts(state, record);
-    updateStateFromRecord(state, record);
+  const projectionChangeLatency = averageOfMatching(
+    records,
+    (record) =>
+      record.type === 'span' &&
+      (
+        record.name === 'projection.change.total' ||
+        (record.name === 'filter.apply.total' && record.context?.filterTrigger === 'projection-change')
+      ),
+    (record) => record.durationMs,
+  );
 
-    if (record.type === 'span' && isFiniteNumber(record.durationMs)) {
-      const metricBuckets = ensureNestedMap(spanStats, record.name);
-      const bucketKey = bucketNodeCount(counts.effectiveNodeCount, bucketSize);
-      if (!metricBuckets.has(bucketKey)) {
-        metricBuckets.set(bucketKey, {
-          nodeCount: counts.effectiveNodeCount,
-          edgeCount: counts.effectiveEdgeCount,
-          tripletCount: counts.effectiveTripletCount,
-          stats: createStats(),
-        });
+  const filterLatency = averageOfMatching(
+    records,
+    (record) =>
+      record.type === 'span' &&
+      record.name === 'filter.apply.total' &&
+      record.context?.filterTrigger === 'filter-change',
+    (record) => record.durationMs,
+  );
+
+  const peakMemoryBytes = records.reduce((peak, record) => {
+    if (record.type !== 'gauge' || record.name !== 'memory.used.bytes' || !isFiniteNumber(record.value)) {
+      return peak;
+    }
+    return Math.max(peak ?? record.value, record.value);
+  }, null);
+
+  return {
+    sessionId: records[0]?.sessionId ?? 'unknown',
+    datasetTripletCount,
+    parseTimeMs,
+    timeToFirstVisualizationMs,
+    fullLayoutVisualizationTimeMs,
+    zoomLatency,
+    searchLatency,
+    projectionChangeLatency,
+    filterLatency,
+    memory: {
+      postStartupBytes: firstGaugeValue(records, 'memory.used.bytes', 'post-startup'),
+      postDatasetLoadBytes: firstGaugeValue(records, 'memory.used.bytes', 'post-dataset-load'),
+      postLayoutSettleBytes: firstGaugeValue(records, 'memory.used.bytes', 'post-layout-settle'),
+      peakBytes: peakMemoryBytes,
+    },
+  };
+}
+
+function groupSessionsByTriplets(sessionSummaries) {
+  const groups = new Map();
+  for (const summary of sessionSummaries) {
+    const key = isFiniteNumber(summary.datasetTripletCount) ? String(summary.datasetTripletCount) : 'unknown';
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(summary);
+  }
+  return groups;
+}
+
+function aggregateSessionSummaries(groupedSummaries) {
+  const results = [];
+  for (const [tripletKey, summaries] of [...groupedSummaries.entries()].sort((a, b) => Number(a[0]) - Number(b[0]))) {
+    const parseSeries = createSeries();
+    const firstVisualizationSeries = createSeries();
+    const fullLayoutSeries = createSeries();
+    const postStartupMemorySeries = createSeries();
+    const postDatasetLoadMemorySeries = createSeries();
+    const postLayoutSettleMemorySeries = createSeries();
+    const peakMemorySeries = createSeries();
+    const zoomSessionAvgSeries = createSeries();
+    const searchSessionAvgSeries = createSeries();
+    const projectionChangeSessionAvgSeries = createSeries();
+    const filterSessionAvgSeries = createSeries();
+
+    let totalZoomOperations = 0;
+    let totalSearchOperations = 0;
+    let totalProjectionChangeOperations = 0;
+    let totalFilterOperations = 0;
+
+    for (const summary of summaries) {
+      addSeriesValue(parseSeries, summary.parseTimeMs);
+      addSeriesValue(firstVisualizationSeries, summary.timeToFirstVisualizationMs);
+      addSeriesValue(fullLayoutSeries, summary.fullLayoutVisualizationTimeMs);
+      addSeriesValue(postStartupMemorySeries, summary.memory.postStartupBytes);
+      addSeriesValue(postDatasetLoadMemorySeries, summary.memory.postDatasetLoadBytes);
+      addSeriesValue(postLayoutSettleMemorySeries, summary.memory.postLayoutSettleBytes);
+      addSeriesValue(peakMemorySeries, summary.memory.peakBytes);
+
+      if (summary.zoomLatency.count > 0) {
+        totalZoomOperations += summary.zoomLatency.count;
+        addSeriesValue(zoomSessionAvgSeries, summary.zoomLatency.avg);
       }
-      addValue(metricBuckets.get(bucketKey).stats, record.durationMs);
-    }
-
-    if (record.type === 'gauge' && record.name === 'memory.used.bytes' && isFiniteNumber(record.value)) {
-      const phase = record.context?.phase ?? 'unknown';
-      const phaseBuckets = ensureNestedMap(memoryStats, phase);
-      const bucketKey = bucketNodeCount(counts.effectiveNodeCount, bucketSize);
-      if (!phaseBuckets.has(bucketKey)) {
-        phaseBuckets.set(bucketKey, {
-          nodeCount: counts.effectiveNodeCount,
-          edgeCount: counts.effectiveEdgeCount,
-          tripletCount: counts.effectiveTripletCount,
-          stats: createStats(),
-        });
+      if (summary.searchLatency.count > 0) {
+        totalSearchOperations += summary.searchLatency.count;
+        addSeriesValue(searchSessionAvgSeries, summary.searchLatency.avg);
       }
-      addValue(phaseBuckets.get(bucketKey).stats, record.value);
+      if (summary.projectionChangeLatency.count > 0) {
+        totalProjectionChangeOperations += summary.projectionChangeLatency.count;
+        addSeriesValue(projectionChangeSessionAvgSeries, summary.projectionChangeLatency.avg);
+      }
+      if (summary.filterLatency.count > 0) {
+        totalFilterOperations += summary.filterLatency.count;
+        addSeriesValue(filterSessionAvgSeries, summary.filterLatency.avg);
+      }
     }
-  }
 
-  return {
-    totalRecords: sortedRecords.length,
-    spanStats,
-    memoryStats,
-  };
-}
-
-function mapsToObject(inputMap, valueMapper) {
-  const output = {};
-  for (const [key, value] of inputMap.entries()) {
-    output[key] = valueMapper(value);
-  }
-  return output;
-}
-
-function toJsonSummary(analysis) {
-  return {
-    totalRecords: analysis.totalRecords,
-    spans: mapsToObject(analysis.spanStats, (bucketMap) =>
-      mapsToObject(bucketMap, (bucketEntry) => ({
-        nodeCount: bucketEntry.nodeCount,
-        edgeCount: bucketEntry.edgeCount,
-        tripletCount: bucketEntry.tripletCount,
-        ...finalizeStats(bucketEntry.stats),
-      }))),
-    memory: mapsToObject(analysis.memoryStats, (bucketMap) =>
-      mapsToObject(bucketMap, (bucketEntry) => ({
-        nodeCount: bucketEntry.nodeCount,
-        edgeCount: bucketEntry.edgeCount,
-        tripletCount: bucketEntry.tripletCount,
-        avgBytes: finalizeStats(bucketEntry.stats).avg,
-        ...finalizeStats(bucketEntry.stats),
-      }))),
-  };
-}
-
-function printSection(title) {
-  console.log(`\n${title}`);
-  console.log('-'.repeat(title.length));
-}
-
-function printSpanStats(spanStats) {
-  const names = [...spanStats.keys()].sort();
-  for (const name of names) {
-    printSection(`Span: ${name}`);
-    console.log('nodes\tcount\tavg_ms\tmedian_ms\tp95_ms\tmin_ms\tmax_ms\ttriplets');
-    const buckets = [...spanStats.get(name).entries()].sort((left, right) => {
-      const leftNode = left[1].nodeCount ?? Number.POSITIVE_INFINITY;
-      const rightNode = right[1].nodeCount ?? Number.POSITIVE_INFINITY;
-      return leftNode - rightNode;
+    results.push({
+      datasetTripletCount: tripletKey === 'unknown' ? null : Number(tripletKey),
+      sessionCount: summaries.length,
+      sessions: summaries,
+      oneTime: {
+        parseTimeMs: summarizeSeries(parseSeries),
+        timeToFirstVisualizationMs: summarizeSeries(firstVisualizationSeries),
+        fullLayoutVisualizationTimeMs: summarizeSeries(fullLayoutSeries),
+      },
+      repeated: {
+        panZoomLatencyMs: {
+          sessionAverage: summarizeSeries(zoomSessionAvgSeries),
+          totalOperations: totalZoomOperations,
+        },
+        searchLatencyMs: {
+          sessionAverage: summarizeSeries(searchSessionAvgSeries),
+          totalOperations: totalSearchOperations,
+        },
+        projectionChangeTimeMs: {
+          sessionAverage: summarizeSeries(projectionChangeSessionAvgSeries),
+          totalOperations: totalProjectionChangeOperations,
+        },
+        filterLatencyMs: {
+          sessionAverage: summarizeSeries(filterSessionAvgSeries),
+          totalOperations: totalFilterOperations,
+        },
+      },
+      memory: {
+        postStartupBytes: summarizeSeries(postStartupMemorySeries),
+        postDatasetLoadBytes: summarizeSeries(postDatasetLoadMemorySeries),
+        postLayoutSettleBytes: summarizeSeries(postLayoutSettleMemorySeries),
+        peakBytes: summarizeSeries(peakMemorySeries),
+      },
     });
-    for (const [bucketKey, entry] of buckets) {
-      const summary = finalizeStats(entry.stats);
-      console.log(
-        [
-          bucketKey,
-          summary.count,
-          formatNumber(summary.avg),
-          formatNumber(summary.median),
-          formatNumber(summary.p95),
-          formatNumber(summary.min),
-          formatNumber(summary.max),
-          entry.tripletCount ?? '-',
-        ].join('\t'),
-      );
-    }
   }
+  return results;
 }
 
-function printMemoryStats(memoryStats) {
-  const phases = [...memoryStats.keys()].sort();
-  for (const phase of phases) {
-    printSection(`Memory: ${phase}`);
-    console.log('nodes\tcount\tavg_mb\tmedian_mb\tp95_mb\tmin_mb\tmax_mb\ttriplets');
-    const buckets = [...memoryStats.get(phase).entries()].sort((left, right) => {
-      const leftNode = left[1].nodeCount ?? Number.POSITIVE_INFINITY;
-      const rightNode = right[1].nodeCount ?? Number.POSITIVE_INFINITY;
-      return leftNode - rightNode;
-    });
-    for (const [bucketKey, entry] of buckets) {
-      const summary = finalizeStats(entry.stats);
-      const toMb = (value) => (isFiniteNumber(value) ? value / (1024 * 1024) : null);
-      console.log(
-        [
-          bucketKey,
-          summary.count,
-          formatNumber(toMb(summary.avg)),
-          formatNumber(toMb(summary.median)),
-          formatNumber(toMb(summary.p95)),
-          formatNumber(toMb(summary.min)),
-          formatNumber(toMb(summary.max)),
-          entry.tripletCount ?? '-',
-        ].join('\t'),
-      );
-    }
+function printOneTimeMetric(label, summary, formatter) {
+  if (!summary) {
+    console.log(`- ${label}: -`);
+    return;
+  }
+  if (summary.count === 1) {
+    console.log(`- ${label}: ${formatter(summary.avg)}`);
+    return;
+  }
+  console.log(`- ${label}: avg ${formatter(summary.avg)} across ${summary.count} sessions`);
+}
+
+function printRepeatedMetric(label, metric, formatter) {
+  if (!metric.sessionAverage || metric.totalOperations === 0) {
+    console.log(`- ${label}: -`);
+    return;
+  }
+  console.log(
+    `- ${label}: avg ${formatter(metric.sessionAverage.avg)} across ${metric.totalOperations} operations in ${metric.sessionAverage.count} session(s)`,
+  );
+}
+
+function printReport(filePath, aggregated) {
+  console.log(`File: ${filePath}`);
+  for (const group of aggregated) {
+    console.log(`\nDataset triplets: ${group.datasetTripletCount ?? 'unknown'}`);
+    console.log(`Sessions: ${group.sessionCount}`);
+    console.log('\nOne-time metrics');
+    printOneTimeMetric('RDF/OWL parse time', group.oneTime.parseTimeMs, formatMs);
+    printOneTimeMetric('Time to first visualization', group.oneTime.timeToFirstVisualizationMs, formatMs);
+    printOneTimeMetric('Full layout / visualization time', group.oneTime.fullLayoutVisualizationTimeMs, formatMs);
+
+    console.log('\nRepeated interaction metrics');
+    printRepeatedMetric('Pan / zoom latency', group.repeated.panZoomLatencyMs, formatMs);
+    printRepeatedMetric('Search latency', group.repeated.searchLatencyMs, formatMs);
+    printRepeatedMetric('Projection change time', group.repeated.projectionChangeTimeMs, formatMs);
+    printRepeatedMetric('Filter latency', group.repeated.filterLatencyMs, formatMs);
+
+    console.log('\nMemory usage');
+    printOneTimeMetric('Post startup', group.memory.postStartupBytes, formatMb);
+    printOneTimeMetric('Post dataset load', group.memory.postDatasetLoadBytes, formatMb);
+    printOneTimeMetric('Post layout settle', group.memory.postLayoutSettleBytes, formatMb);
+    printOneTimeMetric('Peak used', group.memory.peakBytes, formatMb);
   }
 }
 
 function main() {
-  const { filePath, bucketSize, json } = parseArgs(process.argv);
+  const { filePath, json } = parseArgs(process.argv);
   const resolvedPath = path.resolve(filePath);
   const records = parseNdjson(resolvedPath);
-  const analysis = analyzeRecords(records, bucketSize);
+  const bySession = new Map();
+  for (const record of records) {
+    const sessionId = record.sessionId ?? 'unknown';
+    if (!bySession.has(sessionId)) {
+      bySession.set(sessionId, []);
+    }
+    bySession.get(sessionId).push(record);
+  }
+
+  const sessionSummaries = [...bySession.values()].map((sessionRecords) =>
+    buildSessionSummary(sessionRecords.sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0))),
+  );
+  const aggregated = aggregateSessionSummaries(groupSessionsByTriplets(sessionSummaries));
 
   if (json) {
-    console.log(JSON.stringify(toJsonSummary(analysis), null, 2));
+    console.log(JSON.stringify({ file: resolvedPath, datasets: aggregated }, null, 2));
     return;
   }
 
-  console.log(`File: ${resolvedPath}`);
-  console.log(`Records: ${analysis.totalRecords}`);
-  console.log(`Node bucket size: ${bucketSize}`);
-
-  printSpanStats(analysis.spanStats);
-  printMemoryStats(analysis.memoryStats);
+  printReport(resolvedPath, aggregated);
 }
 
 try {

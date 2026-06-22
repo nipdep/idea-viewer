@@ -141,12 +141,58 @@ function averageOfMatching(records, predicate, extractor) {
   };
 }
 
+function inferFilterApplyTriggers(records) {
+  const filterRecords = records.filter((record) => record.type === 'span' && record.name === 'filter.apply.total');
+  const triggersByOpId = new Map();
+  let previous = null;
+
+  for (const record of filterRecords) {
+    const explicitTrigger = record.context?.filterTrigger;
+    if (explicitTrigger) {
+      triggersByOpId.set(record.opId, explicitTrigger);
+      previous = record;
+      continue;
+    }
+
+    if (!previous) {
+      triggersByOpId.set(record.opId, 'dataset-load');
+      previous = record;
+      continue;
+    }
+
+    const previousContext = previous.context ?? {};
+    const currentContext = record.context ?? {};
+    const projectionChanged =
+      previousContext.projectionMode !== currentContext.projectionMode ||
+      previousContext.projectionLevel !== currentContext.projectionLevel;
+    const filterSelectionChanged =
+      previousContext.hasClassFilter !== currentContext.hasClassFilter ||
+      previousContext.hasBaseIriFilter !== currentContext.hasBaseIriFilter ||
+      previousContext.hasGraphAxisFilter !== currentContext.hasGraphAxisFilter ||
+      previousContext.hasNodeNameFilter !== currentContext.hasNodeNameFilter ||
+      previousContext.hasSparqlFilter !== currentContext.hasSparqlFilter;
+
+    let inferred = 'layout-sync';
+    if (projectionChanged) {
+      inferred = 'projection-change';
+    } else if (filterSelectionChanged) {
+      inferred = 'filter-change';
+    }
+
+    triggersByOpId.set(record.opId, inferred);
+    previous = record;
+  }
+
+  return triggersByOpId;
+}
+
 function buildSessionSummary(records) {
   const datasetTripletCount = extractDatasetTripletCount(records);
   const parseTimeMs = firstSpanDuration(records, 'dataset.read_and_parse');
   const timeToFirstVisualizationMs = firstSpanDuration(records, 'view.first_render.total');
   const fullLayoutVisualizationTimeMs =
     firstSpanDuration(records, 'view.settle.total') ?? firstSpanDuration(records, 'layout.compute.total');
+  const inferredFilterTriggers = inferFilterApplyTriggers(records);
 
   const zoomLatency = averageOfMatching(
     records,
@@ -166,7 +212,7 @@ function buildSessionSummary(records) {
       record.type === 'span' &&
       (
         record.name === 'projection.change.total' ||
-        (record.name === 'filter.apply.total' && record.context?.filterTrigger === 'projection-change')
+        (record.name === 'filter.apply.total' && (record.context?.filterTrigger ?? inferredFilterTriggers.get(record.opId)) === 'projection-change')
       ),
     (record) => record.durationMs,
   );
@@ -176,7 +222,7 @@ function buildSessionSummary(records) {
     (record) =>
       record.type === 'span' &&
       record.name === 'filter.apply.total' &&
-      record.context?.filterTrigger === 'filter-change',
+      (record.context?.filterTrigger ?? inferredFilterTriggers.get(record.opId)) === 'filter-change',
     (record) => record.durationMs,
   );
 

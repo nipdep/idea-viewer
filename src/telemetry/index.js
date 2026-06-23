@@ -2,10 +2,11 @@ import { createTelemetryCollector } from './collector';
 
 export const telemetry = createTelemetryCollector({
   appName: 'idea-viewer',
+  enabled: __TELEMETRY_ENABLED__,
 });
 
 export async function persistAndRotateTelemetrySession({ reason = 'clear', context = {} } = {}) {
-  if (!telemetry.enabled) {
+  if (!__TELEMETRY_ENABLED__ || !telemetry.enabled) {
     return { skipped: true, reason: 'disabled' };
   }
 

@@ -382,18 +382,22 @@ This automatic persistence path is available when the app is running through the
 
 ### Enable telemetry
 
-Telemetry is enabled by default. To disable it:
+Telemetry is disabled by default. To activate telemetry for a server run:
 
-```dotenv
-VITE_ENABLE_TELEMETRY=false
+```bash
+IDEA_VIEWER_ENABLE_TELEMETRY=true npm run dev
 ```
+
+Without that startup parameter, normal server startup does not collect telemetry, write logs, or run analysis.
+
+`VITE_ENABLE_TELEMETRY=true` is still supported as a fallback, but `IDEA_VIEWER_ENABLE_TELEMETRY` is the preferred server-startup switch.
 
 ### Record a telemetry session
 
-1. Start the app normally:
+1. Start the app with telemetry explicitly enabled:
 
 ```bash
-npm run dev
+IDEA_VIEWER_ENABLE_TELEMETRY=true npm run dev
 ```
 
 2. Use the app in the way you want to profile:

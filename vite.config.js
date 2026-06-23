@@ -22,6 +22,13 @@ function isTruthy(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').trim().toLowerCase());
 }
 
+function isTelemetryEnabledFromValue(value, fallback = false) {
+  if (value == null || String(value).trim() === '') {
+    return fallback;
+  }
+  return isTruthy(value);
+}
+
 function createTelemetryPersistenceMiddleware() {
   return async (req, res, next) => {
     const requestPath = String(req.url || '').split('?')[0];
@@ -88,6 +95,13 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const base = normalizeBasePath(env.VITE_BASE_PATH || '/');
   const isVercelDeployment = isTruthy(env.VERCEL) || isTruthy(process.env.VERCEL);
+  const telemetryEnabled = isTelemetryEnabledFromValue(
+    env.IDEA_VIEWER_ENABLE_TELEMETRY
+      ?? process.env.IDEA_VIEWER_ENABLE_TELEMETRY
+      ?? env.VITE_ENABLE_TELEMETRY
+      ?? process.env.VITE_ENABLE_TELEMETRY,
+    false,
+  );
 
   const hmr = {};
   if (env.VITE_HMR_PROTOCOL) {
@@ -110,8 +124,9 @@ export default defineConfig(({ mode }) => {
     base,
     define: {
       __VERCEL_DEPLOYMENT__: JSON.stringify(isVercelDeployment),
+      __TELEMETRY_ENABLED__: JSON.stringify(telemetryEnabled),
     },
-    plugins: [react(), telemetryPersistencePlugin()],
+    plugins: [react(), ...(telemetryEnabled ? [telemetryPersistencePlugin()] : [])],
     server: {
       host: env.VITE_DEV_HOST || '0.0.0.0',
       port: toNumber(env.VITE_DEV_PORT, 5173),

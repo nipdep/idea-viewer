@@ -11,7 +11,7 @@ import {
 } from './lib/view-projections';
 import { applyLayoutPositions, IncrementalGraphLayout } from './lib/incremental-graph-layout';
 import { NgraphIncrementalLayout } from './lib/ngraph-incremental-layout';
-import { exportTelemetrySession, telemetry } from './telemetry';
+import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -1597,15 +1597,6 @@ export default function App() {
     } catch (error) {
       setStatus(`Export failed: ${error.message || 'Unexpected export error.'}`);
     }
-  }
-
-  function handleTelemetryExport() {
-    if (!exportTelemetrySession(telemetry)) {
-      setStatus('Telemetry export is disabled.');
-      return;
-    }
-    setStatus(`Exported telemetry log ${telemetry.session.fileName}.`);
-    setIsExportMenuOpen(false);
   }
 
   function fitCurrentGraphViewport(cy, duration = 250) {
@@ -4969,8 +4960,23 @@ export default function App() {
     }
   }, [visibleElements, selectedNodeId, selectedEdgeId]);
 
-  function clearLoadedGraph() {
+  async function clearLoadedGraph() {
+    let nextStatus = DEFAULT_STATUS;
+    try {
+      const result = await persistAndRotateTelemetrySession({
+        reason: 'clear',
+        context: buildTelemetryContext(),
+      });
+      if (!result?.skipped && result?.logPath && result?.statsPath) {
+        nextStatus = `Telemetry saved to ${result.logPath} and ${result.statsPath}.`;
+      }
+    } catch (error) {
+      nextStatus = `Telemetry persistence failed: ${error.message || 'Unexpected error.'}`;
+    }
+
     edgeCurveOverridesRef.current = new Map();
+    previousFilterRunRef.current = null;
+    firstVisualizationRecordedRef.current = false;
     setUploadedFiles([]);
     setGraphData(null);
     setVisibleElements([]);
@@ -4987,7 +4993,7 @@ export default function App() {
     setOntologyMetadataRows([]);
     setLoadError('');
     setFilterError('');
-    setStatus(DEFAULT_STATUS);
+    setStatus(nextStatus);
     setOwlProjectionLevel(OWL_PROJECTION_LEVELS.ONTOLOGY);
   }
 
@@ -5424,7 +5430,6 @@ export default function App() {
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
   const settingsButtonLabel = isSettingsOpen ? 'Hide graph settings' : 'Show graph settings';
   const hasExportableGraph = visibleElements.length > 0;
-  const canOpenExportMenu = hasExportableGraph || telemetry.enabled;
   const graphSearchMatchCount = graphSearchMatches.length;
   const graphSearchCounterLabel =
     graphSearchMatchCount > 0 && activeGraphSearchMatch
@@ -5632,7 +5637,7 @@ export default function App() {
                   <button
                     type="button"
                     className="section-clear"
-                    onClick={clearLoadedGraph}
+                    onClick={() => { void clearLoadedGraph(); }}
                     disabled={uploadedFiles.length === 0}
                     aria-label="Clear all uploaded files and graph"
                     title="Clear graph"
@@ -6197,7 +6202,7 @@ export default function App() {
                 aria-label={exportButtonLabel}
                 title={exportButtonLabel}
                 aria-pressed={isExportMenuOpen}
-                disabled={!canOpenExportMenu}
+                disabled={!hasExportableGraph}
               >
                 <svg className="graph-tool-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                   <path
@@ -6216,13 +6221,10 @@ export default function App() {
                 </svg>
               </button>
 
-              {isExportMenuOpen && canOpenExportMenu && (
+              {isExportMenuOpen && hasExportableGraph && (
                 <div className="graph-export-popover" role="dialog" aria-label="Export current view">
                   <div className="graph-export-title">Export current view</div>
                   <div className="graph-export-actions">
-                    <button type="button" className="graph-export-action" onClick={() => handleTelemetryExport()}>
-                      Telemetry log
-                    </button>
                     <button type="button" className="graph-export-action" onClick={() => handleExport('csv')} disabled={!hasExportableGraph}>
                       CSV
                     </button>

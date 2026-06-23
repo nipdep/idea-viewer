@@ -371,7 +371,14 @@ npm run preview
 
 ## Telemetry Log Analysis
 
-The app can record a per-run telemetry session in memory and export it as a single `.ndjson` file.
+The app records one telemetry session from startup or the last `Clear` action until the next `Clear`.
+When you click `Clear`, the app automatically:
+
+- writes the raw session log to `log/<timestamp>.ndjson`
+- runs the analyzer on that log
+- writes the human-readable summary to `log/<timestamp>.md`
+
+This automatic persistence path is available when the app is running through the local Vite server, because the Vite host provides the file-writing endpoint.
 
 ### Enable telemetry
 
@@ -381,7 +388,7 @@ Telemetry is enabled by default. To disable it:
 VITE_ENABLE_TELEMETRY=false
 ```
 
-### Record a telemetry run
+### Record a telemetry session
 
 1. Start the app normally:
 
@@ -397,51 +404,37 @@ npm run dev
    - search in the graph
    - zoom and pan
 
-3. Open the graph export menu in the UI.
-4. Click `Telemetry log`.
+3. Click `Clear` when you want to close the current session.
 
-That downloads one NDJSON file for the current app run.
+That writes both the raw telemetry log and analyzed stats into `log/`.
 
 ### Analyze a telemetry log
 
-Run the analysis script on an exported NDJSON file:
+Run the analysis script on any recorded NDJSON file:
 
 ```bash
-node scripts/analyze-telemetry-log.mjs "temp/Idea Viewer June 21 2026.ndjson"
-```
-
-Bucket results by node-count ranges:
-
-```bash
-node scripts/analyze-telemetry-log.mjs "temp/Idea Viewer June 21 2026.ndjson" --bucket-size 25
+node scripts/analyze-telemetry-log.mjs "log/idea-viewer-2026-06-22T14-30-00-000Z.ndjson"
 ```
 
 Emit JSON instead of table output:
 
 ```bash
-node scripts/analyze-telemetry-log.mjs "temp/Idea Viewer June 21 2026.ndjson" --json
+node scripts/analyze-telemetry-log.mjs "log/idea-viewer-2026-06-22T14-30-00-000Z.ndjson" --json
 ```
 
 ### What the script reports
 
-The script groups metrics by effective node count and prints summary statistics for:
+The script treats each log file as one dataset session and groups sessions by dataset triplet count.
+It reports:
 
-- span durations such as startup, dataset load, view generation, filtering, layout settle, search, and zoom
-- memory usage samples by phase such as post-startup, post-dataset-load, and post-layout-settle
+- one-time metrics such as RDF/OWL parse time, time to first visualization, and full layout / visualization time
+- repeated interaction metrics such as projection-change latency, filter latency, search latency, and zoom latency
+- memory snapshots and peak memory usage
 
-For each group it reports:
+For repeated interactions on the same dataset size, it reports averages across the operations observed in the session set.
+For one-time metrics, it reports the per-session values without treating them as repeated interaction samples.
 
-- sample count
-- average
-- median
-- p95
-- min
-- max
-
-Important:
-- view/layout/filter metrics are usually grouped by rendered node count
-- dataset-load metrics are usually grouped by dataset node count
-- the script also carries forward the latest dataset triplet count so timing can be interpreted relative to source size
+The independent variable for the aggregated report is dataset triplet count, not the current visible node count.
 
 ## Vercel Analytics
 

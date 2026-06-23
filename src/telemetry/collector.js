@@ -32,30 +32,32 @@ function createNoopSpan() {
   };
 }
 
+function createSession(commonContext, startupDate, sessionId = createId('session')) {
+  const startedAtIso = startupDate.toISOString();
+  return {
+    id: sessionId,
+    startedAtIso,
+    fileName: `${commonContext.appName}-${sanitizeIsoForFilename(startedAtIso)}.ndjson`,
+  };
+}
+
 export function createTelemetryCollector(options = {}) {
   const enabled = options.enabled ?? isTelemetryEnabled();
-  const startupDate = options.startupDate ?? new Date();
-  const sessionId = options.sessionId ?? createId('session');
-  const startedAtIso = startupDate.toISOString();
-  const records = [];
   const commonContext = {
     appName: options.appName ?? 'idea-viewer',
   };
+  const records = [];
 
   const collector = {
     enabled,
-    session: {
-      id: sessionId,
-      startedAtIso,
-      fileName: `${commonContext.appName}-${sanitizeIsoForFilename(startedAtIso)}.ndjson`,
-    },
+    session: createSession(commonContext, options.startupDate ?? new Date(), options.sessionId),
     records,
     addRecord(record) {
       if (!enabled) {
         return;
       }
       records.push({
-        sessionId,
+        sessionId: collector.session.id,
         ts: Date.now(),
         ...record,
       });
@@ -158,6 +160,30 @@ export function createTelemetryCollector(options = {}) {
     exportText() {
       return records.map((record) => JSON.stringify(record)).join('\n');
     },
+    getSnapshot() {
+      return {
+        session: { ...collector.session },
+        records: records.map((record) => ({ ...record })),
+        text: collector.exportText(),
+      };
+    },
+    startNewSession(startupDate = new Date()) {
+      records.length = 0;
+      collector.session = createSession(commonContext, startupDate);
+      if (enabled) {
+        collector.addRecord({
+          type: 'session-start',
+          name: 'session.start',
+          context: {
+            ...commonContext,
+            startedAtIso: collector.session.startedAtIso,
+            fileName: collector.session.fileName,
+          },
+          error: null,
+        });
+      }
+      return collector.session;
+    },
   };
 
   if (enabled) {
@@ -166,7 +192,7 @@ export function createTelemetryCollector(options = {}) {
       name: 'session.start',
       context: {
         ...commonContext,
-        startedAtIso,
+        startedAtIso: collector.session.startedAtIso,
         fileName: collector.session.fileName,
       },
       error: null,

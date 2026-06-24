@@ -1422,6 +1422,9 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
     if (!quad?.subject || !quad?.predicate || !quad?.object) {
       continue;
     }
+    if (!matchesNamedGraphSelection(getQuadGraphFilterId(quad), options.selectedNamedGraphIds)) {
+      continue;
+    }
     if (isProvIri(quad.predicate.value)) {
       continue;
     }
@@ -1496,6 +1499,9 @@ function buildRawRdfProjectionElements(graphData, focusedNodeIds, options) {
     : graphData?.nodes ?? [];
 
   for (const node of candidateNodes) {
+    if (!matchesNamedGraphSelection(node?.namedGraphIds, options.selectedNamedGraphIds)) {
+      continue;
+    }
     if (node?.termType === 'Literal') {
       continue;
     }
@@ -4187,7 +4193,30 @@ function normalizeProjectionFlags(viewOptions = DEFAULT_VIEW_OPTIONS) {
     showObjectProperties: Boolean(viewOptions?.showObjectProperties),
     showNamedIndividuals: Boolean(viewOptions?.showNamedIndividuals),
     showTypeLinks: Boolean(viewOptions?.showTypeLinks),
+    selectedNamedGraphIds: Array.isArray(viewOptions?.selectedNamedGraphIds)
+      ? viewOptions.selectedNamedGraphIds.filter(Boolean)
+      : [],
   };
+}
+
+function getQuadGraphFilterId(quad) {
+  if (!quad?.graph || quad.graph.termType === 'DefaultGraph') {
+    return '__default_graph__';
+  }
+  return getTermId(quad.graph);
+}
+
+function matchesNamedGraphSelection(graphIds, selectedNamedGraphIds) {
+  if (!Array.isArray(selectedNamedGraphIds) || selectedNamedGraphIds.length === 0) {
+    return true;
+  }
+
+  const candidateIds = Array.isArray(graphIds) ? graphIds : graphIds ? [graphIds] : [];
+  if (candidateIds.length === 0) {
+    return false;
+  }
+
+  return candidateIds.some((graphId) => selectedNamedGraphIds.includes(graphId));
 }
 
 export function createViewOptions(mode, flags = {}) {
@@ -4205,7 +4234,7 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
     projectionMode: GRAPH_VIEW_MODES.RDF,
   });
   const effectiveFocusedNodeIds =
-    focusedNodeIds && graphData?.hasOntology && graphData?.hasKg
+    focusedNodeIds && graphData?.hasOntology && graphData?.hasKg && options.selectedNamedGraphIds.length === 0
       ? (() => {
           const combined = new Set(focusedNodeIds);
           for (const node of graphData?.nodes ?? []) {

@@ -593,6 +593,24 @@ function runBaseIriFilter(graphData, baseIris) {
   return matchedNodeIds;
 }
 
+function runNamedGraphFilter(graphData, namedGraphIds) {
+  if (!graphData || namedGraphIds.length === 0) {
+    return new Set();
+  }
+
+  const allowedNamedGraphIds = new Set(namedGraphIds);
+  const matchedNodeIds = new Set();
+
+  for (const node of graphData.nodes) {
+    const nodeGraphIds = Array.isArray(node.namedGraphIds) ? node.namedGraphIds : [];
+    if (nodeGraphIds.some((graphId) => allowedNamedGraphIds.has(graphId))) {
+      matchedNodeIds.add(node.id);
+    }
+  }
+
+  return matchedNodeIds;
+}
+
 function getGraphAxisForNode(node) {
   if (!node) {
     return GRAPH_FILTER_AXES.ALL;
@@ -1150,11 +1168,12 @@ function toViewFlags(projectionMode, owlProjectionLevel, rdfProjectionLevel) {
   };
 }
 
-function toViewOptions(projectionMode, graphData, owlProjectionLevel, rdfProjectionLevel) {
+function toViewOptions(projectionMode, graphData, owlProjectionLevel, rdfProjectionLevel, selectedNamedGraphIds = []) {
   const flags = toViewFlags(projectionMode, owlProjectionLevel, rdfProjectionLevel);
   if (projectionMode === GRAPH_PROJECTION_MODES.RDF) {
     return createViewOptions(GRAPH_PROJECTION_MODES.RDF, {
       ...flags,
+      selectedNamedGraphIds,
       showTypeLinks: flags.showTypeLinks && Boolean(graphData?.hasOntology),
       owlProjectionLevel,
       rdfProjectionLevel,
@@ -1163,6 +1182,7 @@ function toViewOptions(projectionMode, graphData, owlProjectionLevel, rdfProject
 
   return createViewOptions(GRAPH_PROJECTION_MODES.OWL, {
     ...flags,
+    selectedNamedGraphIds,
     showTypeLinks: flags.showTypeLinks && Boolean(graphData?.hasOntology),
     owlProjectionLevel,
   });
@@ -1216,6 +1236,7 @@ export default function App() {
 
   const [selectedClassIris, setSelectedClassIris] = useState([]);
   const [selectedBaseIris, setSelectedBaseIris] = useState([]);
+  const [selectedNamedGraphIds, setSelectedNamedGraphIds] = useState([]);
   const [graphFilterAxis, setGraphFilterAxis] = useState(GRAPH_FILTER_AXES.ALL);
   const [nodeNameQuery, setNodeNameQuery] = useState('');
   const [sparqlDraft, setSparqlDraft] = useState('');
@@ -1364,6 +1385,7 @@ export default function App() {
   const buildFilterSelectionSignature = () => JSON.stringify({
     selectedClassIris: [...selectedClassIris].sort(),
     selectedBaseIris: [...selectedBaseIris].sort(),
+    selectedNamedGraphIds: [...selectedNamedGraphIds].sort(),
     graphFilterAxis,
     nodeNameQuery: nodeNameQuery.trim(),
     sparqlQuery: sparqlQuery.trim(),
@@ -1391,6 +1413,7 @@ export default function App() {
     datasetTripletCount: graphData?.store?.size ?? 0,
     visibleTripletCount: graphData?.store?.size ?? 0,
     graphFilterAxis,
+    selectedNamedGraphIds,
     ...countRenderableElements(elements),
     ...extra,
   });
@@ -2966,10 +2989,12 @@ export default function App() {
 
   const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
+  const allNamedGraphIds = useMemo(() => graphData?.namedGraphs.map((entry) => entry.id) ?? [], [graphData]);
   const hasNamedIndividuals = Boolean(
     graphData?.nodes?.some((node) => node.isInstanceNode),
   );
   const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
+  const showNamedGraphFilter = (graphData?.namedGraphs?.length ?? 0) > 0;
 
   const isAllClassesSelected =
     allClassIris.length === 0 ||
@@ -2977,6 +3002,12 @@ export default function App() {
   const isAllBaseIrisSelected =
     allBaseIris.length === 0 ||
     (selectedBaseIris.length === allBaseIris.length && allBaseIris.every((iri) => selectedBaseIris.includes(iri)));
+  const isAllNamedGraphsSelected =
+    allNamedGraphIds.length === 0 ||
+    (
+      selectedNamedGraphIds.length === allNamedGraphIds.length &&
+      allNamedGraphIds.every((graphId) => selectedNamedGraphIds.includes(graphId))
+    );
 
   useEffect(() => {
     if (!graphData) {
@@ -4719,6 +4750,7 @@ export default function App() {
         filterTrigger,
         hasClassFilter: selectedClassIris.length > 0,
         hasBaseIriFilter: selectedBaseIris.length > 0,
+        hasNamedGraphFilter: showNamedGraphFilter && selectedNamedGraphIds.length !== allNamedGraphIds.length,
         hasGraphAxisFilter: graphFilterAxis !== GRAPH_FILTER_AXES.ALL,
         hasNodeNameFilter: nodeNameQuery.trim().length > 0,
         hasSparqlFilter: sparqlQuery.trim().length > 0,
@@ -4727,7 +4759,13 @@ export default function App() {
       try {
         const currentProjectionLevel =
           graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? rdfProjectionLevel : owlProjectionLevel;
-        const viewOptions = toViewOptions(graphProjectionMode, graphData, owlProjectionLevel, rdfProjectionLevel);
+        const viewOptions = toViewOptions(
+          graphProjectionMode,
+          graphData,
+          owlProjectionLevel,
+          rdfProjectionLevel,
+          selectedNamedGraphIds,
+        );
         const currentProjectionCacheKey = buildProjectionCacheKey(graphProjectionMode, currentProjectionLevel);
         const projectElements = (focusedNodeIds = null) => {
           const projectionSpan = telemetry.startSpan('view.projection.build', buildTelemetryContext([], {
@@ -4766,13 +4804,17 @@ export default function App() {
           showClassTypeFilter &&
           graphData.classes.length > 0 &&
           selectedClassIris.length !== graphData.classes.length;
+        const namedGraphFilterActive =
+          showNamedGraphFilter &&
+          graphData.namedGraphs.length > 0 &&
+          selectedNamedGraphIds.length !== graphData.namedGraphs.length;
         const baseIriFilterActive =
           graphData.baseIris.length > 0 && selectedBaseIris.length !== graphData.baseIris.length;
         const graphAxisActive = graphFilterAxis !== GRAPH_FILTER_AXES.ALL;
         const nodeNameFilterActive = nodeNameQuery.trim().length > 0;
         const sparqlActive = sparqlQuery.trim().length > 0;
 
-        if (!classFilterActive && !baseIriFilterActive && !graphAxisActive && !nodeNameFilterActive && !sparqlActive) {
+        if (!classFilterActive && !namedGraphFilterActive && !baseIriFilterActive && !graphAxisActive && !nodeNameFilterActive && !sparqlActive) {
           if (!cancelled) {
             const nextVisibleElements = applyEdgeCurveOverrides(
               projectElements(null),
@@ -4798,6 +4840,17 @@ export default function App() {
 
         const engine = queryEngineRef.current;
         let selectedEntities = null;
+
+        if (namedGraphFilterActive) {
+          const namedGraphFilterSpan = telemetry.startSpan('filter.namedGraph', buildTelemetryContext());
+          const namedGraphMatches = runNamedGraphFilter(graphData, selectedNamedGraphIds);
+          namedGraphFilterSpan.end({
+            context: {
+              resultEntityCount: namedGraphMatches.size,
+            },
+          });
+          selectedEntities = selectedEntities ? intersectSets(selectedEntities, namedGraphMatches) : namedGraphMatches;
+        }
 
         if (baseIriFilterActive) {
           const baseFilterSpan = telemetry.startSpan('filter.baseIri', buildTelemetryContext());
@@ -4895,7 +4948,13 @@ export default function App() {
                 buildProjectedElements(
                   graphData,
                   null,
-                  toViewOptions(graphProjectionMode, graphData, owlProjectionLevel, rdfProjectionLevel),
+                  toViewOptions(
+                    graphProjectionMode,
+                    graphData,
+                    owlProjectionLevel,
+                    rdfProjectionLevel,
+                    selectedNamedGraphIds,
+                  ),
                 ),
               ),
               edgeCurveOverridesRef.current,
@@ -4919,6 +4978,7 @@ export default function App() {
     layoutRevision,
     selectedClassIris,
     selectedBaseIris,
+    selectedNamedGraphIds,
     graphFilterAxis,
     nodeNameQuery,
     sparqlQuery,
@@ -4926,6 +4986,8 @@ export default function App() {
     owlProjectionLevel,
     rdfProjectionLevel,
     showClassTypeFilter,
+    showNamedGraphFilter,
+    allNamedGraphIds,
   ]);
 
   useEffect(() => {
@@ -4982,6 +5044,7 @@ export default function App() {
     setVisibleElements([]);
     setSelectedClassIris([]);
     setSelectedBaseIris([]);
+    setSelectedNamedGraphIds([]);
     setNodeNameQuery('');
     setSparqlDraft('');
     setSparqlQuery('');
@@ -5016,6 +5079,7 @@ export default function App() {
       setVisibleElements([]);
       setSelectedClassIris([]);
       setSelectedBaseIris([]);
+      setSelectedNamedGraphIds([]);
       setSelectedNodeId(null);
       setSelectedEdgeId(null);
       setFocusedNodeId(null);
@@ -5116,6 +5180,7 @@ export default function App() {
         setGraphData(nextGraphData);
         setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
         setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
+        setSelectedNamedGraphIds(nextGraphData.namedGraphs.map((entry) => entry.id));
         setGraphFilterAxis(GRAPH_FILTER_AXES.ALL);
         setNodeNameQuery('');
         setSparqlDraft('');
@@ -5199,6 +5264,23 @@ export default function App() {
 
   function clearBaseIris() {
     setSelectedBaseIris([]);
+  }
+
+  function toggleNamedGraph(namedGraphId) {
+    setSelectedNamedGraphIds((current) => {
+      if (current.includes(namedGraphId)) {
+        return current.filter((entry) => entry !== namedGraphId);
+      }
+      return [...current, namedGraphId];
+    });
+  }
+
+  function selectAllNamedGraphs() {
+    setSelectedNamedGraphIds(allNamedGraphIds);
+  }
+
+  function clearNamedGraphs() {
+    setSelectedNamedGraphIds([]);
   }
 
   function updateSparqlPrefixName(rowId, prefix) {
@@ -5830,6 +5912,45 @@ export default function App() {
                         Clear
                       </button>
                     </div>
+
+                    {showNamedGraphFilter && (
+                      <>
+                        <h3 className="filter-group-title">Named graph</h3>
+                        <div className="mini-actions">
+                          <button type="button" onClick={selectAllNamedGraphs} disabled={!graphData || isAllNamedGraphsSelected}>
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearNamedGraphs}
+                            disabled={!graphData || selectedNamedGraphIds.length === 0}
+                          >
+                            Clear
+                          </button>
+                        </div>
+
+                        <div className="class-list">
+                          {!graphData && <p className="muted">Load data to list named graphs.</p>}
+                          {graphData && graphData.namedGraphs.length === 0 && (
+                            <p className="muted">No named graphs detected in the loaded data.</p>
+                          )}
+                          {graphData &&
+                            graphData.namedGraphs.map((entry) => (
+                              <label key={entry.id} className="class-item">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedNamedGraphIds.includes(entry.id)}
+                                  onChange={() => toggleNamedGraph(entry.id)}
+                                />
+                                <span className="class-label" title={entry.label}>
+                                  {entry.label}
+                                </span>
+                                <small>{entry.count}</small>
+                              </label>
+                            ))}
+                        </div>
+                      </>
+                    )}
 
                     <h3 className="filter-group-title">Base IRI</h3>
                     <div className="mini-actions">

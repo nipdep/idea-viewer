@@ -355,7 +355,7 @@ function filterRdfProjectionByLevel(elements, rdfProjectionLevel) {
     }
 
     if (isIndividualLikeNode(data)) {
-      return true;
+      return referencedNodeIds.has(data.id);
     }
 
     return isConnectorLikeNode(data) && referencedNodeIds.has(data.id);
@@ -3944,13 +3944,63 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
   const allowedNodeIds = new Set();
   const excludedNodeIds = new Set();
   const deferredIndividualNodeIds = new Set();
-  const allowedNodeKindsForTaxonomy = new Set([
-    'class',
-    'class-expression',
-    'owl-expression',
-    'owl-group',
-    'class-expression-connector',
-  ]);
+  const nodeDataById = new Map(
+    elements
+      .filter((element) => !element?.data?.source)
+      .map((element) => [element.data.id, element.data]),
+  );
+
+  const isSchemaNode = (data) =>
+    Boolean(
+      data &&
+        data.termType !== 'Literal' &&
+        data.entityCategory !== 'literal' &&
+        (
+          data.ontologyKind === 'class' ||
+          data.ontologyKind === 'object-property' ||
+          data.ontologyKind === 'data-property' ||
+          data.ontologyKind === 'datatype' ||
+          data.entityCategory === 'datatype'
+        ),
+    );
+
+  if (owlProjectionLevel === OWL_PROJECTION_LEVELS.TAXONOMY) {
+    const taxonomyEdges = [];
+    const taxonomyNodeIds = new Set();
+
+    for (const element of elements) {
+      const data = element?.data;
+      if (!data?.source) {
+        continue;
+      }
+
+      const sourceNode = nodeDataById.get(data.source);
+      const targetNode = nodeDataById.get(data.target);
+      const keepEdge =
+        data.predicate === RDFS_SUBCLASS_OF &&
+        sourceNode?.ontologyKind === 'class' &&
+        targetNode?.ontologyKind === 'class';
+
+      if (!keepEdge) {
+        continue;
+      }
+
+      taxonomyEdges.push(element);
+      taxonomyNodeIds.add(data.source);
+      taxonomyNodeIds.add(data.target);
+    }
+
+    return elements.filter((element) => {
+      const data = element?.data;
+      if (!data) {
+        return false;
+      }
+      if (!data.source) {
+        return taxonomyNodeIds.has(data.id);
+      }
+      return taxonomyEdges.includes(element);
+    });
+  }
 
   for (const element of elements) {
     const data = element?.data;
@@ -3971,16 +4021,13 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
       continue;
     }
 
-    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.TAXONOMY) {
-      const isAllowedClassLikeNode =
-        data.ontologyKind === 'class' ||
-        allowedNodeKindsForTaxonomy.has(data.entityCategory) ||
-        allowedNodeKindsForTaxonomy.has(data.blankExpressionType);
-      if (!isAllowedClassLikeNode) {
-        continue;
+    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.SCHEMA) {
+      if (isSchemaNode(data)) {
+        allowedNodeIds.add(data.id);
       }
-      allowedNodeIds.add(data.id);
+      continue;
     }
+
   }
 
   if (owlProjectionLevel === OWL_PROJECTION_LEVELS.ONTOLOGY && deferredIndividualNodeIds.size > 0) {
@@ -3998,7 +4045,7 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
 
       const individualNodeId = sourceIsDeferredIndividual ? data.source : data.target;
       const neighborNodeId = sourceIsDeferredIndividual ? data.target : data.source;
-      const neighborNode = elements.find((entry) => !entry?.data?.source && entry.data.id === neighborNodeId)?.data;
+      const neighborNode = nodeDataById.get(neighborNodeId);
       if (!neighborNode) {
         continue;
       }
@@ -4046,7 +4093,7 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
           continue;
         }
 
-        const neighborNode = elements.find((entry) => !entry?.data?.source && entry.data.id === neighborId)?.data;
+        const neighborNode = nodeDataById.get(neighborId);
         if (!neighborNode) {
           continue;
         }
@@ -4083,98 +4130,27 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
       return true;
     }
 
-    return data.predicate === RDFS_SUBCLASS_OF || data.category === 'class-expression';
-  });
-}
-
-function filterSchemaProjectionElements(elements) {
-  const allowedNodeIds = new Set();
-
-  const isAllowedSchemaNode = (data) => {
-    if (!data || data.termType === 'Literal' || data.entityCategory === 'literal') {
+    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.TAXONOMY) {
       return false;
     }
 
-    if (
-      data.ontologyKind === 'class' ||
-      data.ontologyKind === 'object-property' ||
-      data.ontologyKind === 'data-property' ||
-      data.ontologyKind === 'annotation-property' ||
-      data.ontologyKind === 'datatype' ||
-      data.entityCategory === 'datatype'
-    ) {
-      return true;
+    if (owlProjectionLevel === OWL_PROJECTION_LEVELS.SCHEMA) {
+      const sourceNode = nodeDataById.get(data.source);
+      const targetNode = nodeDataById.get(data.target);
+      if (!isSchemaNode(sourceNode) || !isSchemaNode(targetNode)) {
+        return false;
+      }
+
+      return (
+        data.predicate === RDFS_SUBCLASS_OF ||
+        data.predicate === RDFS_DOMAIN ||
+        data.predicate === RDFS_RANGE ||
+        data.predicate === RDFS_SUBPROPERTY_OF ||
+        data.axiomKind === 'PropertyProjection'
+      );
     }
 
     return false;
-  };
-
-  const isAllowedSchemaEdge = (data, nodeElementsById) => {
-    if (!data?.source) {
-      return false;
-    }
-
-    if (data.predicate === RDFS_SUBCLASS_OF) {
-      return true;
-    }
-
-    if (data.predicate === RDFS_DOMAIN || data.predicate === RDFS_RANGE) {
-      return true;
-    }
-
-    if (data.predicate !== RDF_TYPE) {
-      return false;
-    }
-    return false;
-  };
-
-  const nodeElementsById = new Map(
-    elements
-      .filter((element) => !element?.data?.source)
-      .map((element) => [element.data.id, element]),
-  );
-
-  const allowedEdgeIds = new Set(
-    elements
-      .filter((element) => {
-    const data = element?.data;
-    if (!isAllowedSchemaEdge(data, nodeElementsById)) {
-      return false;
-    }
-
-    const sourceNode = nodeElementsById.get(data.source)?.data;
-    const targetNode = nodeElementsById.get(data.target)?.data;
-    if (!isAllowedSchemaNode(sourceNode) || !isAllowedSchemaNode(targetNode)) {
-      return false;
-    }
-
-    return true;
-      })
-      .map((element) => element.data.id),
-  );
-
-  for (const element of elements) {
-    const data = element?.data;
-    if (!data?.source && isAllowedSchemaNode(data)) {
-      allowedNodeIds.add(data.id);
-    }
-  }
-
-  return elements.filter((element) => {
-    const data = element?.data;
-    if (!data) {
-      return false;
-    }
-
-    if (data.source) {
-      return allowedEdgeIds.has(data.id);
-    }
-
-    if (!allowedNodeIds.has(data.id)) {
-      return false;
-    }
-
-    return true;
   });
 }
 
@@ -4272,31 +4248,28 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
 }
 
 export function buildSchemaViewProjection(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
-  const elements = buildFocusedSubset(graphData, focusedNodeIds, {
+  return buildOwlViewProjection(graphData, focusedNodeIds, {
     ...viewOptions,
-    projectionMode: GRAPH_VIEW_MODES.OWL,
+    owlProjectionLevel: OWL_PROJECTION_LEVELS.SCHEMA,
   });
-
-  return suppressInfrastructureNodes(
-    graphData,
-    stripNodeBadges(applyHoverMetadata(
-      graphData,
-      applySelfLoopGeometry(
-        graphData,
-        applyRelationPalette(filterSchemaProjectionElements(suppressMetadataEdges(elements))),
-      ),
-    )),
-  );
 }
 
 export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
   const owlProjectionLevel = viewOptions?.owlProjectionLevel ?? OWL_PROJECTION_LEVELS.KG;
-  if (owlProjectionLevel === OWL_PROJECTION_LEVELS.SCHEMA) {
-    return buildSchemaViewProjection(graphData, focusedNodeIds, viewOptions);
-  }
+  const baseOwlViewOptions =
+    owlProjectionLevel === OWL_PROJECTION_LEVELS.TAXONOMY || owlProjectionLevel === OWL_PROJECTION_LEVELS.SCHEMA
+      ? {
+          ...viewOptions,
+          showDataProperties: true,
+          showAnnotationProperties: false,
+          showObjectProperties: true,
+          showNamedIndividuals: false,
+          showTypeLinks: true,
+        }
+      : viewOptions;
 
   const elements = buildFocusedSubset(graphData, focusedNodeIds, {
-    ...viewOptions,
+    ...baseOwlViewOptions,
     projectionMode: GRAPH_VIEW_MODES.RDF,
   });
 

@@ -1,0 +1,115 @@
+{
+  "nodes": [
+    {
+      "idHint": "helper:oneof",
+      "label": "{}",
+      "entityCategory": "owl-expression",
+      "ontologyKind": "",
+      "blankExpressionType": "OneOf",
+      "graphRole": "owl-expression",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "Meaning",
+      "label": "Meaning",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Red",
+      "label": "Red",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "SignalConcept",
+      "label": "SignalConcept",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "SpecialSignal",
+      "label": "SpecialSignal",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Yellow",
+      "label": "Yellow",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "helper:oneof",
+      "targetHint": "Red",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:oneof",
+      "targetHint": "Yellow",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "SpecialSignal",
+      "targetHint": "helper:oneof",
+      "predicate": "oneOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "SpecialSignal",
+      "targetHint": "Meaning",
+      "predicate": "hasMeaning",
+      "predicateLabel": "(some) hasMeaning*",
+      "category": "object",
+      "axiomKind": "Restriction",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "SpecialSignal",
+      "targetHint": "SignalConcept",
+      "predicate": "equivalentClass",
+      "predicateLabel": "≡",
+      "category": "object",
+      "axiomKind": "EquivalentClasses",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

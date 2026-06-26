@@ -1,0 +1,19 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+:CommittedPerson a owl:Class ;
+  owl:equivalentClass [
+    a owl:Class ;
+    owl:intersectionOf (
+      :Person
+      [
+        a owl:Restriction ;
+        owl:onProperty :hasStatus ;
+        owl:hasValue :Married
+      ]
+    )
+  ] .
+
+:Person a owl:Class .
+:Married a owl:NamedIndividual .
+:hasStatus a owl:ObjectProperty .

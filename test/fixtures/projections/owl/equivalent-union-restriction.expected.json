@@ -1,0 +1,135 @@
+{
+  "nodes": [
+    {
+      "idHint": "AdaptiveSignal",
+      "label": "AdaptiveSignal",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "helper:restriction",
+      "label": "",
+      "entityCategory": "class-expression-connector",
+      "ontologyKind": "",
+      "blankExpressionType": "Restriction",
+      "graphRole": "class-expression-connector",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "helper:union",
+      "label": "∪",
+      "entityCategory": "owl-expression",
+      "ontologyKind": "",
+      "blankExpressionType": "Union",
+      "graphRole": "owl-expression",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "ManualSignal",
+      "label": "ManualSignal",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Meaning",
+      "label": "Meaning",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Operator",
+      "label": "Operator",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "SignalConcept",
+      "label": "SignalConcept",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "AdaptiveSignal",
+      "targetHint": "helper:union",
+      "predicate": "unionOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "AdaptiveSignal",
+      "targetHint": "Operator",
+      "predicate": "observedBy",
+      "predicateLabel": "(some) observedBy*",
+      "category": "object",
+      "axiomKind": "Restriction",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "AdaptiveSignal",
+      "targetHint": "SignalConcept",
+      "predicate": "equivalentClass",
+      "predicateLabel": "≡",
+      "category": "object",
+      "axiomKind": "EquivalentClasses",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:restriction",
+      "targetHint": "Meaning",
+      "predicate": "hasMeaning",
+      "predicateLabel": "(some) hasMeaning*",
+      "category": "object",
+      "axiomKind": "ClassExpressionRestriction",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:union",
+      "targetHint": "helper:restriction",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:union",
+      "targetHint": "ManualSignal",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

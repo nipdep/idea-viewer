@@ -1,0 +1,21 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:LimitedRole a owl:Class ;
+  owl:equivalentClass [
+    a owl:Class ;
+    owl:unionOf (
+      :Person
+      [
+        a owl:Restriction ;
+        owl:onProperty :hasChild ;
+        owl:maxCardinality "1"^^xsd:nonNegativeInteger
+      ]
+    )
+  ] .
+
+:Person a owl:Class .
+:Child a owl:Class .
+:hasChild a owl:ObjectProperty ;
+  <http://www.w3.org/2000/01/rdf-schema#range> :Child .

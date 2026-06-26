@@ -1,0 +1,18 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+:CompositeSignal a owl:Class ;
+  owl:equivalentClass [
+    a owl:Class ;
+    owl:unionOf (
+      :SignalConcept
+      [
+        a owl:Class ;
+        owl:oneOf ( :Red :Yellow )
+      ]
+    )
+  ] .
+
+:SignalConcept a owl:Class .
+:Red a owl:Class .
+:Yellow a owl:Class .

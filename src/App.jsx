@@ -106,7 +106,8 @@ const GRAPH_AXIS_HELPER_CATEGORIES = new Set([
 ]);
 const CANONICAL_LAYOUT_BACKEND = 'ngraph';
 
-const { blankNode, literal, namedNode, quad } = DataFactory;
+  return null;
+}
 
 function sanitizeFilenameSegment(value) {
   const normalized = String(value ?? '')
@@ -115,6 +116,240 @@ function sanitizeFilenameSegment(value) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return normalized || 'view';
+}
+
+function getFileExtension(fileName) {
+  const normalized = String(fileName || '').trim();
+  const dotIndex = normalized.lastIndexOf('.');
+  if (dotIndex <= 0 || dotIndex >= normalized.length - 1) {
+    return '';
+  }
+  return normalized.slice(dotIndex + 1).toLowerCase();
+}
+
+function parseFilenameFromContentDisposition(contentDisposition) {
+  if (!contentDisposition) {
+    return '';
+  }
+
+  const filenameStarMatch = contentDisposition.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i);
+  if (filenameStarMatch?.[1]) {
+    const rawValue = filenameStarMatch[1].trim().replace(/^"|"$/g, '');
+    try {
+      return decodeURIComponent(rawValue);
+    } catch {
+      return rawValue;
+    }
+  }
+
+  const filenameMatch = contentDisposition.match(/filename\s*=\s*([^;]+)/i);
+  if (filenameMatch?.[1]) {
+    return filenameMatch[1].trim().replace(/^"|"$/g, '');
+  }
+
+  return '';
+}
+
+function inferExtensionFromContentType(contentType) {
+  const normalized = String(contentType || '').split(';')[0].trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized === 'application/rdf+xml') return 'rdf';
+  if (normalized === 'text/turtle') return 'ttl';
+  if (normalized === 'application/n-triples') return 'nt';
+  if (normalized === 'application/n-quads') return 'nq';
+  if (normalized === 'application/trig') return 'trig';
+  if (normalized === 'text/n3' || normalized === 'application/n3') return 'n3';
+  return '';
+}
+
+function toReadableFileSize(byteCount) {
+  if (!Number.isFinite(byteCount) || byteCount <= 0) {
+    return '0 B';
+  }
+  if (byteCount < 1024) {
+    return `${byteCount} B`;
+  }
+  return `${(byteCount / 1024).toFixed(1)} KB`;
+}
+
+function parseAndValidateRemoteUrl(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) {
+    throw new Error('Paste a URL before adding.');
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('Invalid URL. Use a full http(s) URL.');
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only http:// or https:// URLs are supported.');
+  }
+
+  return parsed;
+}
+
+function ensureAllowedRemoteExtension(fileName, allowedExtensions, roleLabel) {
+  const extension = getFileExtension(fileName);
+  if (!extension || !allowedExtensions.has(extension)) {
+    const expected = Array.from(allowedExtensions).map((ext) => `.${ext}`).join(', ');
+    throw new Error(`Unsupported ${roleLabel} URL file type for ${fileName}. Allowed: ${expected}`);
+  }
+}
+
+function deriveFilenameFromUrl(url) {
+  const pathTail = url.pathname.split('/').filter(Boolean).pop() || '';
+  if (!pathTail) {
+    return '';
+  }
+  try {
+    return decodeURIComponent(pathTail);
+  } catch {
+    return pathTail;
+  }
+}
+
+async function readResponseBytesWithLimit(response, maxBytes, abortController) {
+  const contentLengthHeader = response.headers.get('content-length');
+  if (contentLengthHeader) {
+    const declaredBytes = Number.parseInt(contentLengthHeader, 10);
+    if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
+      throw new Error(
+        `Remote file is too large (${toReadableFileSize(declaredBytes)}). Maximum allowed is ${toReadableFileSize(maxBytes)}.`,
+      );
+    }
+  }
+
+  if (!response.body) {
+    const fallbackBuffer = await response.arrayBuffer();
+    if (fallbackBuffer.byteLength > maxBytes) {
+      throw new Error(
+        `Remote file is too large (${toReadableFileSize(fallbackBuffer.byteLength)}). Maximum allowed is ${toReadableFileSize(maxBytes)}.`,
+      );
+    }
+    return new Uint8Array(fallbackBuffer);
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    if (!value || value.length === 0) {
+      continue;
+    }
+
+    totalBytes += value.length;
+    if (totalBytes > maxBytes) {
+      abortController.abort();
+      throw new Error(
+        `Remote file is too large (exceeded ${toReadableFileSize(maxBytes)} limit while downloading).`,
+      );
+    }
+    chunks.push(value);
+  }
+
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return merged;
+}
+
+async function downloadRemoteRdfFile(rawUrl, role = 'kg') {
+  const url = parseAndValidateRemoteUrl(rawUrl);
+  const allowedExtensions = role === 'ontology' ? ONTOLOGY_ALLOWED_EXTENSIONS : KG_ALLOWED_EXTENSIONS;
+  const roleLabel = role === 'ontology' ? 'ontology' : 'KG';
+  const urlString = url.toString();
+
+  let headFilename = '';
+  let headContentType = '';
+  try {
+    const headResponse = await fetch(urlString, { method: 'HEAD', redirect: 'follow', cache: 'no-store' });
+    if (headResponse.ok && headResponse.type !== 'opaque') {
+      const headLength = Number.parseInt(headResponse.headers.get('content-length') || '', 10);
+      if (Number.isFinite(headLength) && headLength > MAX_REMOTE_FILE_BYTES) {
+        throw new Error(
+          `Remote file is too large (${toReadableFileSize(headLength)}). Maximum allowed is ${toReadableFileSize(MAX_REMOTE_FILE_BYTES)}.`,
+        );
+      }
+      headFilename = parseFilenameFromContentDisposition(headResponse.headers.get('content-disposition'));
+      headContentType = headResponse.headers.get('content-type') || '';
+    }
+  } catch (error) {
+    if (error instanceof Error && /too large/i.test(error.message)) {
+      throw error;
+    }
+    // HEAD may be blocked or unsupported on some hosts; validation continues with GET.
+  }
+
+  const abortController = new AbortController();
+  const response = await fetch(urlString, {
+    method: 'GET',
+    redirect: 'follow',
+    cache: 'no-store',
+    signal: abortController.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download URL: HTTP ${response.status} ${response.statusText || ''}`.trim());
+  }
+
+  if (response.type === 'opaque') {
+    throw new Error('URL download blocked by CORS. Host must allow cross-origin GET for this file.');
+  }
+
+  const contentType = response.headers.get('content-type') || headContentType || '';
+  if (/text\/html/i.test(contentType)) {
+    throw new Error('URL points to HTML, not a downloadable RDF/KG file.');
+  }
+
+  let fileName = parseFilenameFromContentDisposition(response.headers.get('content-disposition')) || headFilename;
+  if (!fileName) {
+    fileName = deriveFilenameFromUrl(url) || `remote-${role}.ttl`;
+  }
+
+  let extension = getFileExtension(fileName);
+  if (!extension) {
+    const inferredExtension = inferExtensionFromContentType(contentType) || (role === 'ontology' ? 'owl' : 'ttl');
+    fileName = `${fileName}.${inferredExtension}`;
+    extension = inferredExtension;
+  }
+
+  ensureAllowedRemoteExtension(fileName, allowedExtensions, roleLabel);
+
+  const bytes = await readResponseBytesWithLimit(response, MAX_REMOTE_FILE_BYTES, abortController);
+  if (bytes.length === 0) {
+    throw new Error('Downloaded file is empty.');
+  }
+  const text = new TextDecoder('utf-8').decode(bytes);
+  const remoteFile = new File([text], fileName, {
+    type: contentType.split(';')[0] || 'text/plain',
+    lastModified: Date.now(),
+  });
+
+  Object.defineProperty(remoteFile, '__sourceUrl', {
+    value: urlString,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+
+  return remoteFile;
 }
 
 function formatExportTimestamp(date = new Date()) {
@@ -199,9 +434,59 @@ function collectFocusRoots(cy, nodeIds) {
   return roots;
 }
 
+function collectExpandedFocusState(cy, nodeIds) {
+  const focusRoots = collectFocusRoots(cy, nodeIds);
+  if (focusRoots.empty()) {
+    return { focusRoots, neighborhood: focusRoots };
+  }
+
+  let neighborhood = focusRoots.closedNeighborhood();
+  const statementNodes = cy.nodes().filter((node) => Number(node.data('reifiedStatement')) === 1);
+
+  statementNodes.forEach((statementNode) => {
+    const statementSourceId = statementNode.data('statementSourceId');
+    const statementTargetId = statementNode.data('statementTargetId');
+    const statementPredicate = statementNode.data('statementPredicate');
+    if (!statementSourceId || !statementTargetId || !statementPredicate) {
+      return;
+    }
+
+    const sourceNode = cy.$id(statementSourceId);
+    const targetNode = cy.$id(statementTargetId);
+    const baseEdgeNeighborhood = cy.edges().filter(
+      (edge) =>
+        edge.data('category') !== 'reification' &&
+        edge.data('source') === statementSourceId &&
+        edge.data('target') === statementTargetId &&
+        edge.data('predicate') === statementPredicate,
+    );
+    const reificationNeighborhood = statementNode.closedNeighborhood();
+
+    const touchesFocusedNodes =
+      !focusRoots.intersection(sourceNode.union(targetNode)).empty() ||
+      !focusRoots.intersection(reificationNeighborhood.nodes()).empty();
+    const touchesFocusedEdges = !neighborhood.intersection(baseEdgeNeighborhood).empty();
+    if (!touchesFocusedNodes && !touchesFocusedEdges) {
+      return;
+    }
+
+    neighborhood = neighborhood
+      .union(sourceNode)
+      .union(targetNode)
+      .union(baseEdgeNeighborhood)
+      .union(reificationNeighborhood);
+  });
+
+  return { focusRoots, neighborhood };
+}
+
 function snapshotNodeToTerm(nodeData) {
   if (!nodeData) {
     return null;
+  }
+
+  if (nodeData.statementTerm) {
+    return restoreSnapshotTerm(nodeData.statementTerm);
   }
 
   if (nodeData.termType === 'NamedNode') {
@@ -441,6 +726,10 @@ async function buildTurtleExport(snapshot) {
   const booleanDatatype = namedNode(XSD_BOOLEAN_IRI);
 
   for (const edge of snapshot.edges) {
+    if (edge.data.syntheticViewEdge) {
+      continue;
+    }
+
     const sourceNode = nodeById.get(edge.data.source);
     const targetNode = nodeById.get(edge.data.target);
     const sourceTerm = snapshotNodeToTerm(sourceNode?.data);
@@ -453,7 +742,7 @@ async function buildTurtleExport(snapshot) {
 
   for (const node of snapshot.nodes) {
     const subject = snapshotNodeToTerm(node.data);
-    if (!subject || subject.termType === 'Literal') {
+    if (!subject || subject.termType === 'Literal' || subject.termType === 'Quad') {
       continue;
     }
 
@@ -494,7 +783,7 @@ async function buildTurtleExport(snapshot) {
 }
 
 function isEntityTerm(term) {
-  return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode');
+  return term && (term.termType === 'NamedNode' || term.termType === 'BlankNode' || term.termType === 'Quad');
 }
 
 function intersectSets(left, right) {
@@ -930,6 +1219,35 @@ function buildNeighborRows(selectedNodeId, graphData, visibleElements) {
   return rows;
 }
 
+function positionReifiedStatementNodes(cy) {
+  if (!cy) {
+    return;
+  }
+
+  cy.batch(() => {
+    cy.nodes('[reifiedStatement = 1]').forEach((statementNode) => {
+      const sourceId = String(statementNode.data('statementSourceId') ?? '');
+      const targetId = String(statementNode.data('statementTargetId') ?? '');
+      if (!sourceId || !targetId) {
+        return;
+      }
+
+      const sourceNode = cy.$id(sourceId);
+      const targetNode = cy.$id(targetId);
+      if (sourceNode.empty() || targetNode.empty()) {
+        return;
+      }
+
+      const sourcePosition = sourceNode.position();
+      const targetPosition = targetNode.position();
+      statementNode.position({
+        x: (sourcePosition.x + targetPosition.x) / 2,
+        y: (sourcePosition.y + targetPosition.y) / 2,
+      });
+    });
+  });
+}
+
 function formatSelectedFiles(files, emptyLabel) {
   if (files.length === 0) {
     return emptyLabel;
@@ -948,9 +1266,17 @@ function mergeSelectedFiles(currentFiles, incomingFiles) {
     return currentFiles;
   }
 
-  const deduped = new Map(currentFiles.map((file) => [`${file.name}-${file.size}-${file.lastModified}`, file]));
+  const getFileKey = (file) => {
+    const sourceUrl = typeof file?.__sourceUrl === 'string' ? file.__sourceUrl : '';
+    if (sourceUrl) {
+      return `url:${sourceUrl}`;
+    }
+    return `${file.name}-${file.size}-${file.lastModified}`;
+  };
+
+  const deduped = new Map(currentFiles.map((file) => [getFileKey(file), file]));
   for (const file of incomingFiles) {
-    deduped.set(`${file.name}-${file.size}-${file.lastModified}`, file);
+    deduped.set(getFileKey(file), file);
   }
 
   return Array.from(deduped.values());
@@ -1149,7 +1475,22 @@ function formatTermForInspector(term) {
   }
 
   if (term.termType === 'Literal') {
+    if (term.language) {
+      return `"${term.value}"@${term.language}`;
+    }
+    const datatypeIri = term.datatype?.value ?? '';
+    if (datatypeIri && datatypeIri !== 'http://www.w3.org/2001/XMLSchema#string') {
+      return `"${term.value}"^^${toPrefixedName(datatypeIri)}`;
+    }
     return term.value;
+  }
+
+  if (term.termType === 'Quad') {
+    const graphSegment =
+      term.graph && term.graph.termType !== 'DefaultGraph' ? ` ${formatTermForInspector(term.graph)}` : '';
+    return `<<( ${formatTermForInspector(term.subject)} ${formatTermForInspector(
+      term.predicate,
+    )} ${formatTermForInspector(term.object)}${graphSegment} )>>`;
   }
 
   return term.value || '';
@@ -1680,6 +2021,7 @@ export default function App() {
         literalValue: modelNode?.literalValue ?? node.data('literalValue') ?? '',
         literalDatatype: modelNode?.literalDatatype ?? node.data('literalDatatype') ?? '',
         literalLanguage: modelNode?.literalLanguage ?? node.data('literalLanguage') ?? '',
+        statementTerm: modelNode?.statementTerm ?? node.data('statementTerm') ?? null,
       };
       return {
         data: nodeData,
@@ -3123,7 +3465,15 @@ export default function App() {
     [selectedNodeId, graphData, visibleElements],
   );
 
-  const allClassIris = useMemo(() => graphData?.classes.map((entry) => entry.id) ?? [], [graphData]);
+  const classFilterEntries = useMemo(() => {
+    const entries = graphData?.classes ?? [];
+    return [...entries].sort((left, right) =>
+      String(left.label || '')
+        .toLocaleLowerCase()
+        .localeCompare(String(right.label || '').toLocaleLowerCase()),
+    );
+  }, [graphData]);
+  const allClassIris = useMemo(() => classFilterEntries.map((entry) => entry.id), [classFilterEntries]);
   const allBaseIris = useMemo(() => graphData?.baseIris.map((entry) => entry.id) ?? [], [graphData]);
   const allNamedGraphIds = useMemo(() => graphData?.namedGraphs.map((entry) => entry.id) ?? [], [graphData]);
   const hasNamedIndividuals = Boolean(
@@ -3167,6 +3517,14 @@ export default function App() {
       });
     });
   }, [graphData]);
+
+  useEffect(() => {
+    if (wasLightOntologyViewActiveRef.current && !isLightOntologyViewActive) {
+      hasAppliedInitialLayoutRef.current = false;
+      layoutPositionCacheRef.current.clear();
+    }
+    wasLightOntologyViewActiveRef.current = isLightOntologyViewActive;
+  }, [isLightOntologyViewActive]);
 
   useEffect(() => {
     if (!graphContainerRef.current) {
@@ -3496,6 +3854,23 @@ export default function App() {
           },
         },
         {
+          selector: 'node[reifiedStatement = 1]',
+          style: {
+            label: '',
+            shape: 'ellipse',
+            width: 12,
+            height: 12,
+            padding: 0,
+            'background-color': '#f7f0e8',
+            'border-color': '#86684f',
+            'border-width': 1.4,
+            color: '#f7f0e8',
+            events: 'no',
+            'z-index-compare': 'manual',
+            'z-index': 1,
+          },
+        },
+        {
           selector: 'edge',
           style: {
             label: 'data(predicateLabel)',
@@ -3808,13 +4183,13 @@ export default function App() {
         return;
       }
 
-      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, activeFocusedNodeIds);
       if (focusRoots.empty()) {
         groupDragArmRef.current = null;
         return;
       }
 
-      const groupNodes = focusRoots.closedNeighborhood().nodes();
+      const groupNodes = neighborhood.nodes();
       if (!groupNodes.has(downNode)) {
         groupDragArmRef.current = null;
         return;
@@ -3863,14 +4238,14 @@ export default function App() {
         return;
       }
 
-      const focusRoots = collectFocusRoots(cy, activeFocusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, activeFocusedNodeIds);
       if (focusRoots.empty()) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
         return;
       }
 
-      const groupNodes = focusRoots.closedNeighborhood().nodes();
+      const groupNodes = neighborhood.nodes();
       if (!groupNodes.has(grabbedNode)) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
@@ -4112,6 +4487,39 @@ export default function App() {
         timeoutId: null,
         span: telemetry.startSpan('interaction.zoom.latency', telemetryContextRef.current),
       };
+    };
+
+    const wheelOptions = { passive: false };
+    const onWheel = (event) => {
+      if (detachedPanModeRef.current) {
+        event.preventDefault();
+        return;
+      }
+
+      event.preventDefault();
+
+      const deltaMultiplier =
+        event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? Math.max(1, container.clientHeight) : 1;
+      const deltaY = event.deltaY * deltaMultiplier;
+      const speed = Math.max(MIN_GRAPH_ZOOM_SPEED, Math.min(MAX_GRAPH_ZOOM_SPEED, graphZoomSpeedRef.current));
+      const zoomFactor = Math.exp(-deltaY * speed * 0.0045);
+      const currentZoom = cy.zoom();
+      const minZoom = cy.minZoom();
+      const maxZoom = cy.maxZoom();
+      const nextZoom = Math.max(minZoom, Math.min(maxZoom, currentZoom * zoomFactor));
+
+      if (nextZoom === currentZoom) {
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      cy.zoom({
+        level: nextZoom,
+        renderedPosition: {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+        },
+      });
     };
 
     container.addEventListener('mousedown', onMouseDownCapture, true);
@@ -4625,6 +5033,385 @@ export default function App() {
   }, [isExportMenuOpen]);
 
   useEffect(() => {
+    if (!isSourceHelpTooltipOpen) {
+      return undefined;
+    }
+
+    const closeTooltip = () => setIsSourceHelpTooltipOpen(false);
+    window.addEventListener('resize', closeTooltip);
+    window.addEventListener('scroll', closeTooltip, true);
+    return () => {
+      window.removeEventListener('resize', closeTooltip);
+      window.removeEventListener('scroll', closeTooltip, true);
+    };
+  }, [isSourceHelpTooltipOpen]);
+
+  useEffect(() => {
+    if (!leftSectionOpen.source || leftCollapsed || (isGraphFullscreen && !leftFlyoutOpen)) {
+      setIsSourceHelpTooltipOpen(false);
+    }
+  }, [leftSectionOpen.source, leftCollapsed, isGraphFullscreen, leftFlyoutOpen]);
+
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (!target.closest('.header-settings-menu')) {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSettingsOpen]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+
+    const clampedZoomSpeed = Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, graphZoomSpeed));
+    const clampedFontSize = Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, graphFontSize));
+    const isHighContrast = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
+    graphZoomSpeedRef.current = clampedZoomSpeed;
+
+    if (cy._private?.options) {
+      cy._private.options.wheelSensitivity = clampedZoomSpeed;
+    }
+
+    const styleBuilder = cy.style();
+
+    if (isHighContrast) {
+      styleBuilder
+        .selector('node')
+        .style({
+          'background-color': '#ffffff',
+          color: '#000000',
+          'border-color': '#000000',
+          'border-width': 1.4,
+          'border-style': 'solid',
+        })
+        .selector('node[hasClass > 0][entityCategory != "class-expression"]')
+        .style({
+          'background-image': 'none',
+          'background-image-opacity': 0,
+          'background-width': 0,
+          'background-height': 0,
+          'background-offset-x': 0,
+          'background-offset-y': 0,
+          'bounds-expansion': 8,
+        })
+        .selector('node[entityCategory = "annotation-property"]')
+        .style({
+          'border-style': 'dashed',
+        })
+        .selector('node[entityCategory = "class-expression"]')
+        .style({
+          'background-color': '#ffffff',
+          color: '#000000',
+          'border-color': '#000000',
+          'border-width': 1.8,
+        })
+        .selector('node[lightOntologyView = 1]')
+        .style({
+          color: '#000000',
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          'border-style': 'solid',
+        })
+        .selector('node[mixedMode = 1][isOntologyNode = 1]')
+        .style({
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          color: '#000000',
+        })
+        .selector('node[kind = "blank"]')
+        .style({
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          color: '#000000',
+        })
+        .selector('node[reifiedStatement = 1]')
+        .style({
+          'background-color': '#ffffff',
+          'border-color': '#000000',
+          color: '#ffffff',
+        })
+        .selector('edge')
+        .style({
+          color: '#000000',
+          'text-background-color': '#ffffff',
+          'text-border-color': '#000000',
+          'text-border-width': 0.8,
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          width: 1.6,
+          opacity: 0.96,
+        })
+        .selector('edge[category = "reification"]')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          color: '#000000',
+        })
+        .selector('edge[reifiedOnly = 1]')
+        .style({
+          'line-style': 'dashed',
+          opacity: 0.9,
+        })
+        .selector('edge[lightOntologyView = 1]')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          color: '#000000',
+        })
+        .selector('edge[lightOntologyView = 1][lightRestrictionEdge = 1]')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          color: '#000000',
+          'text-background-color': '#ffffff',
+          'text-border-color': '#000000',
+        })
+        .selector('.focus-node')
+        .style({
+          'border-color': '#000000',
+          'background-color': '#ffffff',
+          color: '#000000',
+        })
+        .selector('.focus-neighbor')
+        .style({
+          'border-color': '#000000',
+        })
+        .selector('.focus-edge')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+        })
+        .selector('.selected-relation')
+        .style({
+          'line-color': '#000000',
+          'target-arrow-color': '#000000',
+          'text-background-color': '#ffffff',
+          'text-border-color': '#000000',
+        })
+        .selector('.faded')
+        .style({
+          opacity: 0.16,
+        });
+    } else {
+      styleBuilder
+        .selector('node')
+        .style({
+          'background-color': '#f6f0e8',
+          color: '#1e1b16',
+          'border-color': '#7e6f60',
+          'border-width': 0.4,
+        })
+        .selector('node[hasClass > 0][entityCategory != "class-expression"]')
+        .style({
+          'background-image': 'data(badgeSvg)',
+          'background-image-opacity': 1,
+          'background-image-containment': 'over',
+          'background-width': 'data(badgeWidth)',
+          'background-height': 24,
+          'background-position-x': '100%',
+          'background-position-y': '0%',
+          'background-offset-x': 26,
+          'background-offset-y': -7,
+          'background-repeat': 'no-repeat',
+          'background-fit': 'none',
+          'background-clip': 'none',
+          'bounds-expansion': 36,
+        })
+        .selector('node[kind = "literal"]')
+        .style({
+          'background-color': '#f0e4d7',
+          'border-color': '#9b7458',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "datatype"]')
+        .style({
+          'background-color': '#eee5da',
+          'border-color': '#8e7560',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "data-property"]')
+        .style({
+          'background-color': '#f0e7db',
+          'border-color': '#9b7f66',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "object-property"]')
+        .style({
+          'background-color': '#efe4d7',
+          'border-color': '#9f7a57',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "annotation-property"]')
+        .style({
+          'background-color': '#efe6dd',
+          'border-color': '#9e846b',
+          'border-style': 'dashed',
+          color: '#1e1b16',
+        })
+        .selector('node[entityCategory = "class-expression"]')
+        .style({
+          'background-color': '#e8f2ef',
+          'border-color': '#2f8a81',
+          'border-width': 2.2,
+          color: '#1f4f4c',
+        })
+        .selector('node[lightOntologyView = 1]')
+        .style({
+          color: '#2a231d',
+          'background-color': '#f6f0e8',
+          'border-color': '#7e6f60',
+          'border-style': 'solid',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "class"]')
+        .style({
+          'background-color': '#d9c4ab',
+          'border-color': '#8d6b4c',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "object-property"]')
+        .style({
+          'background-color': '#d4e2f2',
+          'border-color': '#5d7fa8',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "data-property"]')
+        .style({
+          'background-color': '#d6ebd9',
+          'border-color': '#5f9067',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "annotation-property"]')
+        .style({
+          'background-color': '#f0d9e4',
+          'border-color': '#ab6f8a',
+          'border-style': 'solid',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "individual"]')
+        .style({
+          'background-color': '#dfdfdf',
+          'border-color': '#7f7f7f',
+        })
+        .selector('node[lightOntologyView = 1][kind = "literal"]')
+        .style({
+          'background-color': '#f5ebbe',
+          'border-color': '#b9a14f',
+          color: '#2a231d',
+        })
+        .selector('node[lightOntologyView = 1][entityCategory = "datatype"]')
+        .style({
+          'background-color': '#d6ebd9',
+          'border-color': '#5f9067',
+        })
+        .selector('node[mixedMode = 1][isOntologyNode = 1]')
+        .style({
+          'background-color': '#e5d5c4',
+          'border-color': '#86684f',
+          color: '#2d2218',
+        })
+        .selector('node[kind = "blank"]')
+        .style({
+          'background-color': '#ece7e1',
+          'border-color': '#c6bbae',
+          color: '#6b6157',
+        })
+        .selector('node[reifiedStatement = 1]')
+        .style({
+          'background-color': '#f7f0e8',
+          'border-color': '#86684f',
+          color: '#f7f0e8',
+        })
+        .selector('edge')
+        .style({
+          color: '#5a524a',
+          'text-background-color': '#fffaf2',
+          'text-border-color': '#e2d8cb',
+          'line-color': '#c8bfb4',
+          'target-arrow-color': '#c8bfb4',
+          opacity: 0.76,
+        })
+        .selector('edge[category = "reification"]')
+        .style({
+          'line-color': '#86684f',
+          'target-arrow-color': '#86684f',
+          color: '#5e4734',
+        })
+        .selector('edge[reifiedOnly = 1]')
+        .style({
+          'line-style': 'dashed',
+          opacity: 0.62,
+        })
+        .selector('edge[lightOntologyView = 1]')
+        .style({
+          'line-color': '#b8afa5',
+          'target-arrow-color': '#b8afa5',
+          color: '#5a524a',
+        })
+        .selector('edge[lightOntologyView = 1][lightRestrictionEdge = 1]')
+        .style({
+          'line-color': '#3f8f86',
+          'target-arrow-color': '#3f8f86',
+          color: '#3d665f',
+          'text-background-color': '#f8f5ef',
+          'text-border-color': '#d2cbc2',
+        })
+        .selector('.focus-node')
+        .style({
+          'border-color': '#1e6b6a',
+          'background-color': '#d8eeeb',
+          color: '#1e1b16',
+        })
+        .selector('.focus-neighbor')
+        .style({
+          'border-color': '#3a8f86',
+        })
+        .selector('.focus-edge')
+        .style({
+          'line-color': '#3a8f86',
+          'target-arrow-color': '#3a8f86',
+        })
+        .selector('.selected-relation')
+        .style({
+          'line-color': '#1e6b6a',
+          'target-arrow-color': '#1e6b6a',
+          'text-background-color': '#f0fff8',
+          'text-border-color': '#9fd5cb',
+        })
+        .selector('.faded')
+        .style({
+          opacity: 0.12,
+        });
+    }
+
+    styleBuilder
+      .selector('node')
+      .style('font-size', clampedFontSize)
+      .selector('edge')
+      .style('font-size', clampedFontSize)
+      .update();
+  }, [graphZoomSpeed, graphFontSize, graphThemeMode]);
+
+  useEffect(() => {
     const cy = cyRef.current;
     if (!cy) {
       return undefined;
@@ -4752,24 +5539,23 @@ export default function App() {
         return;
       }
 
-      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, focusedNodeIds);
       if (focusRoots.empty()) {
         return;
       }
 
-      const neighborhood = focusRoots.closedNeighborhood();
       cy.elements().difference(neighborhood).addClass('faded');
       focusRoots.addClass('focus-node');
       neighborhood.nodes().difference(focusRoots).addClass('focus-neighbor');
-      focusRoots.connectedEdges().addClass('focus-edge');
+      neighborhood.edges().addClass('focus-edge');
     });
 
     if (focusedNodeIds.length > 0) {
-      const focusRoots = collectFocusRoots(cy, focusedNodeIds);
+      const { focusRoots, neighborhood } = collectExpandedFocusState(cy, focusedNodeIds);
       if (!focusRoots.empty()) {
         cy.animate({
           fit: {
-            eles: focusRoots.closedNeighborhood(),
+            eles: neighborhood,
             padding: 76,
           },
           duration: 250,
@@ -5189,7 +5975,12 @@ export default function App() {
     setFocusedNodeId(null);
     setFocusedNodeIds([]);
     setIsExportMenuOpen(false);
+    setIsSourceHelpTooltipOpen(false);
     setOntologyMetadataRows([]);
+    setKgUrlInput('');
+    setOntologyUrlInput('');
+    setIsKgUrlLoading(false);
+    setIsOntologyUrlLoading(false);
     setLoadError('');
     setFilterError('');
     setStatus(nextStatus);
@@ -5209,6 +6000,46 @@ export default function App() {
     setUploadedFiles((current) => mergeSelectedFiles(current, files));
   }
 
+  async function handleKgUrlAdd() {
+    const rawUrl = kgUrlInput.trim();
+    if (!rawUrl || isKgUrlLoading) {
+      return;
+    }
+
+    setIsKgUrlLoading(true);
+    setLoadError('');
+    try {
+      const file = await downloadRemoteRdfFile(rawUrl, 'kg');
+      handleKgFileSelection([file]);
+      setKgUrlInput('');
+      setStatus(`Loaded KG URL: ${rawUrl}`);
+    } catch (error) {
+      setLoadError(error.message || 'Failed to download KG URL.');
+    } finally {
+      setIsKgUrlLoading(false);
+    }
+  }
+
+  async function handleOntologyUrlAdd() {
+    const rawUrl = ontologyUrlInput.trim();
+    if (!rawUrl || isOntologyUrlLoading) {
+      return;
+    }
+
+    setIsOntologyUrlLoading(true);
+    setLoadError('');
+    try {
+      const file = await downloadRemoteRdfFile(rawUrl, 'ontology');
+      handleOntologyFileSelection([file]);
+      setOntologyUrlInput('');
+      setStatus(`Loaded ontology URL: ${rawUrl}`);
+    } catch (error) {
+      setLoadError(error.message || 'Failed to download ontology URL.');
+    } finally {
+      setIsOntologyUrlLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (uploadedFiles.length === 0) {
       setGraphData(null);
@@ -5224,11 +6055,14 @@ export default function App() {
       setLoadError('');
       setFilterError('');
       setIsLoading(false);
+      setIsKgUrlLoading(false);
+      setIsOntologyUrlLoading(false);
       setStatus(DEFAULT_STATUS);
       return;
     }
 
     let cancelled = false;
+    const hadExistingGraph = Boolean(graphData);
 
     const loadGraph = async () => {
       setIsLoading(true);
@@ -5314,6 +6148,13 @@ export default function App() {
         }
 
         setGraphData(nextGraphData);
+        if (!hadExistingGraph && hasOntology && !hasKg) {
+          setGraphProjectionMode(GRAPH_PROJECTION_MODES.ONTOLOGY);
+          setIsLightOntologyView(true);
+        } else if (!hadExistingGraph && hasKg && !hasOntology) {
+          setGraphProjectionMode(GRAPH_PROJECTION_MODES.KG);
+          setIsLightOntologyView(false);
+        }
         setSelectedClassIris(nextGraphData.classes.map((entry) => entry.id));
         setSelectedBaseIris(nextGraphData.baseIris.map((entry) => entry.id));
         setSelectedNamedGraphIds(nextGraphData.namedGraphs.map((entry) => entry.id));
@@ -5392,6 +6233,23 @@ export default function App() {
       }
       return [...current, baseIri];
     });
+  }
+
+  function toggleNamedGraph(namedGraphId) {
+    setSelectedNamedGraphIds((current) => {
+      if (current.includes(namedGraphId)) {
+        return current.filter((entry) => entry !== namedGraphId);
+      }
+      return [...current, namedGraphId];
+    });
+  }
+
+  function selectAllNamedGraphs() {
+    setSelectedNamedGraphIds(allNamedGraphIds);
+  }
+
+  function clearNamedGraphs() {
+    setSelectedNamedGraphIds([]);
   }
 
   function selectAllBaseIris() {
@@ -5484,6 +6342,41 @@ export default function App() {
   function clearSparqlFilter() {
     setSparqlDraft('');
     setSparqlQuery('');
+  }
+
+  function handleGraphZoomSpeedChange(nextValue) {
+    const parsed = Number(nextValue);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    setGraphZoomSpeed(Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, parsed)));
+  }
+
+  function stepGraphFontSize(direction) {
+    setGraphFontSize((current) => {
+      const nextValue = current + direction;
+      return Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, nextValue));
+    });
+  }
+
+  function openSourceHelpTooltip() {
+    const button = sourceHelpButtonRef.current;
+    if (!button) {
+      return;
+    }
+
+    const rect = button.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || 1200;
+    const tooltipWidth = Math.min(320, Math.max(240, viewportWidth - 24));
+    const left = Math.min(Math.max(8, rect.right - tooltipWidth), Math.max(8, viewportWidth - tooltipWidth - 8));
+    const top = rect.bottom + 8;
+
+    setSourceHelpTooltipPosition({ left, top, width: tooltipWidth });
+    setIsSourceHelpTooltipOpen(true);
+  }
+
+  function closeSourceHelpTooltip() {
+    setIsSourceHelpTooltipOpen(false);
   }
 
   function toggleLeftSection(sectionKey) {
@@ -5854,6 +6747,19 @@ export default function App() {
                   <h2>Upload File</h2>
                   <button
                     type="button"
+                    ref={sourceHelpButtonRef}
+                    className="section-help"
+                    aria-label="Remote file size guidance"
+                    title={REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
+                    onMouseEnter={openSourceHelpTooltip}
+                    onMouseLeave={closeSourceHelpTooltip}
+                    onFocus={openSourceHelpTooltip}
+                    onBlur={closeSourceHelpTooltip}
+                  >
+                    i
+                  </button>
+                  <button
+                    type="button"
                     className="section-clear"
                     onClick={() => { void clearLoadedGraph(); }}
                     disabled={uploadedFiles.length === 0}
@@ -6019,7 +6925,7 @@ export default function App() {
                             <p className="muted">No explicit `rdf:type` triples detected.</p>
                           )}
                           {graphData &&
-                            graphData.classes.map((entry) => (
+                            classFilterEntries.map((entry) => (
                               <label key={entry.id} className="class-item">
                                 <input
                                   type="checkbox"
@@ -6027,6 +6933,48 @@ export default function App() {
                                   onChange={() => toggleClass(entry.id)}
                                 />
                                 <span className="class-label" title={entry.id}>
+                                  {entry.label}
+                                </span>
+                                <small>{entry.count}</small>
+                              </label>
+                            ))}
+                        </div>
+                      </>
+                    )}
+                    {showNamedGraphFilter && (
+                      <>
+                        <h3 className="filter-group-title">KG named graph</h3>
+                        <div className="mini-actions">
+                          <button
+                            type="button"
+                            onClick={selectAllNamedGraphs}
+                            disabled={!graphData || isAllNamedGraphsSelected}
+                          >
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearNamedGraphs}
+                            disabled={!graphData || selectedNamedGraphIds.length === 0}
+                          >
+                            Clear
+                          </button>
+                        </div>
+
+                        <div className="class-list">
+                          {!graphData && <p className="muted">Load data to list KG named graphs.</p>}
+                          {graphData && graphData.namedGraphs.length === 0 && (
+                            <p className="muted">No named graphs detected in the loaded KG data.</p>
+                          )}
+                          {graphData &&
+                            graphData.namedGraphs.map((entry) => (
+                              <label key={entry.id} className="class-item">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedNamedGraphIds.includes(entry.id)}
+                                  onChange={() => toggleNamedGraph(entry.id)}
+                                />
+                                <span className="class-label" title={entry.label}>
                                   {entry.label}
                                 </span>
                                 <small>{entry.count}</small>
@@ -6918,6 +7866,20 @@ export default function App() {
           </>
         )}
       </div>
+
+      {isSourceHelpTooltipOpen && (
+        <div
+          className="section-help-tooltip-floating"
+          role="tooltip"
+          style={{
+            left: `${sourceHelpTooltipPosition.left}px`,
+            top: `${sourceHelpTooltipPosition.top}px`,
+            width: `${sourceHelpTooltipPosition.width}px`,
+          }}
+        >
+          {REMOTE_LOAD_LIMIT_TOOLTIP_TEXT}
+        </div>
+      )}
 
       <footer className="app-footer">
         Copyright © 2026 Rensselaer Polytechnic Institute | Tetherless World Constellation

@@ -1,0 +1,35 @@
+{
+  "nodes": [
+    {
+      "idHint": "Cat",
+      "label": "Cat",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Dog",
+      "label": "Dog",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "Cat",
+      "targetHint": "Dog",
+      "predicate": "disjointWith",
+      "predicateLabel": "≢",
+      "category": "object",
+      "axiomKind": "DisjointClasses",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

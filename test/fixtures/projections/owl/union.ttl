@@ -1,0 +1,10 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+:ParentRole a owl:Class ;
+  owl:equivalentClass [
+    owl:unionOf ( :Mother :Father )
+  ] .
+
+:Mother a owl:Class .
+:Father a owl:Class .

@@ -1,0 +1,115 @@
+{
+  "nodes": [
+    {
+      "idHint": "1",
+      "label": "1",
+      "entityCategory": "literal",
+      "ontologyKind": "",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "Literal"
+    },
+    {
+      "idHint": "blank:restriction",
+      "label": "",
+      "entityCategory": "class-expression",
+      "ontologyKind": "",
+      "blankExpressionType": "Restriction",
+      "graphRole": "",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "Child",
+      "label": "Child",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Class",
+      "label": "Class",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "OnlyChildParent",
+      "label": "OnlyChildParent",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Restriction",
+      "label": "Restriction",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "blank:restriction",
+      "targetHint": "1",
+      "predicate": "maxCardinality",
+      "predicateLabel": "maxCardinality",
+      "category": "data",
+      "axiomKind": "Restriction",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "blank:restriction",
+      "targetHint": "Restriction",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassAssertion",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "Child",
+      "targetHint": "Class",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassAssertion",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "OnlyChildParent",
+      "targetHint": "blank:restriction",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "subclass",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "OnlyChildParent",
+      "targetHint": "Class",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassAssertion",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

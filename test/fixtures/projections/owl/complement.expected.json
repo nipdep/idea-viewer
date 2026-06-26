@@ -1,0 +1,35 @@
+{
+  "nodes": [
+    {
+      "idHint": "NonStudent",
+      "label": "NonStudent",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Student",
+      "label": "Student",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "NonStudent",
+      "targetHint": "Student",
+      "predicate": "complementOf",
+      "predicateLabel": "¬",
+      "category": "object",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

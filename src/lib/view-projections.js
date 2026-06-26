@@ -2489,8 +2489,15 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
           : targetSpec.forceStarSuffix
           ? propertyBaseLabel
           : `${restrictionPredicatePrefix(targetSpec.predicate)}${propertyBaseLabel}${restrictionPredicateSuffix(targetSpec.predicate)}`;
+        const restrictionLabelMarker =
+          anchorEdge.predicate === OWL_EQUIVALENT_CLASS
+            ? '**'
+            : anchorEdge.predicate === RDFS_SUBCLASS_OF
+              ? '*'
+              : '*';
         const predicateLabel = decorateRelationLabel(basePredicateLabel, {
           isRestriction: targetSpec.suppressRestrictionDecoration ? false : shouldDecorateRestrictionEdge(targetSpec.predicate),
+          restrictionMarker: restrictionLabelMarker,
           hasDetailRows: Array.isArray(targetSpec.projectedMetadataRows) && targetSpec.projectedMetadataRows.length > 0,
         });
         synthesizedEdges.push({
@@ -2505,6 +2512,7 @@ function synthesizeRestrictionProjection(graphData, visibleNodeIds, propertyDecl
             restrictionKind: graphData.nodeMap.get(node.id)?.restrictionKind || compactIri(targetSpec.predicate),
             sourceCardinality: targetSpec.sourceCardinality,
             showSourceCardinality: targetSpec.sourceCardinality ? 1 : 0,
+            restrictionLabelMarker,
             owlSynthesized: 1,
             owlEdgeStyle: propertyDeclaration?.propertyKind === 'data-property' ? 'dashed' : 'straight',
             isSelfLoop: resolvedTargetId === anchorEdge.source || targetSpec.isSelfLoop ? 1 : 0,
@@ -4053,6 +4061,8 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
       const connectedViaClassConstruct =
         data.owlSynthesized === 1 &&
         (
+          data.axiomKind === 'Restriction' ||
+          data.axiomKind === 'ClassExpressionRestriction' ||
           helperLikeNodeCategories.has(neighborNode.entityCategory) ||
           neighborNode.entityCategory === 'class-expression' ||
           neighborNode.blankExpressionType === 'OneOf' ||

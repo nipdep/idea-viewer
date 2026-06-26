@@ -638,6 +638,46 @@ function getGraphAxisForNode(node) {
   return GRAPH_FILTER_AXES.TBOX;
 }
 
+function isTBoxNode(node) {
+  return getGraphAxisForNode(node) === GRAPH_FILTER_AXES.TBOX;
+}
+
+function isABoxNode(node) {
+  return getGraphAxisForNode(node) === GRAPH_FILTER_AXES.ABOX;
+}
+
+function isLiteralNode(node) {
+  return Boolean(node) && (node.termType === 'Literal' || node.entityCategory === 'literal');
+}
+
+function isMixedTerminologyInstanceStatement(sourceNode, targetNode) {
+  return (
+    (isTBoxNode(sourceNode) && isABoxNode(targetNode)) ||
+    (isABoxNode(sourceNode) && isTBoxNode(targetNode))
+  );
+}
+
+function getGraphAxisForStatement(sourceNode, targetNode) {
+  if (!sourceNode && !targetNode) {
+    return GRAPH_FILTER_AXES.ALL;
+  }
+
+  // Exclude mixed terminology/instance statements such as class assertions.
+  if (isMixedTerminologyInstanceStatement(sourceNode, targetNode)) {
+    return GRAPH_FILTER_AXES.ALL;
+  }
+
+  if (isTBoxNode(sourceNode) || isTBoxNode(targetNode)) {
+    return GRAPH_FILTER_AXES.TBOX;
+  }
+
+  if (isABoxNode(sourceNode) || isABoxNode(targetNode) || isLiteralNode(sourceNode) || isLiteralNode(targetNode)) {
+    return GRAPH_FILTER_AXES.ABOX;
+  }
+
+  return GRAPH_FILTER_AXES.ALL;
+}
+
 function runGraphAxisFilter(graphData, graphFilterAxis) {
   if (!graphData || graphFilterAxis === GRAPH_FILTER_AXES.ALL) {
     return null;
@@ -648,6 +688,26 @@ function runGraphAxisFilter(graphData, graphFilterAxis) {
     if (getGraphAxisForNode(node) === graphFilterAxis) {
       matchedNodeIds.add(node.id);
     }
+  }
+
+  for (const edge of graphData.objectEdges ?? []) {
+    const sourceNode = graphData.nodeMap.get(edge.source);
+    const targetNode = graphData.nodeMap.get(edge.target);
+    if (getGraphAxisForStatement(sourceNode, targetNode) !== graphFilterAxis) {
+      continue;
+    }
+    matchedNodeIds.add(edge.source);
+    matchedNodeIds.add(edge.target);
+  }
+
+  for (const edge of graphData.literalEdges ?? []) {
+    const sourceNode = graphData.nodeMap.get(edge.source);
+    const targetNode = graphData.nodeMap.get(edge.target);
+    if (getGraphAxisForStatement(sourceNode, targetNode) !== graphFilterAxis) {
+      continue;
+    }
+    matchedNodeIds.add(edge.source);
+    matchedNodeIds.add(edge.target);
   }
 
   return matchedNodeIds;
@@ -662,6 +722,7 @@ function filterProjectedElementsByGraphAxis(elements, graphFilterAxis) {
   const edgeElements = elements.filter((element) => element?.data?.source);
   const nodeElementsById = new Map(nodeElements.map((element) => [element.data.id, element]));
   const retainedNodeIds = new Set();
+  const retainedEdgeIds = new Set();
 
   for (const element of nodeElements) {
     const data = element?.data;
@@ -674,12 +735,29 @@ function filterProjectedElementsByGraphAxis(elements, graphFilterAxis) {
     }
   }
 
+  for (const edge of edgeElements) {
+    const data = edge?.data;
+    if (!data) {
+      continue;
+    }
+
+    const sourceNode = nodeElementsById.get(data.source)?.data;
+    const targetNode = nodeElementsById.get(data.target)?.data;
+    if (getGraphAxisForStatement(sourceNode, targetNode) !== graphFilterAxis) {
+      continue;
+    }
+
+    retainedEdgeIds.add(data.id);
+    retainedNodeIds.add(data.source);
+    retainedNodeIds.add(data.target);
+  }
+
   let addedHelperNode = true;
   while (addedHelperNode) {
     addedHelperNode = false;
     for (const edge of edgeElements) {
       const data = edge?.data;
-      if (!data) {
+      if (!data || !retainedEdgeIds.has(data.id)) {
         continue;
       }
 
@@ -708,7 +786,17 @@ function filterProjectedElementsByGraphAxis(elements, graphFilterAxis) {
     if (!data.source) {
       return retainedNodeIds.has(data.id);
     }
-    return retainedNodeIds.has(data.source) && retainedNodeIds.has(data.target);
+    return (
+      retainedEdgeIds.has(data.id) ||
+      (
+        retainedNodeIds.has(data.source) &&
+        retainedNodeIds.has(data.target) &&
+        (
+          GRAPH_AXIS_HELPER_CATEGORIES.has(nodeElementsById.get(data.source)?.data?.entityCategory ?? '') ||
+          GRAPH_AXIS_HELPER_CATEGORIES.has(nodeElementsById.get(data.target)?.data?.entityCategory ?? '')
+        )
+      )
+    );
   });
 }
 

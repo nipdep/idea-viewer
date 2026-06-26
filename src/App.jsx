@@ -101,6 +101,7 @@ const GRAPH_AXIS_HELPER_CATEGORIES = new Set([
   'all-different',
   'edge-anchor',
   'class-expression-connector',
+  'enumeration-set',
   'rdf-connector',
 ]);
 const CANONICAL_LAYOUT_BACKEND = 'ngraph';
@@ -778,7 +779,7 @@ function filterProjectedElementsByGraphAxis(elements, graphFilterAxis) {
     }
   }
 
-  return elements.filter((element) => {
+  let filteredElements = elements.filter((element) => {
     const data = element?.data;
     if (!data) {
       return false;
@@ -798,6 +799,53 @@ function filterProjectedElementsByGraphAxis(elements, graphFilterAxis) {
       )
     );
   });
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const currentEdges = filteredElements.filter((element) => element?.data?.source);
+    const currentNodes = filteredElements.filter((element) => !element?.data?.source);
+    const incomingCount = new Map();
+    const outgoingCount = new Map();
+
+    for (const edge of currentEdges) {
+      const data = edge.data;
+      outgoingCount.set(data.source, (outgoingCount.get(data.source) ?? 0) + 1);
+      incomingCount.set(data.target, (incomingCount.get(data.target) ?? 0) + 1);
+    }
+
+    const danglingHelperIds = new Set(
+      currentNodes
+        .filter((element) => {
+          const data = element?.data;
+          if (!data || !GRAPH_AXIS_HELPER_CATEGORIES.has(data.entityCategory ?? '')) {
+            return false;
+          }
+          const incoming = incomingCount.get(data.id) ?? 0;
+          const outgoing = outgoingCount.get(data.id) ?? 0;
+          return incoming === 0 || outgoing === 0;
+        })
+        .map((element) => element.data.id),
+    );
+
+    if (danglingHelperIds.size === 0) {
+      break;
+    }
+
+    filteredElements = filteredElements.filter((element) => {
+      const data = element?.data;
+      if (!data) {
+        return false;
+      }
+      if (!data.source) {
+        return !danglingHelperIds.has(data.id);
+      }
+      return !danglingHelperIds.has(data.source) && !danglingHelperIds.has(data.target);
+    });
+    changed = true;
+  }
+
+  return filteredElements;
 }
 
 function normalizeSearchText(value) {

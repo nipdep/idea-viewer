@@ -15,6 +15,13 @@ export const projectionTestManifest = [
     view: 'owl',
     mode: GRAPH_VIEW_MODES.OWL,
     projectionLevel: 'ontology',
+    purpose: 'Verify that a minimal owl:Class declaration is recognized as a class node in OWL view.',
+    dependencies: [],
+    targetAssertions: [
+      'contains one normalized class node for Person',
+      'contains no edges',
+      'contains no helper nodes',
+    ],
     fixturePath: path.join(__dirname, 'fixtures/projections/owl/class-declaration.ttl'),
     expectedPath: path.join(__dirname, 'fixtures/projections/owl/class-declaration.expected.json'),
   },

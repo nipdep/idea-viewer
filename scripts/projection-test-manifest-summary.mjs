@@ -29,3 +29,10 @@ console.log('By semantic category:');
 for (const [key, count] of countBy(projectionTestManifest, (item) => `${item.family} / ${item.category}`)) {
   console.log(`- ${key}: ${count}`);
 }
+console.log('');
+
+console.log('Dependency profile:');
+for (const item of projectionTestManifest) {
+  const deps = Array.isArray(item.dependencies) && item.dependencies.length > 0 ? item.dependencies.join(', ') : '(none)';
+  console.log(`- ${item.id}: ${deps}`);
+}

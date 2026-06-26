@@ -1,30 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import path from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { buildProjectionSnapshot } from './projection-helpers/buildProjectionSnapshot.mjs';
-import { GRAPH_VIEW_MODES } from '../src/lib/view-projections.js';
+import { projectionTestManifest } from './projection-manifest.mjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-async function readExpectedJson(relativePath) {
-  const fullPath = path.join(__dirname, relativePath);
-  return JSON.parse(await readFile(fullPath, 'utf8'));
+async function readExpectedJson(expectedPath) {
+  return JSON.parse(await readFile(expectedPath, 'utf8'));
 }
 
-test('OWL view exact snapshot: class declaration', async () => {
-  const fixturePath = path.join(__dirname, 'fixtures/projections/owl/class-declaration.ttl');
-  const expected = await readExpectedJson('fixtures/projections/owl/class-declaration.expected.json');
+for (const testCase of projectionTestManifest.filter((entry) => entry.view === 'owl')) {
+  test(testCase.title, async () => {
+    const expected = await readExpectedJson(testCase.expectedPath);
 
-  const actual = await buildProjectionSnapshot({
-    fixturePath,
-    mode: GRAPH_VIEW_MODES.OWL,
-    viewOptions: {
-      owlProjectionLevel: 'ontology',
-    },
+    const actual = await buildProjectionSnapshot({
+      fixturePath: testCase.fixturePath,
+      mode: testCase.mode,
+      viewOptions: {
+        owlProjectionLevel: testCase.projectionLevel,
+      },
+    });
+
+    assert.deepStrictEqual(actual, expected);
   });
-
-  assert.deepStrictEqual(actual, expected);
-});
+}

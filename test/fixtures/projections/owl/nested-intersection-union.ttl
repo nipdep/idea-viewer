@@ -1,0 +1,21 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+:ComplexAgent a owl:Class ;
+  owl:equivalentClass [
+    a owl:Class ;
+    owl:intersectionOf (
+      :Person
+      [
+        a owl:Class ;
+        owl:unionOf (
+          :Employee
+          :Volunteer
+        )
+      ]
+    )
+  ] .
+
+:Person a owl:Class .
+:Employee a owl:Class .
+:Volunteer a owl:Class .

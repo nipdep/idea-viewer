@@ -1,0 +1,19 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+:SelectiveOwner a owl:Class ;
+  owl:equivalentClass [
+    a owl:Class ;
+    owl:unionOf (
+      :Person
+      [
+        a owl:Restriction ;
+        owl:onProperty :hasPet ;
+        owl:allValuesFrom :Animal
+      ]
+    )
+  ] .
+
+:Person a owl:Class .
+:Animal a owl:Class .
+:hasPet a owl:ObjectProperty .

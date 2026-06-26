@@ -1,0 +1,115 @@
+{
+  "nodes": [
+    {
+      "idHint": "ComplexAgent",
+      "label": "ComplexAgent",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Employee",
+      "label": "Employee",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "helper:intersection",
+      "label": "∩",
+      "entityCategory": "owl-expression",
+      "ontologyKind": "",
+      "blankExpressionType": "Intersection",
+      "graphRole": "owl-expression",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "helper:union",
+      "label": "∪",
+      "entityCategory": "owl-expression",
+      "ontologyKind": "",
+      "blankExpressionType": "Union",
+      "graphRole": "owl-expression",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "Person",
+      "label": "Person",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Volunteer",
+      "label": "Volunteer",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "ComplexAgent",
+      "targetHint": "helper:intersection",
+      "predicate": "intersectionOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:intersection",
+      "targetHint": "helper:union",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:intersection",
+      "targetHint": "Person",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:union",
+      "targetHint": "Employee",
+      "predicate": "unionOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:union",
+      "targetHint": "Volunteer",
+      "predicate": "unionOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

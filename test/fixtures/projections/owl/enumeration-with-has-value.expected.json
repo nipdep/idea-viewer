@@ -1,0 +1,95 @@
+{
+  "nodes": [
+    {
+      "idHint": "Approved",
+      "label": "Approved",
+      "entityCategory": "individual",
+      "ontologyKind": "individual",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Full",
+      "label": "Full",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "helper:oneof",
+      "label": "{}",
+      "entityCategory": "owl-expression",
+      "ontologyKind": "",
+      "blankExpressionType": "OneOf",
+      "graphRole": "owl-expression",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "LicensedState",
+      "label": "LicensedState",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Provisional",
+      "label": "Provisional",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "helper:oneof",
+      "targetHint": "Full",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:oneof",
+      "targetHint": "Provisional",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "LicensedState",
+      "targetHint": "Approved",
+      "predicate": "hasStatus",
+      "predicateLabel": "hasStatus",
+      "category": "object",
+      "axiomKind": "Restriction",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "LicensedState",
+      "targetHint": "helper:oneof",
+      "predicate": "oneOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+:LicensedState a owl:Class ;
+  owl:equivalentClass [
+    a owl:Class ;
+    owl:oneOf ( :Provisional :Full )
+  ] ;
+  rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty :hasStatus ;
+    owl:hasValue :Approved
+  ] .
+
+:Provisional a owl:Class .
+:Full a owl:Class .
+:Approved a owl:NamedIndividual .
+:hasStatus a owl:ObjectProperty .

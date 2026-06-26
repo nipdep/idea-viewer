@@ -1,0 +1,455 @@
+
+@prefix :        <http://example.org/mock-ontology#> .
+@prefix mo:      <http://example.org/mock-ontology#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+
+<http://example.org/mock-ontology>
+    a owl:Ontology ;
+    owl:versionIRI <http://example.org/mock-ontology/1.0.0> ;
+    owl:imports <http://www.w3.org/2004/02/skos/core> ;
+    rdfs:label "Mock scholarly ontology"@en ;
+    rdfs:comment "A compact mock OWL ontology demonstrating common OWL/RDF entity types, class expressions, restrictions, axioms, and metadata."@en ;
+    dcterms:source <https://example.org/source/mock-specification> ;
+    dcterms:creator "Example Ontology Builder" ;
+    dcterms:created "2026-05-25"^^xsd:date ;
+    owl:versionInfo "1.0.0" .
+
+#################################################################
+# 1. Named entities: classes, individuals, properties, datatypes
+#################################################################
+
+:Paper            a owl:Class ; rdfs:label "Paper"@en .
+:Author           a owl:Class ; rdfs:label "Author"@en .
+:Dataset          a owl:Class ; rdfs:label "Dataset"@en .
+:Method           a owl:Class ; rdfs:label "Method"@en .
+:Task             a owl:Class ; rdfs:label "Task"@en .
+:Venue            a owl:Class ; rdfs:label "Venue"@en .
+:ResearchAsset    a owl:Class ; rdfs:label "Research asset"@en .
+:ReviewedPaper    a owl:Class ; rdfs:label "Reviewed paper"@en .
+:HighQualityPaper a owl:Class ; rdfs:label "High-quality paper"@en .
+:SingleVenuePaper a owl:Class ; rdfs:label "Single-venue paper"@en .
+:SelfLinkedEntity a owl:Class ; rdfs:label "Self-linked entity"@en .
+:NonPaperEntity   a owl:Class ; rdfs:label "Non-paper entity"@en .
+
+# Named datatype / data range expression
+:ConfidenceScore
+    a rdfs:Datatype ;
+    rdfs:label "Confidence score datatype"@en ;
+    owl:equivalentClass [
+        a rdfs:Datatype ;
+        owl:onDatatype xsd:decimal ;
+        owl:withRestrictions (
+            [ xsd:minInclusive "0.0"^^xsd:decimal ]
+            [ xsd:maxInclusive "1.0"^^xsd:decimal ]
+        )
+    ] .
+
+# Annotation properties
+:curatorNote a owl:AnnotationProperty ;
+    rdfs:label "curator note"@en .
+    
+:confidence a owl:AnnotationProperty ;
+    rdfs:label "confidence annotation"@en ;
+    rdfs:range :ConfidenceScore .
+
+:sourceSentence a owl:AnnotationProperty ;
+    rdfs:label "source sentence"@en ;
+    rdfs:subPropertyOf dcterms:source .
+
+# Object properties
+:hasAuthor a owl:ObjectProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range :Author ;
+    rdfs:label "has author"@en ;
+    owl:inverseOf :authorOf .
+
+:authorOf a owl:ObjectProperty ;
+    rdfs:domain :Author ;
+    rdfs:range :Paper ;
+    rdfs:label "author of"@en .
+
+:hasPrimaryAuthor a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:subPropertyOf :hasAuthor ;
+    rdfs:domain :Paper ;
+    rdfs:range :Author ;
+    rdfs:label "has primary author"@en .
+
+:cites a owl:ObjectProperty, owl:TransitiveProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range :Paper ;
+    rdfs:label "cites"@en .
+
+:usesDataset a owl:ObjectProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range :Dataset ;
+    rdfs:label "uses dataset"@en .
+
+:usesBenchmarkDataset a owl:ObjectProperty ;
+    rdfs:subPropertyOf :usesDataset ;
+    rdfs:domain :Paper ;
+    rdfs:range :Dataset ;
+    rdfs:label "uses benchmark dataset"@en .
+
+:buildsOnMethod a owl:ObjectProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range :Method ;
+    rdfs:label "builds on method"@en .
+
+:publishedIn a owl:ObjectProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range :Venue ;
+    rdfs:label "published in"@en .
+
+:reviews a owl:ObjectProperty ;
+    rdfs:domain :Author ;
+    rdfs:range :Paper ;
+    rdfs:label "reviews"@en .
+
+:collaboratesWith a owl:ObjectProperty, owl:SymmetricProperty ;
+    rdfs:domain :Author ;
+    rdfs:range :Author ;
+    rdfs:label "collaborates with"@en .
+
+:mentors a owl:ObjectProperty, owl:AsymmetricProperty, owl:IrreflexiveProperty ;
+    rdfs:domain :Author ;
+    rdfs:range :Author ;
+    rdfs:label "mentors"@en .
+
+:relatedTo a owl:ObjectProperty, owl:ReflexiveProperty ;
+    rdfs:label "related to"@en .
+
+:canonicalRecordFor a owl:ObjectProperty, owl:InverseFunctionalProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range :Paper ;
+    rdfs:label "canonical record for"@en .
+
+:equivalentToWork a owl:ObjectProperty ;
+    owl:equivalentProperty :canonicalRecordFor ;
+    rdfs:label "equivalent to work"@en .
+
+# Data properties
+:title a owl:DatatypeProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range xsd:string ;
+    rdfs:label "title"@en .
+
+:doi a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range xsd:string ;
+    rdfs:label "DOI"@en .
+
+:publicationYear a owl:DatatypeProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range xsd:gYear ;
+    rdfs:label "publication year"@en .
+
+:citationCount a owl:DatatypeProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range xsd:integer ;
+    rdfs:label "citation count"@en .
+
+:qualityScore a owl:DatatypeProperty ;
+    rdfs:domain :Paper ;
+    rdfs:range :ConfidenceScore ;
+    rdfs:label "quality score"@en .
+
+:orcid a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:domain :Author ;
+    rdfs:range xsd:string ;
+    rdfs:label "ORCID"@en .
+
+:emailAddress a owl:DatatypeProperty ;
+    rdfs:domain :Author ;
+    rdfs:range xsd:string ;
+    rdfs:label "email address"@en .
+
+:contactEmail a owl:DatatypeProperty ;
+    owl:equivalentProperty :emailAddress ;
+    rdfs:label "contact email"@en .
+
+#################################################################
+# 2. Class expressions: named, intersection, union, complement,
+#    oneOf, and data range expression
+#################################################################
+
+# NamedClass expression through a normal named class in an axiom
+:ReviewedPaper rdfs:subClassOf :Paper .
+
+# Intersection: a paper with at least one author and at least one dataset
+:EmpiricalPaper
+    a owl:Class ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:intersectionOf (
+            :Paper
+            [ a owl:Restriction ;
+              owl:onProperty :hasAuthor ;
+              owl:someValuesFrom :Author
+            ]
+            [ a owl:Restriction ;
+              owl:onProperty :usesDataset ;
+              owl:someValuesFrom :Dataset
+            ]
+        )
+    ] .
+
+# Union
+:ResearchAsset
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:unionOf ( :Dataset :Method :Task )
+    ] .
+
+# Complement
+:NonPaperEntity
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:complementOf :Paper
+    ] .
+
+# OneOf / enumerated class
+:DemoPaperSet
+    a owl:Class ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf ( :paperA :paperB )
+    ] .
+
+# Data range expression used in a restriction
+:HighQualityPaper
+    owl:equivalentClass [
+        a owl:Restriction ;
+        owl:onProperty :qualityScore ;
+        owl:someValuesFrom [
+            a rdfs:Datatype ;
+            owl:onDatatype xsd:decimal ;
+            owl:withRestrictions (
+                [ xsd:minInclusive "0.80"^^xsd:decimal ]
+                [ xsd:maxInclusive "1.00"^^xsd:decimal ]
+            )
+        ]
+    ] .
+
+#################################################################
+# 3. Restrictions: some, all, hasValue, cardinalities, qualified,
+#    and self restrictions
+#################################################################
+
+:DatasetPaper
+    a owl:Class ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :usesDataset ;
+          owl:someValuesFrom :Dataset
+        ] .
+
+:DatasetOnlyPaper
+    a owl:Class ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :usesDataset ;
+          owl:allValuesFrom :Dataset
+        ] .
+
+:ISWCPaper
+    a owl:Class ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :publishedIn ;
+          owl:hasValue :ISWC
+        ] .
+
+:AuthoredPaper
+    a owl:Class ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :hasAuthor ;
+          owl:minCardinality "1"^^xsd:nonNegativeInteger
+        ] .
+
+:SmallTeamPaper
+    a owl:Class ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :hasAuthor ;
+          owl:maxCardinality "3"^^xsd:nonNegativeInteger
+        ] .
+
+:DOIPaper
+    a owl:Class ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :doi ;
+          owl:cardinality "1"^^xsd:nonNegativeInteger
+        ] .
+
+:TwoAuthorPaper
+    a owl:Class ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :hasAuthor ;
+          owl:minQualifiedCardinality "2"^^xsd:nonNegativeInteger ;
+          owl:onClass :Author
+        ] .
+
+:AtMostOnePrimaryAuthorPaper
+    a owl:Class ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :hasPrimaryAuthor ;
+          owl:maxQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+          owl:onClass :Author
+        ] .
+
+:SingleVenuePaper
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :publishedIn ;
+          owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+          owl:onClass :Venue
+        ] .
+
+:OneTitlePaper
+    a owl:Class ;
+    rdfs:subClassOf :Paper ,
+        [ a owl:Restriction ;
+          owl:onProperty :title ;
+          owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+          owl:onDataRange xsd:string
+        ] .
+
+:SelfLinkedEntity
+    owl:equivalentClass [
+        a owl:Restriction ;
+        owl:onProperty :relatedTo ;
+        owl:hasSelf "true"^^xsd:boolean
+    ] .
+
+:TopVenuePaper
+    owl:equivalentClass [
+        owl:onProperty :publishedIn ;
+        owl:someValuesFrom [
+            owl:oneOf (
+                :ISWC
+                :ESWC
+                :WWW
+            )
+        ]
+    ] .
+
+#################################################################
+# 4. Axioms: subclass, equivalence, disjointness, assertions, keys,
+#    property axioms, inverse properties, same/different individuals
+#################################################################
+
+# SubClassOf
+:ConferencePaper rdfs:subClassOf :Paper .
+
+# EquivalentClasses
+:ScholarlyWork owl:equivalentClass :Paper .
+
+# DisjointClasses
+:Paper owl:disjointWith :Author .
+
+[] a owl:AllDisjointClasses ;
+   owl:members ( :ConferencePaper :JournalPaper :DemoPaperSet ) .
+
+:Paper 
+    owl:disjointUnionOf (
+        :ReviewedPaper 
+        :NonReviewedPaper
+    ) .
+
+# Keys
+:Paper owl:hasKey ( :doi ) .
+:Author owl:hasKey ( :orcid ) .
+
+# Named individuals + class assertions
+:paperA a :ConferencePaper, :HighQualityPaper ;
+    rdfs:label "Mock paper A"@en ;
+    :title "A mock paper about graph-based scholarly knowledge" ;
+    :doi "10.0000/mock.paper.a" ;
+    :publicationYear "2026"^^xsd:gYear ;
+    :citationCount 42 ;
+    :qualityScore "0.91"^^xsd:decimal ;
+    :hasAuthor :alice, :bob ;
+    :hasPrimaryAuthor :alice ;
+    :usesDataset :openCitationsDataset ;
+    :buildsOnMethod :graphRAG ;
+    :publishedIn :ISWC ;
+    :cites :paperB ;
+    :canonicalRecordFor :paperARecord ;
+    :curatorNote "This individual demonstrates class assertion, object property assertion, data property assertion, and annotation assertion."@en ;
+    :confidence "0.95"^^xsd:decimal .
+
+:paperB a :Paper ;
+    rdfs:label "Mock paper B"@en ;
+    :title "Earlier mock work" ;
+    :doi "10.0000/mock.paper.b" ;
+    :publicationYear "2025"^^xsd:gYear ;
+    :hasAuthor :carol .
+
+:paperARecord a :Paper ;
+    owl:sameAs :paperA .
+
+:alice a :Author ;
+    rdfs:label "Alice Example"@en ;
+    :orcid "0000-0001-0000-0001" ;
+    :emailAddress "alice@example.org" ;
+    :collaboratesWith :bob ;
+    :mentors :bob .
+
+:bob a :Author ;
+    rdfs:label "Bob Example"@en ;
+    :orcid "0000-0002-0000-0002" ;
+    :contactEmail "bob@example.org" .
+
+:carol a :Author ;
+    rdfs:label "Carol Example"@en ;
+    :orcid "0000-0003-0000-0003" .
+
+:openCitationsDataset a :Dataset ;
+    rdfs:label "Open citations dataset"@en .
+
+:graphRAG a :Method ;
+    rdfs:label "Graph RAG"@en .
+
+:scientificQA a :Task ;
+    rdfs:label "Scientific question answering"@en .
+
+:ISWC a :Venue ;
+    rdfs:label "ISWC"@en .
+
+:ESWC a :Venue ;
+    rdfs:label "ESWC"@en .
+
+:WWW a :Venue ;
+    rdfs:label "The Web Conference"@en .
+
+# SameIndividual / DifferentIndividuals
+:aliceSameRecord owl:sameAs :alice .
+:alice owl:differentFrom :carol .
+
+[] a owl:AllDifferent ;
+   owl:distinctMembers ( :alice :bob :carol ) .
+
+# Annotation of an axiom itself
+[] a owl:Axiom ;
+   owl:annotatedSource :paperA ;
+   owl:annotatedProperty :cites ;
+   owl:annotatedTarget :paperB ;
+   :sourceSentence "Paper A cites Paper B in the related work section."@en ;
+   :confidence "0.88"^^xsd:decimal .
+
+# Annotation assertion on an ontology term
+:GraphBasedPaper
+    a owl:Class ;
+    rdfs:label "Graph-based paper"@en ;
+    rdfs:comment "A paper whose main contribution uses graph-based representation or reasoning."@en ;
+    skos:definition "A scholarly work centered on graph construction, graph representation, or graph reasoning."@en .

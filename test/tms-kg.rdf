@@ -1,0 +1,1489 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE rdf:RDF [
+	<!ENTITY AnnotationVocabulary "https://www.omg.org/spec/Commons/AnnotationVocabulary/">
+	<!ENTITY owl "http://www.w3.org/2002/07/owl#">
+	<!ENTITY rdf "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+	<!ENTITY rdfs "http://www.w3.org/2000/01/rdf-schema#">
+	<!ENTITY skos "http://www.w3.org/2004/02/skos/core#">
+	<!ENTITY terms "http://purl.org/dc/terms/">
+	<!ENTITY xsd "http://www.w3.org/2001/XMLSchema#">
+]>
+<rdf:RDF xml:base="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg"
+	xmlns="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#"
+	xmlns:AnnotationVocabulary="https://www.omg.org/spec/Commons/AnnotationVocabulary/"
+	xmlns:owl="http://www.w3.org/2002/07/owl#"
+	xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+	xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+	xmlns:skos="http://www.w3.org/2004/02/skos/core#"
+	xmlns:terms="http://purl.org/dc/terms/"
+	xmlns:xsd="http://www.w3.org/2001/XMLSchema#">
+	
+	<owl:Ontology rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg">
+		<owl:imports rdf:resource="http://purl.uni-rostock.de/comodi/comodi"/>
+		<owl:imports rdf:resource="https://www.omg.org/spec/Commons/20221101/Identifiers/"/>
+		<owl:imports rdf:resource="https://www.omg.org/spec/Commons/20221101/TextDatatype/"/>
+		<owl:imports rdf:resource="https://www.omg.org/spec/Commons/20250801/DatesAndTimes/"/>
+		<owl:versionIRI rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg/1.0"/>
+	</owl:Ontology>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#AI_Event">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_begun_by_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Session_Begins"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_has_session"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_is_denoted_by"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_analyst_received"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst_Event">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_who_received_answer"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_provided_start_time"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_text"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_answer_occurred"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_confidence"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_associated_to_answer"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#AI_Event"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#ai_text"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_of_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_question_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_answered_in_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#rewritten_query"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question_with_RAG">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#RAG_citation"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#confidence"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_RAG_answer_cites"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Source"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question_with_TMS_KG">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#query"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#query_results"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Asks_Question">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst_Event"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_of_question_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_analyst_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_question_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_being_asked_in_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#user_text"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_arrived_at"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_title"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document_Arrives">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#System_Event"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#marks_arrival"/>
+				<owl:onClass rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+				<owl:qualifiedCardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:qualifiedCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#doc_type"/>
+				<owl:someValuesFrom rdf:resource="&xsd;string"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_that_arrived"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_session_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#occurred_during"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Internal_Report">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Map">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Media">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Message">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_content"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_sent_at"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_sent_by_analyst"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_sent_by_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Sends_Message"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Opens_Document">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst_Event"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#opens"/>
+				<owl:onClass rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+				<owl:qualifiedCardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:qualifiedCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_opened"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_session_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#occurred_during"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_associated_to_question"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answered_question_time"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#ask_question_start_time"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_question_is_answered"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_question_is_asked"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Asks_Question"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_asked_by_analyst"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_is_denoted_by"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_text"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#RAG_answer_cited_from_source">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_RAG_answer_cites"/>
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#RAG_citation">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question_with_RAG"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#References">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Report">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#full_text"/>
+				<owl:onDataRange rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+				<owl:qualifiedCardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:qualifiedCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_update"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#report_from"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Sends_Message">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst_Event"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_analyst_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_pair_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#pair_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_that_was_sent"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Message"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#sending_analyst"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Session_Begins">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#System_Event"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_beginning_analyst"/>
+				<owl:onClass rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+				<owl:qualifiedCardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:qualifiedCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_begins_session"/>
+				<owl:onClass rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+				<owl:qualifiedCardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:qualifiedCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_analyst_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_pair_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#pair_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_session_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Session_Ends">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#System_Event"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_ends_session"/>
+				<owl:onClass rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+				<owl:qualifiedCardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:qualifiedCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_session_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Shift_Handover">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Source">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#RAG_answer_cited_from_source"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question_with_RAG"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#citing_snippet"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_source_originated_from"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_from_source"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#page_number"/>
+				<owl:someValuesFrom rdf:resource="&xsd;int"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#System_Event">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst_Event"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_session_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_update"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Report"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#occurring_updates_report_event_of_session"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#report_snapshot"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#update_diff"/>
+				<owl:someValuesFrom rdf:resource="http://purl.uni-rostock.de/comodi/comodi#Change"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report_with_Doc_Quote">
+		<rdfs:subClassOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_from_report_quote"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#quote_from"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#quote_text"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_ended_by_event"/>
+				<owl:onClass rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Session_Ends"/>
+				<owl:maxQualifiedCardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:maxQualifiedCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_occurring_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document_Arrives"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_occurring_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Opens_Document"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_occurring_updates_report_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_report"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Report"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#pair_is_denoted_by"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#pair_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_begun_by_event"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Session_Begins"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_document"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_end_time"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_has_analyst"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_is_denoted_by"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_designation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_start_time"/>
+				<owl:someValuesFrom rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#ai_text">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_begun_by_event">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_beginning_analyst"/>
+	</owl:ObjectProperty>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_designation">
+		<rdfs:subClassOf rdf:resource="https://www.omg.org/spec/Commons/Designators/Designation"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#denotes_analyst"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_analyst_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_has_session">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_has_analyst"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_begun_by_event">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_begins_session">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_is_denoted_by">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/isSignifiedBy"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#denotes_analyst"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_begun_by_event">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_analyst_ID">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_of_question_event">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Asks_Question"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_event_of_analyst"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_sent_message">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_sent_by_analyst"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_sent_message_event">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#sending_analyst"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_that_partially_viewed_document">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_partially_viewed_by_analyst"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_who_received_answer">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_analyst_received"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#asked">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_associated_to_question">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_analyst_received">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#asked">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_associated_to_question">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_associated_to_question">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_associated_to_answer"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_cited_from_document">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_where_answer_cites"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_of_event">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_answer_occurred"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_provided_start_time">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/hasStart"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_answer_occurred">
+			</rdf:Description>
+			<rdf:Description rdf:about="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_text">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answered_question_time">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/hasEnd"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_associated_to_question">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_answer_occurred">
+			</rdf:Description>
+			<rdf:Description rdf:about="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answers">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_answer"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#arrival_start_time">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/hasStart"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_arrival">
+			</rdf:Description>
+			<rdf:Description rdf:about="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#ask_question_start_time">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/hasStart"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_question_is_asked">
+			</rdf:Description>
+			<rdf:Description rdf:about="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#asked">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_asked_by_analyst"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_event_of_analyst">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_being_asked_in_event">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#author">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Report"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#authored_by"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#authored_by">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#cite">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer">
+					</rdf:Description>
+					<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Report">
+					</rdf:Description>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#cited_from"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#cited_from">
+		<rdfs:range>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer">
+					</rdf:Description>
+					<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Report">
+					</rdf:Description>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:range>
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#citing_snippet">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Source"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#confidence">
+	</owl:DatatypeProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#contains_text">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#denotes_analyst">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/denotes"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#denotes_pair">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/denotes"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#pair_is_denoted_by"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#denotes_question">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/denotes"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_is_denoted_by"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#denotes_session">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/denotes"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_is_denoted_by"/>
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#doc_type">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document_Arrives"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_arrived_at">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_arrival">
+			</rdf:Description>
+			<rdf:Description rdf:about="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_available_in_session">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_document"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_arrival">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#occurred_during">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_close_time">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/hasEnd"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_partially_viewed_by_analyst">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#answer_analyst_received">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_answer_occurred">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_RAG_answer_cites">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_source_originated_from">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Source"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_from_document"/>
+	</owl:ObjectProperty>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title">
+		<rdfs:subClassOf rdf:resource="https://www.omg.org/spec/Commons/Designators/Name"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_arrived_at"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document_Arrives"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_opened_at"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Opens_Document"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#report_quote_from_document_title"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report_with_Doc_Quote"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_with_document_title"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Source"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#title_of_document"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_arrived_at">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_that_arrived"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_from_report_quote">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report_with_Doc_Quote"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#report_quote_from_document_title"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_from_source">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Source"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_with_document_title"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_opened">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Opens_Document"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_opened_at"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_opened_at">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_that_arrived">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document_Arrives"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_to_close_last">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#last_document_closed_at"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_where_answer_cites">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_answer_occurred">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_RAG_answer_cites">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_analyst_ID">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#analyst_designation"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_analyst_ID"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_beginning_analyst">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Session_Begins"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_begins_session">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Session_Begins"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_begun_by_event"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_ends_session">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Session_Ends"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_ended_by_event"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_pair_ID">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#pair_designation"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_pair_ID"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_question_ID">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_designation"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_question_ID"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_session_ID">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_designation"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_session_ID"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_answer_occurred">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_question_is_answered">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_answered_in_event"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_question_is_asked">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_being_asked_in_event"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_analyst_ID">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_pair_ID">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_question_ID">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_session_ID">
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#full_text">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Report"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_answer">
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_confidence">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_occurring_event">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#occurred_during"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_occurring_updates_report_event">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#occurring_updates_report_event_of_session"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_arrival">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#marks_arrival"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_being_opened">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#opens"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_quote">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#quote_from"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_update">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_update"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_report">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Report"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#report_from"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_title">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/hasName"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#title_of_document"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_arrival">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#document_title_that_arrived">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_update">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Report"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#report_from">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_occurring_updates_report_event">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#last_document_closed_at">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/TimeInstant"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#marks_arrival">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document_Arrives"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_content">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Message"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_sent_at">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Message"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_sent_by_event">
+			</rdf:Description>
+			<rdf:Description rdf:about="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_sent_by_analyst">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Message"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_sent_by_event">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#sending_analyst">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_sent_by_event">
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_that_was_sent"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#message_that_was_sent">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Sends_Message"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Message"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#occurred_during">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document_Arrives">
+					</rdf:Description>
+					<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Opens_Document">
+					</rdf:Description>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#occurring_updates_report_event_of_session">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#opened_start_time">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/hasStart"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#has_proof_of_being_opened">
+			</rdf:Description>
+			<rdf:Description rdf:about="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#opens">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Opens_Document"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#page_number">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Source"/>
+		<rdfs:range rdf:resource="&xsd;int"/>
+	</owl:DatatypeProperty>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#pair_designation">
+		<rdfs:subClassOf rdf:resource="https://www.omg.org/spec/Commons/Designators/Designation"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#denotes_pair"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_pair_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#pair_is_denoted_by">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/isSignifiedBy"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_begun_by_event">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_pair_ID">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#query">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question_with_TMS_KG"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#query_results">
+		<rdfs:comment>supposed to be JSON</rdfs:comment>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question_with_TMS_KG"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_answered_in_event">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_asked_by_analyst">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_associated_to_answer">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answer"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_being_asked_in_event">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Asks_Question"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+	</owl:ObjectProperty>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_designation">
+		<rdfs:subClassOf rdf:resource="https://www.omg.org/spec/Commons/Designators/Designation"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#denotes_question"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_question_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_event_of_analyst">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_is_denoted_by">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/isSignifiedBy"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_where_question_is_asked">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_question_ID">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#question_text">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Question"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#quote_from">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report_with_Doc_Quote"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#quote_text">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#report_from">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#report_quote_from_document_title">
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#report_snapshot">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#rewritten_query">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#sending_analyst">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Sends_Message"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_begun_by_event">
+	</owl:ObjectProperty>
+	
+	<owl:Class rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_designation">
+		<rdfs:subClassOf rdf:resource="https://www.omg.org/spec/Commons/Designators/Designation"/>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#denotes_session"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_with_session_ID"/>
+				<owl:someValuesFrom rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Event"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_document">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_end_time">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/hasEnd"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/DateTime"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_ended_by_event">
+			</rdf:Description>
+			<rdf:Description rdf:about="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_ended_by_event">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_has_analyst">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_is_denoted_by">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/isSignifiedBy"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_begun_by_event">
+			</rdf:Description>
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#event_session_ID">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_start_time">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/DatesAndTimes/hasStart"/>
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Working_Session"/>
+		<owl:propertyChainAxiom rdf:parseType="Collection">
+			<rdf:Description rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#session_begun_by_event">
+			</rdf:Description>
+			<rdf:Description rdf:about="https://www.omg.org/spec/Commons/DatesAndTimes/hasDateTime">
+			</rdf:Description>
+		</owl:propertyChainAxiom>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_RAG_answer_cites">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Answers_Question_with_RAG"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Source"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_from_document">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#source_with_document_title">
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#title_of_document">
+		<rdfs:subPropertyOf rdf:resource="https://www.omg.org/spec/Commons/Designators/isNameOf"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#update_diff">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Updates_Report"/>
+		<rdfs:range rdf:resource="http://purl.uni-rostock.de/comodi/comodi#Change"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#update_diff_to_report"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#update_diff_to_report">
+	</owl:ObjectProperty>
+	
+	<owl:DatatypeProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#user_text">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Asks_Question"/>
+		<rdfs:range rdf:resource="https://www.omg.org/spec/Commons/TextDatatype/Text"/>
+	</owl:DatatypeProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#viewed">
+		<rdfs:domain rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Analyst"/>
+		<rdfs:range rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#Document"/>
+		<owl:inverseOf rdf:resource="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#viewed_by"/>
+	</owl:ObjectProperty>
+	
+	<owl:ObjectProperty rdf:about="http://www.semanticweb.org/villad4/ontologies/2025/9/effect-tms-kg#viewed_by">
+	</owl:ObjectProperty>
+	
+	<owl:FunctionalProperty rdf:about="https://www.omg.org/spec/Commons/Identifiers/identifies">
+	</owl:FunctionalProperty>
+
+</rdf:RDF>

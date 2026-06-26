@@ -1,7 +1,0 @@
-@prefix : <http://example.com/> .
-@prefix owl: <http://www.w3.org/2002/07/owl#> .
-
-:Human a owl:Class ;
-  owl:equivalentClass :Person .
-
-:Person a owl:Class .

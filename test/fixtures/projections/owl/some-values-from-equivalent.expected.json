@@ -1,0 +1,35 @@
+{
+  "nodes": [
+    {
+      "idHint": "Animal",
+      "label": "Animal",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "PetKeeper",
+      "label": "PetKeeper",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "PetKeeper",
+      "targetHint": "Animal",
+      "predicate": "hasPet",
+      "predicateLabel": "(some) hasPet*",
+      "category": "object",
+      "axiomKind": "Restriction",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

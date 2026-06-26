@@ -1,0 +1,75 @@
+{
+  "nodes": [
+    {
+      "idHint": "AgeValue",
+      "label": "AgeValue",
+      "entityCategory": "datatype",
+      "ontologyKind": "datatype",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Class",
+      "label": "Class",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Datatype",
+      "label": "Datatype",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Person",
+      "label": "Person",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "AgeValue",
+      "targetHint": "Datatype",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassAssertion",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "AgeValue",
+      "targetHint": "Person",
+      "predicate": "hasAge",
+      "predicateLabel": "hasAge",
+      "category": "data",
+      "axiomKind": "PropertyProjection",
+      "owlEdgeStyle": "dashed",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "Person",
+      "targetHint": "Class",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassAssertion",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

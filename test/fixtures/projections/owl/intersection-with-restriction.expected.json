@@ -1,0 +1,95 @@
+{
+  "nodes": [
+    {
+      "idHint": "Animal",
+      "label": "Animal",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "helper:intersection",
+      "label": "∩",
+      "entityCategory": "owl-expression",
+      "ontologyKind": "",
+      "blankExpressionType": "Intersection",
+      "graphRole": "owl-expression",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "helper:restriction",
+      "label": "",
+      "entityCategory": "class-expression-connector",
+      "ontologyKind": "",
+      "blankExpressionType": "Restriction",
+      "graphRole": "class-expression-connector",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "Person",
+      "label": "Person",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "ResponsiblePetOwner",
+      "label": "ResponsiblePetOwner",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "helper:intersection",
+      "targetHint": "helper:restriction",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:intersection",
+      "targetHint": "Person",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:restriction",
+      "targetHint": "Animal",
+      "predicate": "hasPet",
+      "predicateLabel": "(some) hasPet*",
+      "category": "object",
+      "axiomKind": "ClassExpressionRestriction",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "ResponsiblePetOwner",
+      "targetHint": "helper:intersection",
+      "predicate": "intersectionOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

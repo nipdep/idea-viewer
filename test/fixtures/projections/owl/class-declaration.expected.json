@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    {
+      "idHint": "Person",
+      "label": "Person",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": []
+}

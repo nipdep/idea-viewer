@@ -4064,6 +4064,8 @@ function filterOwlProjectionByLevel(elements, owlProjectionLevel) {
       const connectedViaClassConstruct =
         data.owlSynthesized === 1 &&
         (
+          data.axiomKind === 'Restriction' ||
+          data.axiomKind === 'ClassExpressionRestriction' ||
           helperLikeNodeCategories.has(neighborNode.entityCategory) ||
           neighborNode.entityCategory === 'class-expression' ||
           neighborNode.blankExpressionType === 'OneOf' ||

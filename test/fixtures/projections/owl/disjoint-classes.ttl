@@ -1,0 +1,7 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+:Cat a owl:Class ;
+  owl:disjointWith :Dog .
+
+:Dog a owl:Class .

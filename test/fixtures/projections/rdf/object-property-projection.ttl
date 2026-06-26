@@ -1,0 +1,10 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+:hasPet a owl:ObjectProperty ;
+  rdfs:domain :Person ;
+  rdfs:range :Animal .
+
+:Person a owl:Class .
+:Animal a owl:Class .

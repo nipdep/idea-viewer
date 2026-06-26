@@ -1,0 +1,35 @@
+{
+  "nodes": [
+    {
+      "idHint": "Married",
+      "label": "Married",
+      "entityCategory": "individual",
+      "ontologyKind": "individual",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "MarriedPerson",
+      "label": "MarriedPerson",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "MarriedPerson",
+      "targetHint": "Married",
+      "predicate": "hasStatus",
+      "predicateLabel": "hasStatus",
+      "category": "object",
+      "axiomKind": "Restriction",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

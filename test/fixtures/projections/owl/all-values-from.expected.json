@@ -1,0 +1,35 @@
+{
+  "nodes": [
+    {
+      "idHint": "Plant",
+      "label": "Plant",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Vegetarian",
+      "label": "Vegetarian",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "Vegetarian",
+      "targetHint": "Plant",
+      "predicate": "eats",
+      "predicateLabel": "(all) eats*",
+      "category": "object",
+      "axiomKind": "Restriction",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+:WorkingStudent a owl:Class ;
+  owl:equivalentClass [
+    owl:intersectionOf ( :Student :Employee )
+  ] .
+
+:Student a owl:Class .
+:Employee a owl:Class .

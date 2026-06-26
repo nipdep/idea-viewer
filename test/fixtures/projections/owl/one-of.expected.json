@@ -1,0 +1,75 @@
+{
+  "nodes": [
+    {
+      "idHint": "helper:oneof",
+      "label": "{}",
+      "entityCategory": "owl-expression",
+      "ontologyKind": "",
+      "blankExpressionType": "OneOf",
+      "graphRole": "owl-expression",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "Red",
+      "label": "Red",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "TrafficLightColor",
+      "label": "TrafficLightColor",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Yellow",
+      "label": "Yellow",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "helper:oneof",
+      "targetHint": "Red",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:oneof",
+      "targetHint": "Yellow",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "TrafficLightColor",
+      "targetHint": "helper:oneof",
+      "predicate": "oneOf",
+      "predicateLabel": "",
+      "category": "object",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

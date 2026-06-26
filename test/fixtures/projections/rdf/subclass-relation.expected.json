@@ -1,0 +1,66 @@
+{
+  "nodes": [
+    {
+      "idHint": "Class",
+      "label": "Class",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Person",
+      "label": "Person",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    },
+    {
+      "idHint": "Student",
+      "label": "Student",
+      "entityCategory": "class",
+      "ontologyKind": "class",
+      "blankExpressionType": "",
+      "graphRole": "",
+      "termType": "NamedNode"
+    }
+  ],
+  "edges": [
+    {
+      "sourceHint": "Person",
+      "targetHint": "Class",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassAssertion",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "Student",
+      "targetHint": "Class",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassAssertion",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "Student",
+      "targetHint": "Person",
+      "predicate": "subClassOf",
+      "predicateLabel": "",
+      "category": "subclass",
+      "axiomKind": "SubClassOf",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    }
+  ]
+}

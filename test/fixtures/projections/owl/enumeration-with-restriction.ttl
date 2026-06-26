@@ -1,0 +1,19 @@
+@prefix : <http://example.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+:TrafficSignal a owl:Class ;
+  owl:equivalentClass [
+    a owl:Class ;
+    owl:oneOf ( :Red :Yellow )
+  ] ;
+  rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty :hasStatus ;
+    owl:someValuesFrom :Status
+  ] .
+
+:Red a owl:Class .
+:Yellow a owl:Class .
+:Status a owl:Class .
+:hasStatus a owl:ObjectProperty .

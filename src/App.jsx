@@ -12,6 +12,7 @@ import {
 import { applyLayoutPositions, IncrementalGraphLayout } from './lib/incremental-graph-layout';
 import { NgraphIncrementalLayout } from './lib/ngraph-incremental-layout';
 import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
+import MockGraphLab from './MockGraphLab';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -1324,7 +1325,7 @@ function toViewOptions(projectionMode, graphData, owlProjectionLevel, rdfProject
   });
 }
 
-export default function App() {
+function ViewerApp({ onOpenGraphLab }) {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
   const graphSearchInputRef = useRef(null);
@@ -4138,10 +4139,11 @@ export default function App() {
       detachedPanModeRef.current = false;
       detachedPanLastMouseRef.current = null;
       suppressNextTapRef.current = false;
-      if (zoomInteractionRef.current?.timeoutId !== null) {
-        window.clearTimeout(zoomInteractionRef.current.timeoutId);
+      const activeZoomInteraction = zoomInteractionRef.current;
+      if (activeZoomInteraction?.timeoutId != null) {
+        window.clearTimeout(activeZoomInteraction.timeoutId);
       }
-      zoomInteractionRef.current?.span.fail(new Error('Zoom interaction cancelled'));
+      activeZoomInteraction?.span.fail(new Error('Zoom interaction cancelled'));
       zoomInteractionRef.current = null;
       cyRef.current = null;
       cy.destroy();
@@ -5674,6 +5676,9 @@ export default function App() {
           </h1>
         </div>
         <div className="header-actions">
+          <button type="button" className="header-lab-link" onClick={onOpenGraphLab} title="Open the independent graph organization test lab">
+            Graph lab
+          </button>
           <a
             className="header-icon-link"
             href={GITHUB_ISSUES_URL}
@@ -6924,4 +6929,20 @@ export default function App() {
       </footer>
     </div>
   );
+}
+
+export default function App() {
+  const [isGraphLabOpen, setIsGraphLabOpen] = useState(() => window.location.hash === "#graph-lab");
+
+  useEffect(() => {
+    const syncRoute = () => setIsGraphLabOpen(window.location.hash === "#graph-lab");
+    window.addEventListener("hashchange", syncRoute);
+    return () => window.removeEventListener("hashchange", syncRoute);
+  }, []);
+
+  if (isGraphLabOpen) {
+    return <MockGraphLab onExit={() => { window.location.hash = ""; }} />;
+  }
+
+  return <ViewerApp onOpenGraphLab={() => { window.location.hash = "graph-lab"; }} />;
 }

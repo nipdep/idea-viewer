@@ -1951,3 +1951,32 @@ textarea {
 .flyout-hover-zone.right {
   right: 0;
 }
+
+.header-lab-link { appearance: none; border: 1px solid rgba(42, 111, 110, .35); border-radius: 999px; background: rgba(42, 111, 110, .09); color: #245f5e; cursor: pointer; padding: 8px 13px; font: 700 .73rem/1 "Avenir Next", sans-serif; letter-spacing: .07em; text-transform: uppercase; }
+.header-lab-link:hover { background: rgba(42, 111, 110, .17); }
+.lab-shell { display: grid; grid-template-columns: minmax(250px, 308px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; height: 100%; padding: 18px; gap: 14px; background: radial-gradient(circle at top left, #f8e6d6 0%, #fef6ee 42%, #edf4f2 100%); }
+.lab-panel, .lab-stage { border: 1px solid rgba(30,27,22,.13); border-radius: 16px; background: rgba(255,252,247,.88); }
+.lab-panel { padding: 22px; overflow: auto; }
+.lab-back { border: 0; background: transparent; color: #2a6f6e; cursor: pointer; padding: 0; font: 700 .78rem/1 "Avenir Next", sans-serif; }
+.lab-eyebrow { margin: 19px 0 5px; color: #a04b31; font: 700 .68rem/1 "Avenir Next", sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+.lab-panel h1, .lab-stage h2 { margin: 0; font-weight: 500; }
+.lab-panel h1 { font-size: 2.35rem; }
+.lab-intro { margin: 8px 0 23px; color: #6b6157; font-size: .91rem; line-height: 1.45; }
+.lab-field { display: grid; gap: 8px; margin: 0 0 19px; color: #443b33; font: 700 .76rem/1.2 "Avenir Next", sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.lab-field > span { color: #2a6f6e; }
+.lab-field select { height: 38px; padding: 0 10px; border: 1px solid rgba(30,27,22,.18); border-radius: 8px; background: white; color: #332b25; }
+.lab-field input { width: 100%; accent-color: #c05635; }
+.lab-field small { color: #756a60; font: 400 .74rem/1.35 "Avenir Next", sans-serif; letter-spacing: 0; text-transform: none; }
+.lab-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lab-actions button { min-height: 38px; border: 1px solid rgba(30,27,22,.17); border-radius: 8px; background: white; color: #41372f; cursor: pointer; font-weight: 700; }
+.lab-actions .lab-primary { border-color: #b54f34; background: #c05635; color: white; }
+.lab-stage { min-width: 0; overflow: hidden; display: grid; grid-template-rows: auto minmax(0,1fr); }
+.lab-stage-header { display: flex; justify-content: space-between; align-items: center; padding: 3px 20px 12px; }
+.lab-stage-header .lab-eyebrow { margin-top: 16px; }
+.lab-stage h2 { font-size: 1.22rem; }
+.lab-status { border: 1px solid rgba(30,27,22,.15); border-radius: 999px; padding: 6px 10px; color: #766b61; font: 700 .68rem/1 "Avenir Next", sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.lab-status.active { color: #216460; border-color: rgba(42,111,110,.38); background: rgba(42,111,110,.1); }
+.lab-graph { min-height: 0; width: 100%; height: 100%; background-image: radial-gradient(rgba(42,111,110,.13) .7px, transparent .7px); background-size: 16px 16px; }
+.lab-footer { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 18px; padding: 1px 5px; color: #665c53; font: .75rem/1.2 "Avenir Next", sans-serif; }
+.lab-footer strong { color: #2b514f; }
+@media (max-width: 760px) { .lab-shell { grid-template-columns: 1fr; grid-template-rows: minmax(250px,auto) minmax(0,1fr) auto; padding: 10px; gap: 10px; } .lab-panel { padding: 16px; } .lab-panel h1 { font-size: 1.8rem; } .lab-footer { grid-column: auto; flex-wrap: wrap; } }

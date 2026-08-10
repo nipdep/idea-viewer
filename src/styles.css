@@ -1653,6 +1653,10 @@ textarea {
   font-size: 0.9rem;
 }
 
+.statement-value {
+  margin-top: 0;
+}
+
 .neighbor-row {
   color: var(--ink);
   display: flex;

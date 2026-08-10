@@ -6,7 +6,6 @@ import { buildGraphData, compactIri, extractOntologyModel, getNodeStatementBucke
 import {
   buildProjectedElements,
   createViewOptions,
-  getProjectedNodeMetadataRows,
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
@@ -3039,27 +3038,6 @@ function ViewerApp() {
     () => (selectedNodeId && graphData ? graphData.dataProperties.get(selectedNodeId) ?? [] : []),
     [selectedNodeId, graphData],
   );
-  const selectedNodeMetadataRows = useMemo(() => {
-    if (!selectedNodeId || !graphData) {
-      return [];
-    }
-
-    const baseRows = graphData.nodeMetadata.get(selectedNodeId) ?? [];
-    const projectedRows = getProjectedNodeMetadataRows(graphData, selectedNodeId, graphProjectionMode);
-
-    const mergedRows = [...baseRows, ...projectedRows];
-    const dedupedRows = [];
-    const seen = new Set();
-    for (const row of mergedRows) {
-      const key = `${row.predicate}||${row.value}`;
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      dedupedRows.push(row);
-    }
-    return dedupedRows;
-  }, [selectedNodeId, graphData, graphProjectionMode]);
   const selectedNodeAnnotationProperties = useMemo(
     () => selectedNodeAllLiteralProperties.filter((row) => row.category === 'annotation'),
     [selectedNodeAllLiteralProperties],
@@ -6720,21 +6698,6 @@ function ViewerApp() {
                       )}
                     </div>
 
-                    <h4>Metadata / provenance ({selectedNodeMetadataRows.length})</h4>
-                    <div className="property-list">
-                      {selectedNodeMetadataRows.length === 0 && <p className="muted">No metadata rows available for this node.</p>}
-                      {selectedNodeMetadataRows.map((row, index) => (
-                        <div
-                          key={`${row.predicate}-${row.value}-${index}`}
-                          className="property-row"
-                          title={row.predicate}
-                        >
-                          <div className="property-name">{row.predicateLabel}</div>
-                          <div className="property-value breakable">{row.value}</div>
-                        </div>
-                      ))}
-                    </div>
-
                     <h4>Annotation properties ({selectedNodeAnnotationProperties.length})</h4>
                     <div className="property-list">
                       {selectedNodeAnnotationProperties.length === 0 && (
@@ -6742,7 +6705,7 @@ function ViewerApp() {
                       )}
                       {selectedNodeAnnotationProperties.map((property, index) => (
                         <div
-                          key={`${property.predicate}-${property.value.slice(0, 18)}-${index}`}
+                          key={`${property.predicate}-${index}`}
                           className="property-row"
                           title={property.predicate}
                         >
@@ -6752,28 +6715,14 @@ function ViewerApp() {
                       ))}
                     </div>
 
-                    <h4>Processed statements ({selectedNodeStatements.processed.length})</h4>
-                    <div className="property-list">
-                      {selectedNodeStatements.processed.length === 0 && (
-                        <p className="muted">No processed OWL statements available for this node.</p>
-                      )}
-                      {selectedNodeStatements.processed.map((row) => (
-                        <div key={row.id} className="property-row">
-                          <div className="property-name">Manchester</div>
-                          <div className="property-value breakable">{row.manchester}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <h4>Couldn&apos;t process ({selectedNodeStatements.unprocessed.length})</h4>
+                    <h4>Unprocessed statements ({selectedNodeStatements.unprocessed.length})</h4>
                     <div className="property-list">
                       {selectedNodeStatements.unprocessed.length === 0 && (
                         <p className="muted">No unprocessed source/property statements for this node.</p>
                       )}
                       {selectedNodeStatements.unprocessed.map((row) => (
                         <div key={row.id} className="property-row">
-                          <div className="property-name">Statement</div>
-                          <div className="property-value breakable">{row.statement}</div>
+                          <div className="property-value statement-value breakable">{row.statement}</div>
                         </div>
                       ))}
                     </div>

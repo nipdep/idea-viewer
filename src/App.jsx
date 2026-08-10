@@ -9,10 +9,9 @@ import {
   getProjectedNodeMetadataRows,
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
-import { applyLayoutPositions, IncrementalGraphLayout } from './lib/incremental-graph-layout';
-import { NgraphIncrementalLayout } from './lib/ngraph-incremental-layout';
+import { applyLayoutPositions } from './lib/incremental-graph-layout';
+import { applyRankAwareRadialBfsLayout } from './lib/rank-aware-radial-bfs-layout';
 import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
-import MockGraphLab from './MockGraphLab';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -1325,7 +1324,7 @@ function toViewOptions(projectionMode, graphData, owlProjectionLevel, rdfProject
   });
 }
 
-function ViewerApp({ onOpenGraphLab }) {
+function ViewerApp() {
   const graphContainerRef = useRef(null);
   const cyRef = useRef(null);
   const graphSearchInputRef = useRef(null);
@@ -4483,105 +4482,14 @@ function ViewerApp({ onOpenGraphLab }) {
   }, [focusedNodeId, focusedNodeIds]);
 
   useEffect(() => {
+    // Projected elements are organized by the shared Radial BFS module after Cytoscape mounts them.
+    // No incremental, force-directed, or alternate layout backend runs for uploaded graphs.
     hasAppliedInitialLayoutRef.current = false;
     firstVisualizationRecordedRef.current = false;
     layoutPositionCacheRef.current.clear();
     projectedElementsCacheRef.current.clear();
     canonicalLayoutEngineRef.current = null;
-    setLayoutRevision((current) => current + 1);
     setIsLayouting(false);
-    layoutSpanRef.current = null;
-    settleSpanRef.current = null;
-
-    if (!graphData) {
-      return undefined;
-    }
-
-    const LayoutEngine = CANONICAL_LAYOUT_BACKEND === 'ngraph' ? NgraphIncrementalLayout : IncrementalGraphLayout;
-    const engine = new LayoutEngine({
-      nodes: graphData.nodes,
-      edges: graphData.edges,
-    });
-    canonicalLayoutEngineRef.current = engine;
-    setIsLayouting(true);
-    layoutSpanRef.current = telemetry.startSpan('layout.compute.total', buildTelemetryContext([], {
-      datasetTripletCount: graphData.store?.size ?? 0,
-      layoutBackend: CANONICAL_LAYOUT_BACKEND,
-    }));
-    settleSpanRef.current = telemetry.startSpan('view.settle.total', buildTelemetryContext([], {
-      datasetTripletCount: graphData.store?.size ?? 0,
-      layoutBackend: CANONICAL_LAYOUT_BACKEND,
-    }));
-
-    let cancelled = false;
-    let timeoutId = null;
-
-    const scheduleNextStep = () => {
-      timeoutId = window.setTimeout(runStep, 0);
-    };
-
-    const runStep = () => {
-      if (cancelled || canonicalLayoutEngineRef.current !== engine) {
-        return;
-      }
-
-      const start = performance.now();
-      let steps = 0;
-      let changed = false;
-
-      while (!engine.isComplete() && steps < 2 && performance.now() - start < 12) {
-        const result = engine.computeNextBatch();
-        changed = changed || result.changed;
-        steps += 1;
-      }
-
-      if (changed || steps > 0) {
-        setLayoutRevision((current) => current + 1);
-      }
-
-      if (engine.isComplete()) {
-        setIsLayouting(false);
-        const layoutSpan = layoutSpanRef.current;
-        layoutSpanRef.current = null;
-        layoutSpan?.end(buildTelemetryContext(visibleElements, {
-          layoutBackend: CANONICAL_LAYOUT_BACKEND,
-        }));
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (cancelled) {
-              return;
-            }
-            const settleSpan = settleSpanRef.current;
-            settleSpanRef.current = null;
-            settleSpan?.end(buildTelemetryContext(visibleElements, {
-              layoutBackend: CANONICAL_LAYOUT_BACKEND,
-            }));
-            void telemetry.captureMemory({
-              phase: 'post-layout-settle',
-              ...buildTelemetryContext(visibleElements, {
-                layoutBackend: CANONICAL_LAYOUT_BACKEND,
-              }),
-            });
-          });
-        });
-        return;
-      }
-
-      scheduleNextStep();
-    };
-
-    runStep();
-
-    return () => {
-      cancelled = true;
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-      layoutSpanRef.current?.fail(new Error('Layout cancelled'));
-      settleSpanRef.current?.fail(new Error('Settle cancelled'));
-      layoutSpanRef.current = null;
-      settleSpanRef.current = null;
-    };
   }, [graphData]);
 
   useEffect(() => {
@@ -4675,10 +4583,18 @@ function ViewerApp({ onOpenGraphLab }) {
         if (cy.destroyed()) {
           return;
         }
-        synchronizeEdgeAnchorPositions(cy);
-        synchronizeEdgeBendHandle(cy);
         if (!hasAppliedInitialLayoutRef.current) {
+          const layoutNodes = cy.nodes(":visible").not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
+          const layoutNodeIds = new Set(layoutNodes.map((node) => node.id()));
+          const layoutEdges = cy.edges(":visible").filter((edge) => layoutNodeIds.has(edge.source().id()) && layoutNodeIds.has(edge.target().id()))
+            .not("[edgeAnchorTether = 1]").not("[edgeAttachedConnector = 1]").not("[owlRelationConnector = 1]");
+          if (layoutNodes.length > 1) applyRankAwareRadialBfsLayout(cy, { nodes: layoutNodes, edges: layoutEdges });
+          synchronizeEdgeAnchorPositions(cy);
+          synchronizeEdgeBendHandle(cy);
           fitGraph(0);
+        } else {
+          synchronizeEdgeAnchorPositions(cy);
+          synchronizeEdgeBendHandle(cy);
         }
         cacheCurrentPositions();
         hasAppliedInitialLayoutRef.current = true;
@@ -5645,6 +5561,7 @@ function ViewerApp({ onOpenGraphLab }) {
     '--left-gap': isGraphFullscreen ? '0px' : leftCollapsed ? '0px' : '10px',
     '--right-gap': isGraphFullscreen ? '0px' : rightCollapsed ? '0px' : '5px',
   };
+
   const fullscreenButtonLabel = isGraphFullscreen ? 'Exit full screen (Esc)' : 'Enter full screen';
   const legendButtonLabel = isLegendOpen ? 'Hide graph legend' : 'Show graph legend';
   const exportButtonLabel = isExportMenuOpen ? 'Hide export options' : 'Show export options';
@@ -5676,9 +5593,6 @@ function ViewerApp({ onOpenGraphLab }) {
           </h1>
         </div>
         <div className="header-actions">
-          <button type="button" className="header-lab-link" onClick={onOpenGraphLab} title="Open the independent graph organization test lab">
-            Graph lab
-          </button>
           <a
             className="header-icon-link"
             href={GITHUB_ISSUES_URL}
@@ -6932,17 +6846,5 @@ function ViewerApp({ onOpenGraphLab }) {
 }
 
 export default function App() {
-  const [isGraphLabOpen, setIsGraphLabOpen] = useState(() => window.location.hash === "#graph-lab");
-
-  useEffect(() => {
-    const syncRoute = () => setIsGraphLabOpen(window.location.hash === "#graph-lab");
-    window.addEventListener("hashchange", syncRoute);
-    return () => window.removeEventListener("hashchange", syncRoute);
-  }, []);
-
-  if (isGraphLabOpen) {
-    return <MockGraphLab onExit={() => { window.location.hash = ""; }} />;
-  }
-
-  return <ViewerApp onOpenGraphLab={() => { window.location.hash = "graph-lab"; }} />;
+  return <ViewerApp />;
 }

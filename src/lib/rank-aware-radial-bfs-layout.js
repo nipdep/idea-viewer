@@ -1,13 +1,27 @@
-const C = { visibleRadius: 10, minHeadroom: 12, headroomScale: 38, edgeGap: 18, siblingGap: 8, rotations: 16, componentGap: 80, futureDiscount: .58, edgeTolerance: .001, magneticPasses: 4, magneticStrength: 13, magneticStepCap: 9 };
+const C = { visibleRadius: 10, minHeadroom: 24, headroomScale: 52, edgeGap: 26, edgeLabelPadding: 20, edgeLabelCharacterWidth: .62, maxEdgeLabelClearance: 260, siblingGap: 8, rotations: 16, componentGap: 80, futureDiscount: .58, edgeTolerance: .001, magneticPasses: 4, magneticStrength: 13, magneticStepCap: 9 };
 const TAU = Math.PI * 2;
 const key = (x, y, size) => `${Math.floor(x / size)},${Math.floor(y / size)}`;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const pairDistance = (a, b) => a.radius + b.radius + C.edgeGap;
+const pairDistance = (a, b) => a.radius + b.radius + C.edgeGap + Math.max(a.labelClearance.get(b.id) ?? 0, b.labelClearance.get(a.id) ?? 0);
 
-function model(cy) {
-  const degrees = cy.nodes().map((n) => n.degree()); const min = Math.min(...degrees); const span = Math.max(1, Math.max(...degrees) - min);
-  const nodes = cy.nodes().map((node) => { const rank = (node.degree() - min) / span; return { id: node.id(), node, rank, radius: C.visibleRadius + C.minHeadroom + C.headroomScale * Math.sqrt(rank), neighbors: new Set(), children: [], depth: undefined, planted: false, demand: 0 }; });
-  const byId = new Map(nodes.map((x) => [x.id, x])); cy.edges().forEach((edge) => { const a = byId.get(edge.source().id()); const b = byId.get(edge.target().id()); a.neighbors.add(b.id); b.neighbors.add(a.id); }); return { nodes, byId };
+function nodeVisibleRadius(node) {
+  const width = Number(node.width?.()) || 0;
+  const height = Number(node.height?.()) || 0;
+  return Math.max(C.visibleRadius, width / 2, height / 2);
+}
+
+function edgeLabelClearance(edge) {
+  const label = String(edge.data("predicateLabel") ?? edge.data("label") ?? edge.data("predicate") ?? "").trim();
+  if (!label) return 0;
+  const fontSize = Number.parseFloat(edge.style?.("font-size")) || 12;
+  return Math.min(C.maxEdgeLabelClearance, Math.max(24, C.edgeLabelPadding + label.length * fontSize * C.edgeLabelCharacterWidth));
+}
+
+function model(cy, options = {}) {
+  const layoutNodes = options.nodes ?? cy.nodes(); const layoutEdges = options.edges ?? cy.edges();
+  const degrees = layoutNodes.map((n) => n.degree()); const min = Math.min(...degrees); const span = Math.max(1, Math.max(...degrees) - min);
+  const nodes = layoutNodes.map((node) => { const rank = (node.degree() - min) / span; return { id: node.id(), node, rank, radius: nodeVisibleRadius(node) + C.minHeadroom + C.headroomScale * Math.sqrt(rank), neighbors: new Set(), labelClearance: new Map(), children: [], depth: undefined, planted: false, demand: 0 }; });
+  const byId = new Map(nodes.map((x) => [x.id, x])); layoutEdges.forEach((edge) => { const a = byId.get(edge.source().id()); const b = byId.get(edge.target().id()); if (!a || !b) return; a.neighbors.add(b.id); b.neighbors.add(a.id); const clearance = edgeLabelClearance(edge); a.labelClearance.set(b.id, Math.max(a.labelClearance.get(b.id) ?? 0, clearance)); b.labelClearance.set(a.id, Math.max(b.labelClearance.get(a.id) ?? 0, clearance)); }); return { nodes, byId };
 }
 function split(nodes, byId) { const unseen = new Set(nodes.map((x) => x.id)); const out = []; while (unseen.size) { const q = [unseen.values().next().value]; unseen.delete(q[0]); const c = []; while (q.length) { const n = byId.get(q.shift()); c.push(n); n.neighbors.forEach((id) => { if (unseen.delete(id)) q.push(id); }); } out.push(c); } return out; }
 function spatial(entries, cellSize) { const cells = new Map(); entries.filter((x) => x.planted).forEach((x) => { const bucket = cells.get(key(x.x, x.y, cellSize)) ?? []; bucket.push(x); cells.set(key(x.x, x.y, cellSize), bucket); }); return { cells, cellSize }; }
@@ -65,8 +79,8 @@ function magneticOverlapCleanup(component) {
 
 function bounds(component) { const xs = component.map((x) => x.x); const ys = component.map((x) => x.y); return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) }; }
 
-export function applyRankAwareRadialBfsLayout(cy) {
-  const { nodes, byId } = model(cy); const packed = [];
+export function applyRankAwareRadialBfsLayout(cy, options = {}) {
+  const { nodes, byId } = model(cy, options); const packed = [];
   split(nodes, byId).forEach((component) => { const root = buildForest(component, byId); root.x = 0; root.y = 0; root.planted = true; const queue = [root];
     while (queue.length) { queue.sort((a, b) => a.depth - b.depth || b.rank - a.rank || a.id.localeCompare(b.id)); const center = queue.shift(); const children = center.children.filter((x) => !x.planted); if (!children.length) continue; const index = spatial(component, 2 * (C.visibleRadius + C.minHeadroom + C.headroomScale) + C.edgeGap); candidateFan(center, children, component, index).forEach((point) => { Object.assign(point.child, { x: point.x, y: point.y, planted: true }); queue.push(point.child); }); }
     magneticOverlapCleanup(component);

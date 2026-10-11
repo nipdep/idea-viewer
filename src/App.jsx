@@ -11,6 +11,15 @@ import {
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
 import { GRAPH_LAYOUT_LABELS, GRAPH_LAYOUT_TYPES, runGraphLayout } from './lib/graph-layouts';
+import {
+  applyCollapseVisibility,
+  autoExpand,
+  buildHierarchyIndex,
+  computeVisibleNodes,
+  countHiddenDescendants,
+  hasHierarchyChildren,
+  toggleExpanded,
+} from './lib/hierarchy-collapse';
 import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
 import './styles.css';
 
@@ -1381,6 +1390,9 @@ function ViewerApp() {
   const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.OWL);
   const [graphLayoutType, setGraphLayoutType] = useState(GRAPH_LAYOUT_TYPES.SPREAD);
   const lastLayoutTypeRef = useRef(graphLayoutType);
+  const collapseStateRef = useRef(null);
+  const collapseControllerRef = useRef(null);
+  const pendingFocusTimerRef = useRef(null);
   const [owlProjectionLevel, setOwlProjectionLevel] = useState(OWL_PROJECTION_LEVELS.ONTOLOGY);
   const [rdfProjectionLevel, setRdfProjectionLevel] = useState(RDF_PROJECTION_LEVELS.ALL);
 
@@ -3734,6 +3746,19 @@ function ViewerApp() {
             opacity: 1,
           },
         },
+        {
+          selector: '.collapse-hidden',
+          style: { display: 'none' },
+        },
+        {
+          selector: 'node[collapsedCount > 0]',
+          style: {
+            label: 'data(collapsedLabel)',
+            'border-width': 3,
+            'border-style': 'double',
+            'border-color': '#2a6f6e',
+          },
+        },
       ],
       layout: {
         name: 'cose',
@@ -3760,7 +3785,22 @@ function ViewerApp() {
         extendFocusedNodes(nodeId);
         return;
       }
+      if (collapseControllerRef.current?.canToggle(nodeId)) {
+        // A double tap toggles collapse instead of focusing, so wait briefly before focusing.
+        clearTimeout(pendingFocusTimerRef.current);
+        pendingFocusTimerRef.current = setTimeout(() => setSingleFocusedNode(nodeId), 280);
+        return;
+      }
       setSingleFocusedNode(nodeId);
+    });
+
+    cy.on('dbltap', 'node', (event) => {
+      const node = event.target;
+      if (node.data('edgeBendHandle') === 1 || !collapseControllerRef.current?.canToggle(node.id())) {
+        return;
+      }
+      clearTimeout(pendingFocusTimerRef.current);
+      collapseControllerRef.current.toggle(node.id());
     });
 
     cy.on('tap', 'edge', (event) => {
@@ -4123,6 +4163,9 @@ function ViewerApp() {
     container.addEventListener('wheel', onWheel, { passive: true });
 
     cyRef.current = cy;
+    if (import.meta.env.DEV) {
+      window.__ideaViewerCy = cy; // dev-only hook for UI checks
+    }
     if (!initialGraphStyleJsonRef.current && typeof cy.style().json === 'function') {
       initialGraphStyleJsonRef.current = cy.style().json();
     }
@@ -4489,6 +4532,7 @@ function ViewerApp() {
     hasAppliedInitialLayoutRef.current = false;
     firstVisualizationRecordedRef.current = false;
     layoutPositionCacheRef.current.clear();
+    collapseStateRef.current = null;
     projectedElementsCacheRef.current.clear();
     canonicalLayoutEngineRef.current = null;
     setIsLayouting(false);
@@ -4497,6 +4541,7 @@ function ViewerApp() {
   useEffect(() => {
     hasAppliedInitialLayoutRef.current = false;
     layoutPositionCacheRef.current.clear();
+    collapseStateRef.current = null;
   }, [graphProjectionMode]);
 
   useEffect(() => {
@@ -4602,13 +4647,47 @@ function ViewerApp() {
         if (cy.destroyed()) {
           return;
         }
-        const finishLayout = () => {
+        const isHierarchyLayout = graphLayoutType === GRAPH_LAYOUT_TYPES.HIERARCHY;
+        const getLayoutGraph = () => {
+          const nodes = cy.nodes().not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
+          const nodeIds = new Set(nodes.map((node) => node.id()));
+          const edges = cy.edges().filter((edge) => nodeIds.has(edge.source().id()) && nodeIds.has(edge.target().id()))
+            .not("[edgeAnchorTether = 1]").not("[edgeAttachedConnector = 1]").not("[owlRelationConnector = 1]");
+          return { nodes, edges };
+        };
+        // Decides which nodes are collapsed and mirrors that onto the elements.
+        const applyHierarchyCollapse = () => {
+          const { nodes, edges } = getLayoutGraph();
+          const index = buildHierarchyIndex(
+            nodes.map((node) => node.id()),
+            edges.map((edge) => ({ source: edge.source().id(), target: edge.target().id() })),
+          );
+          if (!collapseStateRef.current) {
+            collapseStateRef.current = { expanded: autoExpand(index) };
+          }
+          const { expanded } = collapseStateRef.current;
+          const visible = computeVisibleNodes(index, expanded);
+          applyCollapseVisibility(cy, nodes, visible, countHiddenDescendants(index, visible, expanded));
+          return index;
+        };
+        const layoutVisibleGraph = () => {
+          const nodes = cy.nodes(":visible").not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
+          const nodeIds = new Set(nodes.map((node) => node.id()));
+          const edges = cy.edges(":visible").filter((edge) => nodeIds.has(edge.source().id()) && nodeIds.has(edge.target().id()))
+            .not("[edgeAnchorTether = 1]").not("[edgeAttachedConnector = 1]").not("[owlRelationConnector = 1]");
+          if (nodes.length < 2) {
+            return Promise.resolve();
+          }
+          return runGraphLayout(cy, { type: graphLayoutType, nodes, edges })
+            .catch((error) => console.error('Graph layout failed', error));
+        };
+        const finishLayout = (shouldFit) => {
           if (cy.destroyed() || cancelled) {
             return;
           }
           synchronizeEdgeAnchorPositions(cy);
           synchronizeEdgeBendHandle(cy);
-          if (needsLayout) {
+          if (shouldFit) {
             fitGraph(0);
           }
           cacheCurrentPositions();
@@ -4616,20 +4695,34 @@ function ViewerApp() {
           layoutSettled = true;
           finishRenderTelemetry();
         };
-        if (needsLayout) {
-          const layoutNodes = cy.nodes(":visible").not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
-          const layoutNodeIds = new Set(layoutNodes.map((node) => node.id()));
-          const layoutEdges = cy.edges(":visible").filter((edge) => layoutNodeIds.has(edge.source().id()) && layoutNodeIds.has(edge.target().id()))
-            .not("[edgeAnchorTether = 1]").not("[edgeAttachedConnector = 1]").not("[owlRelationConnector = 1]");
-          if (layoutNodes.length > 1) {
-            runGraphLayout(cy, { type: graphLayoutType, nodes: layoutNodes, edges: layoutEdges })
-              .catch((error) => console.error('Graph layout failed', error))
-              .then(finishLayout);
-          } else {
-            finishLayout();
+
+        let hierarchyIndex = null;
+        if (isHierarchyLayout) {
+          if (layoutTypeChanged) {
+            collapseStateRef.current = null;
           }
+          hierarchyIndex = applyHierarchyCollapse();
+          collapseControllerRef.current = {
+            canToggle: (nodeId) => hasHierarchyChildren(hierarchyIndex, nodeId),
+            toggle: (nodeId) => {
+              if (cy.destroyed() || !collapseStateRef.current) {
+                return;
+              }
+              collapseStateRef.current = {
+                expanded: toggleExpanded(collapseStateRef.current.expanded, nodeId),
+              };
+              applyHierarchyCollapse();
+              layoutVisibleGraph().then(() => finishLayout(true));
+            },
+          };
         } else {
-          finishLayout();
+          collapseControllerRef.current = null;
+        }
+
+        if (needsLayout) {
+          layoutVisibleGraph().then(() => finishLayout(true));
+        } else {
+          finishLayout(false);
         }
       }, 0),
       setTimeout(() => {
@@ -4644,6 +4737,7 @@ function ViewerApp() {
 
     return () => {
       cancelled = true;
+      clearTimeout(pendingFocusTimerRef.current);
       timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
     };
   }, [visibleElements, graphLayoutType]);

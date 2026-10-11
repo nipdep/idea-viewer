@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test:projections": "node --import ./test/projection-helpers/register-node-loader.mjs --test test/view-projections.test.mjs",
     "test:projections:summary": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/projection-test-manifest-summary.mjs",
-    "test:projections:generate": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/generate-projection-expectations.mjs"
+    "test:projections:generate": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/generate-projection-expectations.mjs",
+    "test:collapse": "node --test test/hierarchy-collapse.test.mjs"
   },
   "dependencies": {
     "@comunica/query-sparql": "^3.0.0",

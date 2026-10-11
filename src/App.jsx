@@ -10,7 +10,7 @@ import {
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
-import { hideIsolatedBuiltinTerms } from './lib/builtin-vocabulary-filter';
+import { filterBuiltinVocabulary } from './lib/builtin-vocabulary-filter';
 import { applyReadableViewport, revealInViewport } from './lib/graph-fit';
 import { applySpreadClusters, getCluster, toggleCluster } from './lib/spread-collapse';
 import { CLUSTER_NODE_THRESHOLD } from './lib/spread-clusters';
@@ -3751,26 +3751,28 @@ function ViewerApp() {
             opacity: 1,
           },
         },
-        {
-          selector: 'node, edge',
-          style: { 'min-zoomed-font-size': 7 },
-        },
+        // Folded-group cues use the existing palette only. Shape and fill carry meaning in the formatting
+        // spec (class, resource, literal, datatype, connector, dashed enumeration area), so nothing here
+        // reuses those: a folded cluster is a neutral cut-corner box, and the "+N" in the label is the cue.
         {
           selector: 'node[clusterNode = 1]',
           style: {
             label: 'data(clusterTitle)',
-            'border-color': '#2a6f6e',
-            'border-width': 2,
+            shape: 'cut-rectangle',
+            'background-color': '#f6f0e8',
+            'background-opacity': 1,
+            'border-color': '#7e6f60',
+            'border-style': 'solid',
+            'border-width': 0.8,
             'text-valign': 'center',
           },
         },
         {
           selector: 'node[clusterNode = 1]:parent',
           style: {
-            'background-color': '#2a6f6e',
-            'background-opacity': 0.06,
-            'border-style': 'dashed',
-            'border-width': 1.5,
+            'background-opacity': 0.04,
+            'border-color': '#b5a898',
+            'border-width': 1,
             'text-valign': 'top',
             'text-margin-y': -4,
             padding: '26px',
@@ -3782,16 +3784,11 @@ function ViewerApp() {
         },
         {
           selector: 'edge.cluster-edge-primary',
-          style: { label: 'data(collapsedCountLabel)', width: 3.5, 'line-style': 'solid' },
+          style: { label: 'data(collapsedCountLabel)' },
         },
         {
           selector: '.cy-expand-collapse-collapsed-node',
           style: {
-            'background-color': '#dcebe7',
-            'background-opacity': 1,
-            'border-style': 'double',
-            'border-width': 4,
-            shape: 'round-rectangle',
             width: 'data(nodeWidth)',
             height: 'data(nodeHeight)',
           },
@@ -3801,13 +3798,9 @@ function ViewerApp() {
           style: { display: 'none' },
         },
         {
+          // A collapsed real node keeps its own shape and colours; only the label gains "[+N]".
           selector: 'node[collapsedCount > 0]',
-          style: {
-            label: 'data(collapsedLabel)',
-            'border-width': 3,
-            'border-style': 'double',
-            'border-color': '#2a6f6e',
-          },
+          style: { label: 'data(collapsedLabel)' },
         },
       ],
       layout: {
@@ -5097,7 +5090,7 @@ function ViewerApp() {
           }
 
           const projected = getPositionedProjectionElements(rawProjected);
-          const filteredProjection = hideIsolatedBuiltinTerms(
+          const filteredProjection = filterBuiltinVocabulary(
             filterProjectedElementsByGraphAxis(projected, graphFilterAxis),
             focusedNodeIds ?? [],
           );

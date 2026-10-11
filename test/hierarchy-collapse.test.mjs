@@ -46,25 +46,33 @@ test('autoExpand respects the budget and expands level by level', () => {
   const edges = [...Array.from({ length: 10 }, (_, i) => edge(`c${i}`, 'root')), edge('g0', 'c0'), edge('g1', 'c0')];
   const index = buildHierarchyIndex(ids, edges);
 
-  const tight = autoExpand(index, { budget: 5 });
+  const tight = autoExpand(index, { budget: 5, foldAbove: 0 });
   assert.equal(tight.has('root'), false);
   assert.equal(computeVisibleNodes(index, tight).size, 1);
 
-  const roomy = autoExpand(index, { budget: 11 });
+  const roomy = autoExpand(index, { budget: 11, foldAbove: 0 });
   assert.equal(roomy.has('root'), true);
   assert.equal(roomy.has('c0'), false);
   assert.equal(computeVisibleNodes(index, roomy).size, 11);
 
-  const all = autoExpand(index, { budget: 100 });
+  const all = autoExpand(index, { budget: 100, foldAbove: 0 });
   assert.equal(computeVisibleNodes(index, all).size, ids.length);
+});
+
+test('small graphs are never folded, however wide a level is (a layout must not filter)', () => {
+  const ids = ['root', ...Array.from({ length: 40 }, (_, i) => `c${i}`)];
+  const index = buildHierarchyIndex(ids, ids.slice(1).map((id) => edge(id, 'root')));
+  assert.equal(computeVisibleNodes(index, autoExpand(index)).size, ids.length);
+  const folded = autoExpand(index, { foldAbove: 10, maxLevelWidth: 10 });
+  assert.equal(computeVisibleNodes(index, folded).size, 1, 'above the threshold the width cap applies again');
 });
 
 test('autoExpand keeps wide levels collapsed even when the budget allows them', () => {
   const ids = ['root', ...Array.from({ length: 40 }, (_, i) => `c${i}`), 'x'];
   const index = buildHierarchyIndex(ids, [...Array.from({ length: 40 }, (_, i) => edge(`c${i}`, 'root')), edge('x', 'c0')]);
-  const expanded = autoExpand(index, { budget: 500, maxLevelWidth: 10 });
+  const expanded = autoExpand(index, { budget: 500, maxLevelWidth: 10, foldAbove: 10 });
   assert.equal(expanded.has('root'), false);
-  assert.equal(autoExpand(index, { budget: 500, maxLevelWidth: 50 }).has('root'), true);
+  assert.equal(autoExpand(index, { budget: 500, maxLevelWidth: 50, foldAbove: 10 }).has('root'), true);
 });
 
 test('hidden descendant counts only count nodes not otherwise visible', () => {

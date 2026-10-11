@@ -10,6 +10,7 @@ import {
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
+import { hideIsolatedBuiltinTerms } from './lib/builtin-vocabulary-filter';
 import { applyReadableViewport, revealInViewport } from './lib/graph-fit';
 import { applySpreadClusters, getCluster, toggleCluster } from './lib/spread-collapse';
 import { CLUSTER_NODE_THRESHOLD } from './lib/spread-clusters';
@@ -5065,7 +5066,10 @@ function ViewerApp() {
           }
 
           const projected = getPositionedProjectionElements(rawProjected);
-          const filteredProjection = filterProjectedElementsByGraphAxis(projected, graphFilterAxis);
+          const filteredProjection = hideIsolatedBuiltinTerms(
+            filterProjectedElementsByGraphAxis(projected, graphFilterAxis),
+            focusedNodeIds ?? [],
+          );
           projectionSpan.end(buildTelemetryContext(filteredProjection, {
             focusedNodeCount: Array.isArray(focusedNodeIds) ? focusedNodeIds.length : 0,
           }));

@@ -902,13 +902,15 @@ textarea {
 
 .graph-tools-left {
   left: 12px;
-  right: auto;
+  /* span the width up to the right-hand tools so the projection, layout and search controls sit in one row */
+  right: 156px;
 }
 
 .graph-tools-left-stack {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 

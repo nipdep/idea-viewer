@@ -5,6 +5,9 @@
 // visible while any one of them is expanded. State is the set of *expanded* nodes: anything not
 // in it is collapsed, which makes expanding a node reveal exactly one more level.
 
+// Graphs up to this many nodes are always shown in full, in every layout: a layout must never filter.
+// Above it, both layouts start folded (hierarchy: collapsed subtrees, spread: collapsed clusters).
+export const AUTO_COLLAPSE_NODE_THRESHOLD = 150;
 export const DEFAULT_VISIBLE_NODE_BUDGET = 120;
 export const DEFAULT_MAX_LEVEL_WIDTH = 24;
 
@@ -136,8 +139,23 @@ function nodeWeight(index, id) {
 
 // Expands breadth-first from the roots while both the total weight budget and the width of each
 // level (a layered layout gets unreadably wide otherwise) stay within their limits.
-export function autoExpand(index, { budget = DEFAULT_VISIBLE_NODE_BUDGET, maxLevelWidth = DEFAULT_MAX_LEVEL_WIDTH } = {}) {
+export function autoExpand(
+  index,
+  {
+    budget = DEFAULT_VISIBLE_NODE_BUDGET,
+    maxLevelWidth = DEFAULT_MAX_LEVEL_WIDTH,
+    foldAbove = AUTO_COLLAPSE_NODE_THRESHOLD,
+  } = {},
+) {
   const expanded = new Set();
+  if (index.ids.length <= foldAbove) {
+    index.ids.forEach((id) => {
+      if (hasHierarchyChildren(index, id)) {
+        expanded.add(id);
+      }
+    });
+    return expanded;
+  }
   const depthOf = new Map(index.roots.map((id) => [id, 0]));
   const rootWeight = index.roots.reduce((sum, id) => sum + nodeWeight(index, id), 0);
   const levelSizes = [rootWeight];

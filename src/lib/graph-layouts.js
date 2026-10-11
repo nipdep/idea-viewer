@@ -113,6 +113,95 @@ function hierarchyOptions(incremental) {
   };
 }
 
+const NODE_GAP_X = 44;
+const NODE_GAP_Y = 32;
+const MAX_SEPARATION_PASSES = 80;
+
+/**
+ * Pushes overlapping nodes apart until every pair has at least NODE_GAP_X / NODE_GAP_Y of clear space
+ * (force layouts only treat node size approximately, which left boxes touching). Deterministic: nodes are
+ * visited in id order and each pair is pushed apart along the axis it overlaps least. Pinned nodes stay put.
+ */
+export function separateOverlaps(nodes, pinnedIds = new Set()) {
+  const items = nodes
+    .filter((node) => !node.isParent())
+    .map((node) => ({
+      node,
+      id: node.id(),
+      pinned: pinnedIds.has(node.id()),
+      x: node.position('x'),
+      y: node.position('y'),
+      halfW: node.width() / 2 + NODE_GAP_X / 2,
+      halfH: node.height() / 2 + NODE_GAP_Y / 2,
+    }))
+    .sort((a, b) => (a.id < b.id ? -1 : 1));
+  if (items.length < 2) {
+    return;
+  }
+  const cell = Math.max(...items.map((item) => Math.max(item.halfW, item.halfH))) * 2;
+
+  for (let pass = 0; pass < MAX_SEPARATION_PASSES; pass += 1) {
+    const grid = new Map();
+    items.forEach((item, index) => {
+      const key = `${Math.floor(item.x / cell)},${Math.floor(item.y / cell)}`;
+      if (!grid.has(key)) {
+        grid.set(key, []);
+      }
+      grid.get(key).push(index);
+    });
+    const shiftX = new Float64Array(items.length);
+    const shiftY = new Float64Array(items.length);
+    let moved = false;
+
+    items.forEach((a, i) => {
+      const cx = Math.floor(a.x / cell);
+      const cy = Math.floor(a.y / cell);
+      for (let gx = cx - 1; gx <= cx + 1; gx += 1) {
+        for (let gy = cy - 1; gy <= cy + 1; gy += 1) {
+          (grid.get(`${gx},${gy}`) ?? []).forEach((j) => {
+            if (j <= i) {
+              return;
+            }
+            const b = items[j];
+            const overlapX = a.halfW + b.halfW - Math.abs(a.x - b.x);
+            const overlapY = a.halfH + b.halfH - Math.abs(a.y - b.y);
+            if (overlapX <= 0 || overlapY <= 0 || (a.pinned && b.pinned)) {
+              return;
+            }
+            moved = true;
+            const shareA = a.pinned ? 0 : b.pinned ? 1 : 0.5;
+            const shareB = 1 - shareA;
+            // equal positions have no direction: separate sideways, ordered by id
+            if (overlapX < overlapY) {
+              const direction = a.x === b.x ? -1 : Math.sign(a.x - b.x);
+              shiftX[i] += direction * overlapX * shareA;
+              shiftX[j] -= direction * overlapX * shareB;
+            } else {
+              const direction = a.y === b.y ? -1 : Math.sign(a.y - b.y);
+              shiftY[i] += direction * overlapY * shareA;
+              shiftY[j] -= direction * overlapY * shareB;
+            }
+          });
+        }
+      }
+    });
+
+    if (!moved) {
+      break;
+    }
+    items.forEach((item, index) => {
+      item.x += shiftX[index];
+      item.y += shiftY[index];
+    });
+  }
+
+  items.forEach((item) => {
+    if (!item.pinned) {
+      item.node.position({ x: item.x, y: item.y });
+    }
+  });
+}
+
 // Isolated nodes carry no structure, but force/layered layouts spend most of their time on them
 // (CSO: 14,950 isolated of 15,012 nodes took 68 s). Above this count they are gridded instead.
 const ISOLATED_GRID_THRESHOLD = 40;
@@ -153,6 +242,9 @@ export function runGraphLayout(cy, { type, nodes: allNodes, edges, incremental =
   const isolated = incremental ? null : splitIsolated(allNodes, edges);
   const nodes = isolated ? allNodes.difference(isolated) : allNodes;
   const finish = () => {
+    if (type !== GRAPH_LAYOUT_TYPES.HIERARCHY) {
+      separateOverlaps(nodes, new Set(fixedNodes ? fixedNodes.map((node) => node.id()) : []));
+    }
     if (!isolated) {
       return;
     }

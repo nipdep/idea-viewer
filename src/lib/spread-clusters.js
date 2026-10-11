@@ -3,7 +3,9 @@
 import Graph from 'graphology';
 import louvain from 'graphology-communities-louvain';
 
-export const CLUSTER_NODE_THRESHOLD = 150;
+import { AUTO_COLLAPSE_NODE_THRESHOLD } from './hierarchy-collapse.js';
+
+export const CLUSTER_NODE_THRESHOLD = AUTO_COLLAPSE_NODE_THRESHOLD;
 export const MIN_CLUSTER_SIZE = 4;
 export const CLUSTER_ID_PREFIX = 'cluster:';
 

@@ -57,8 +57,10 @@ function lerp(from, to, amount) {
   return from + (to - from) * amount;
 }
 
-function spreadOptions(nodeCount) {
+function spreadOptions(nodeCount, averageNodeSize) {
   const density = Math.min(1, Math.max(0, (nodeCount - 80) / 420));
+  // Few but large nodes (e.g. collapsed clusters) need spacing relative to their size, not their count.
+  const sizeScale = Math.max(1, averageNodeSize / 100);
   return {
     name: 'fcose',
     quality: layoutOverrides().spreadQuality ?? 'default',
@@ -69,8 +71,8 @@ function spreadOptions(nodeCount) {
     uniformNodeDimensions: false,
     packComponents: true,
     tile: true,
-    idealEdgeLength: lerp(140, 200, density),
-    nodeRepulsion: lerp(12000, 30000, density),
+    idealEdgeLength: lerp(140, 200, density) * sizeScale,
+    nodeRepulsion: lerp(12000, 30000, density) * sizeScale * sizeScale,
     edgeElasticity: lerp(0.35, 0.1, density),
     nodeSeparation: 90,
     gravity: 0.25,
@@ -114,7 +116,7 @@ function hierarchyOptions(incremental) {
 /**
  * Lays out `nodes`/`edges` in place. Resolves once all node positions are final.
  */
-export function runGraphLayout(cy, { type, nodes, edges, incremental = false }) {
+export function runGraphLayout(cy, { type, nodes, edges, incremental = false, fixedNodes = null }) {
   registerLayouts();
   const isHierarchy = type === GRAPH_LAYOUT_TYPES.HIERARCHY;
   // All edges feed the layering: ranking by taxonomy edges alone left property edges very long
@@ -124,7 +126,22 @@ export function runGraphLayout(cy, { type, nodes, edges, incremental = false }) 
       ? edges.filter((edge) => HIERARCHY_PREDICATES.has(edge.data('predicate')))
       : edges;
   const elements = nodes.union(layoutEdges);
-  const options = isHierarchy ? hierarchyOptions(incremental) : spreadOptions(nodes.length);
+  const averageNodeSize = nodes.length
+    ? nodes.reduce((sum, node) => sum + Math.max(node.width(), node.height()), 0) / nodes.length
+    : 100;
+  const options = isHierarchy ? hierarchyOptions(incremental) : spreadOptions(nodes.length, averageNodeSize);
+  if (!isHierarchy && incremental) {
+    // Relax from the current positions instead of re-randomising, keeping already-placed nodes pinned.
+    Object.assign(options, {
+      randomize: false,
+      packComponents: false,
+      tile: false,
+      numIter: 1200,
+      fixedNodeConstraint: fixedNodes
+        ? fixedNodes.map((node) => ({ nodeId: node.id(), position: { ...node.position() } }))
+        : undefined,
+    });
+  }
 
   const startedAt = performance.now();
   return new Promise((resolve, reject) => {

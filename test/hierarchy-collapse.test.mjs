@@ -104,3 +104,27 @@ test('toggleExpanded does not mutate its input', () => {
   assert.deepEqual(sorted(after), ['a', 'b']);
   assert.deepEqual(sorted(toggleExpanded(after, 'a')), ['b']);
 });
+
+import { computeClusters } from '../src/lib/spread-clusters.js';
+
+test('spread clusters: dense groups are found, deterministically, and tiny ones are dropped', () => {
+  const ids = [...Array(33).keys()].map((i) => `n${i}`);
+  const edges = [];
+  for (let group = 0; group < 3; group += 1) {
+    for (let i = 0; i < 10; i += 1) {
+      for (let j = i + 1; j < 10; j += 1) {
+        if ((i * 7 + j * 3 + group) % 3 === 0) {
+          edges.push({ source: `n${group * 10 + i}`, target: `n${group * 10 + j}` });
+        }
+      }
+    }
+  }
+  edges.push({ source: 'n0', target: 'n10' }, { source: 'n11', target: 'n20' }, { source: 'n30', target: 'n31' });
+  const first = computeClusters(ids, edges);
+  const second = computeClusters(ids, edges);
+  assert.deepEqual([...first], [...second]);
+  assert.equal(first.size, 3, 'three dense groups; the n30-n31 pair and isolated n32 are below the minimum size');
+  assert.ok([...first.values()].every((members) => members.length >= 8));
+  const all = [...first.values()].flat();
+  assert.equal(new Set(all).size, all.length, 'clusters are a partition: no node in two clusters');
+});

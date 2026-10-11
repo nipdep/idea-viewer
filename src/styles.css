@@ -1968,3 +1968,8 @@ textarea {
   border-color: rgba(42, 111, 110, 0.28);
   border-radius: 999px;
 }
+
+/* cytoscape-expand-collapse injects a cue overlay canvas; cues are disabled, and it must not block the toolbar. */
+.expand-collapse-canvas {
+  pointer-events: none !important;
+}

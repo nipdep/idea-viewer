@@ -67,3 +67,19 @@ export function applyReadableViewport(cy, options = {}) {
   }
   return viewport;
 }
+
+// Pans (never zooms) just enough to bring `eles` into view; centres them when they cannot all fit.
+export function revealInViewport(cy, eles, padding = 40) {
+  const bb = eles.renderedBoundingBox();
+  const width = cy.width();
+  const height = cy.height();
+  const inside = bb.x1 >= padding && bb.x2 <= width - padding && bb.y1 >= padding && bb.y2 <= height - padding;
+  if (inside) {
+    return;
+  }
+  const fitsX = bb.w <= width - 2 * padding;
+  const fitsY = bb.h <= height - 2 * padding;
+  const dx = fitsX ? Math.min(0, width - padding - bb.x2) + Math.max(0, padding - bb.x1) : width / 2 - (bb.x1 + bb.x2) / 2;
+  const dy = fitsY ? Math.min(0, height - padding - bb.y2) + Math.max(0, padding - bb.y1) : height / 2 - (bb.y1 + bb.y2) / 2;
+  cy.panBy({ x: dx, y: dy });
+}

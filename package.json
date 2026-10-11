@@ -24,6 +24,8 @@
     "cytoscape-expand-collapse": "^4.1.1",
     "cytoscape-fcose": "^2.2.0",
     "elkjs": "^0.12.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
     "n3": "^1.20.0",
     "ngraph.forcelayout": "^3.3.1",
     "ngraph.graph": "^20.1.2",

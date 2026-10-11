@@ -10,7 +10,9 @@ import {
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
-import { applyReadableViewport } from './lib/graph-fit';
+import { applyReadableViewport, revealInViewport } from './lib/graph-fit';
+import { applySpreadClusters, getCluster, toggleCluster } from './lib/spread-collapse';
+import { CLUSTER_NODE_THRESHOLD } from './lib/spread-clusters';
 import { GRAPH_LAYOUT_LABELS, GRAPH_LAYOUT_TYPES, HIERARCHY_PREDICATES, placeNodesBelow, runGraphLayout } from './lib/graph-layouts';
 import {
   applyCollapseVisibility,
@@ -3752,6 +3754,43 @@ function ViewerApp() {
           style: { 'min-zoomed-font-size': 7 },
         },
         {
+          selector: 'node[clusterNode = 1]',
+          style: {
+            label: 'data(clusterTitle)',
+            'border-color': '#2a6f6e',
+            'border-width': 2,
+            'text-valign': 'center',
+          },
+        },
+        {
+          selector: 'node[clusterNode = 1]:parent',
+          style: {
+            'background-color': '#2a6f6e',
+            'background-opacity': 0.06,
+            'border-style': 'dashed',
+            'border-width': 1.5,
+            'text-valign': 'top',
+            'text-margin-y': -4,
+            padding: '26px',
+          },
+        },
+        {
+          selector: 'edge.cluster-edge-primary',
+          style: { label: 'data(collapsedCountLabel)', width: 3.5, 'line-style': 'solid' },
+        },
+        {
+          selector: '.cy-expand-collapse-collapsed-node',
+          style: {
+            'background-color': '#dcebe7',
+            'background-opacity': 1,
+            'border-style': 'double',
+            'border-width': 4,
+            shape: 'round-rectangle',
+            width: 'data(nodeWidth)',
+            height: 'data(nodeHeight)',
+          },
+        },
+        {
           selector: '.collapse-hidden',
           style: { display: 'none' },
         },
@@ -3774,7 +3813,7 @@ function ViewerApp() {
     });
 
     cy.on('tap', 'node', (event) => {
-      if (event.target.data('edgeBendHandle') === 1) {
+      if (event.target.data('edgeBendHandle') === 1 || event.target.data('clusterNode') === 1) {
         return;
       }
       if (suppressNextTapRef.current) {
@@ -4597,7 +4636,15 @@ function ViewerApp() {
     cy.batch(() => {
       cy.elements().remove();
       if (visibleElements.length > 0) {
-        cy.add(visibleElements);
+        // Cytoscape keeps references to the `data` objects it is given and cluster collapse rewrites
+        // edge endpoints in place, so hand it copies to keep visibleElements pristine.
+        cy.add(
+          visibleElements.map((element) => ({
+            ...element,
+            data: { ...element.data },
+            ...(element.position ? { position: { ...element.position } } : {}),
+          })),
+        );
       }
     });
     cy.style().update();
@@ -4633,7 +4680,13 @@ function ViewerApp() {
     let cancelled = false;
     const layoutTypeChanged = lastLayoutTypeRef.current !== graphLayoutType;
     lastLayoutTypeRef.current = graphLayoutType;
-    const needsLayout = layoutTypeChanged || !hasAppliedInitialLayoutRef.current;
+    const isLargeSpreadGraph =
+      graphLayoutType === GRAPH_LAYOUT_TYPES.SPREAD &&
+      visibleElements.filter(
+        (element) => !element?.data?.source && element?.data?.edgeAnchor !== 1 && element?.data?.edgeBendHandle !== 1,
+      ).length > CLUSTER_NODE_THRESHOLD;
+    // Elements were just rebuilt, so large spread graphs must be re-clustered and re-laid out.
+    const needsLayout = layoutTypeChanged || !hasAppliedInitialLayoutRef.current || isLargeSpreadGraph;
     let layoutSettled = !needsLayout;
     const finishRenderTelemetry = () => {
       const renderSpan = pendingRenderSpanRef.current;
@@ -4678,7 +4731,7 @@ function ViewerApp() {
           applyCollapseVisibility(cy, nodes, visible, countHiddenDescendants(index, visible, expanded));
           return index;
         };
-        const layoutVisibleGraph = (incremental = false) => {
+        const layoutVisibleGraph = (incremental = false, fixedNodes = null) => {
           const nodes = cy.nodes(":visible").not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
           const nodeIds = new Set(nodes.map((node) => node.id()));
           const edges = cy.edges(":visible").filter((edge) => nodeIds.has(edge.source().id()) && nodeIds.has(edge.target().id()))
@@ -4686,7 +4739,7 @@ function ViewerApp() {
           if (nodes.length < 2) {
             return Promise.resolve();
           }
-          return runGraphLayout(cy, { type: graphLayoutType, nodes, edges, incremental })
+          return runGraphLayout(cy, { type: graphLayoutType, nodes, edges, incremental, fixedNodes })
             .catch((error) => console.error('Graph layout failed', error));
         };
         const finishLayout = (viewportMode) => {
@@ -4740,6 +4793,30 @@ function ViewerApp() {
           };
         } else {
           collapseControllerRef.current = null;
+          if (needsLayout) {
+            const { nodes: allNodes, edges: allEdges } = getLayoutGraph();
+            if (allNodes.length > CLUSTER_NODE_THRESHOLD && applySpreadClusters(cy, allNodes, allEdges) > 0) {
+              collapseControllerRef.current = {
+                canToggle: (nodeId) => getCluster(cy, nodeId) !== null,
+                toggle: (nodeId) => {
+                  const cluster = getCluster(cy, nodeId);
+                  if (cy.destroyed() || !cluster) {
+                    return;
+                  }
+                  // Existing nodes stay pinned, so the view is left alone unless the cluster ends up off-screen.
+                  const clusterId = cluster.id();
+                  toggleCluster(cy, nodeId, (fixedNodes) => layoutVisibleGraph(true, fixedNodes)).then(() =>
+                    finishLayout(() => {
+                      const toggled = cy.getElementById(clusterId);
+                      if (toggled.nonempty()) {
+                        revealInViewport(cy, toggled.isParent() ? toggled.union(toggled.descendants()) : toggled);
+                      }
+                    }),
+                  );
+                },
+              };
+            }
+          }
         }
 
         if (needsLayout) {

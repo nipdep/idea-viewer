@@ -3333,6 +3333,17 @@ function ViewerApp() {
           },
         },
         {
+          // RDF view: a property shown as a node is a named resource (same look as a named individual).
+          selector: 'node[rdfNamedResource = 1]',
+          style: {
+            shape: 'round-rectangle',
+            'background-color': '#f6f0e8',
+            'border-color': '#8f6f52',
+            'border-width': 1.1,
+            'border-style': 'solid',
+          },
+        },
+        {
           selector: 'node[entityCategory = "class-expression"]',
           style: {
             shape: 'hexagon',

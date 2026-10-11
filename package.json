@@ -12,7 +12,9 @@
     "test:projections": "node --import ./test/projection-helpers/register-node-loader.mjs --test test/view-projections.test.mjs",
     "test:projections:summary": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/projection-test-manifest-summary.mjs",
     "test:projections:generate": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/generate-projection-expectations.mjs",
-    "test:collapse": "node --test test/hierarchy-collapse.test.mjs"
+    "test:collapse": "node --test test/hierarchy-collapse.test.mjs",
+    "bench:layout": "node scripts/layout-benchmark.mjs",
+    "bench:layout:stability": "node scripts/layout-stability.mjs"
   },
   "dependencies": {
     "@comunica/query-sparql": "^3.0.0",
@@ -31,6 +33,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",
+    "playwright-core": "^1.64.0",
     "vite": "^6.2.0"
   }
 }

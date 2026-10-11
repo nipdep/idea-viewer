@@ -24,7 +24,7 @@ test('diamond node stays visible while either parent is expanded', () => {
 
 test('forest: every parentless node is a root and isolated nodes stay visible', () => {
   const index = buildHierarchyIndex(['r1', 'r2', 'c1', 'c2', 'solo'], [edge('c1', 'r1'), edge('c2', 'r2')]);
-  assert.deepEqual(sorted(index.roots), ['r1', 'r2', 'solo']);
+  assert.deepEqual(sorted(index.roots), ['r1', 'r2']);
   assert.deepEqual(sorted(computeVisibleNodes(index, new Set())), ['r1', 'r2', 'solo']);
 });
 
@@ -37,7 +37,8 @@ test('cycles get a fallback root and self loops are ignored', () => {
 
 test('edges to unknown nodes are ignored', () => {
   const index = buildHierarchyIndex(['a'], [edge('a', 'ghost'), edge('ghost', 'a')]);
-  assert.deepEqual(index.roots, ['a']);
+  assert.deepEqual(index.roots, []);
+  assert.deepEqual([...computeVisibleNodes(index, new Set())], ['a'], 'a has no real edges, so it is a free satellite');
 });
 
 test('autoExpand respects the budget and expands level by level', () => {
@@ -75,6 +76,25 @@ test('hidden descendant counts only count nodes not otherwise visible', () => {
   const counts = countHiddenDescendants(index, visible, expanded);
   assert.equal(counts.get('a'), undefined, 'leaf is visible via b, deep is hidden behind leaf only');
   assert.equal(counts.get('leaf'), 1);
+});
+
+test('satellites (no taxonomy edge) are shown only while a neighbor is shown', () => {
+  const index = buildHierarchyIndex(
+    ['cls', 'ind', 'lit', 'free1', 'free2'],
+    [edge('ind', 'cls')],
+    [edge('ind', 'lit'), edge('free1', 'free2')],
+  );
+  assert.deepEqual(sorted(index.satellites), ['free1', 'free2', 'lit']);
+  assert.deepEqual(sorted(computeVisibleNodes(index, new Set())), ['cls', 'free1', 'free2'], 'lit hides with ind');
+  assert.deepEqual(sorted(computeVisibleNodes(index, new Set(['cls']))), ['cls', 'free1', 'free2', 'ind', 'lit']);
+  const counts = countHiddenDescendants(index, computeVisibleNodes(index, new Set()), new Set());
+  assert.equal(counts.get('cls'), 2, 'badge counts the hidden individual and its literal');
+});
+
+test('satellites chained through other satellites follow the visible anchor', () => {
+  const index = buildHierarchyIndex(['a', 'x', 'lit', 'b'], [edge('x', 'a')], [edge('lit', 'x'), edge('lit', 'b')]);
+  assert.deepEqual(sorted(computeVisibleNodes(index, new Set())), ['a']);
+  assert.deepEqual(sorted(computeVisibleNodes(index, new Set(['a']))), ['a', 'b', 'lit', 'x']);
 });
 
 test('toggleExpanded does not mutate its input', () => {

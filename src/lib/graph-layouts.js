@@ -7,7 +7,7 @@ export const GRAPH_LAYOUT_TYPES = Object.freeze({
   HIERARCHY: 'hierarchy',
 });
 
-const HIERARCHY_PREDICATES = new Set([
+export const HIERARCHY_PREDICATES = new Set([
   'http://www.w3.org/2000/01/rdf-schema#subClassOf',
   'http://www.w3.org/2000/01/rdf-schema#subPropertyOf',
   'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
@@ -28,13 +28,40 @@ function registerLayouts() {
   registered = true;
 }
 
-const LARGE_GRAPH_NODE_COUNT = 400;
+// Dev-only knob so layout variants can be compared with the benchmark without rebuilding.
+function layoutOverrides() {
+  return (import.meta.env.DEV && typeof window !== 'undefined' && window.__ideaViewerLayoutOverrides) || {};
+}
+
+// fcose is synchronous and draws its initial positions from Math.random, so seeding it for the
+// duration of the run makes the same graph always lay out the same way.
+function withSeededRandom(run) {
+  const original = Math.random;
+  let state = 0x9e3779b9;
+  Math.random = () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  try {
+    run();
+  } finally {
+    Math.random = original;
+  }
+}
+
+// Dense graphs need stronger repulsion and softer edges to stop nodes piling up (benchmark: Wine RDF
+// went from 59% to ~4% overlapping nodes), but sparse graphs look better kept tight. Blend by size.
+function lerp(from, to, amount) {
+  return from + (to - from) * amount;
+}
 
 function spreadOptions(nodeCount) {
+  const density = Math.min(1, Math.max(0, (nodeCount - 80) / 420));
   return {
     name: 'fcose',
-    // 'draft' skips the expensive final refinement pass, which matters on large graphs.
-    quality: nodeCount > LARGE_GRAPH_NODE_COUNT ? 'draft' : 'default',
+    quality: layoutOverrides().spreadQuality ?? 'default',
     randomize: true,
     animate: false,
     fit: false,
@@ -42,16 +69,25 @@ function spreadOptions(nodeCount) {
     uniformNodeDimensions: false,
     packComponents: true,
     tile: true,
-    idealEdgeLength: 140,
-    nodeRepulsion: 12000,
-    edgeElasticity: 0.35,
+    idealEdgeLength: lerp(140, 200, density),
+    nodeRepulsion: lerp(12000, 30000, density),
+    edgeElasticity: lerp(0.35, 0.1, density),
     nodeSeparation: 90,
     gravity: 0.25,
-    numIter: nodeCount > LARGE_GRAPH_NODE_COUNT ? 1500 : 2500,
+    numIter: 2500,
+    ...layoutOverrides().spread,
   };
 }
 
-function hierarchyOptions() {
+// Interactive strategies take layers, ordering and cycle breaking from the nodes' current positions,
+// so expanding or collapsing a node inserts nodes without reshuffling the rest of the layout.
+const INCREMENTAL_ELK_OPTIONS = {
+  'elk.layered.layering.strategy': 'INTERACTIVE',
+  'elk.layered.crossingMinimization.strategy': 'INTERACTIVE',
+  'elk.layered.cycleBreaking.strategy': 'INTERACTIVE',
+};
+
+function hierarchyOptions(incremental) {
   return {
     name: 'elk',
     animate: false,
@@ -69,6 +105,8 @@ function hierarchyOptions() {
       'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
       'elk.layered.cycleBreaking.strategy': 'GREEDY',
       'elk.edgeRouting': 'POLYLINE',
+      ...(incremental && layoutOverrides().incremental !== false ? INCREMENTAL_ELK_OPTIONS : {}),
+      ...layoutOverrides().elk,
     },
   };
 }
@@ -76,23 +114,58 @@ function hierarchyOptions() {
 /**
  * Lays out `nodes`/`edges` in place. Resolves once all node positions are final.
  */
-export function runGraphLayout(cy, { type, nodes, edges }) {
+export function runGraphLayout(cy, { type, nodes, edges, incremental = false }) {
   registerLayouts();
   const isHierarchy = type === GRAPH_LAYOUT_TYPES.HIERARCHY;
-  // Layering is driven by the taxonomy edges only; other relations are still drawn but do not rank nodes.
-  const layoutEdges = isHierarchy
-    ? edges.filter((edge) => HIERARCHY_PREDICATES.has(edge.data('predicate')))
-    : edges;
+  // All edges feed the layering: ranking by taxonomy edges alone left property edges very long
+  // (benchmark: ~2x median edge length and ~3-10x more crossings). 'taxonomy' remains as an override.
+  const layoutEdges =
+    isHierarchy && layoutOverrides().hierarchyEdges === 'taxonomy'
+      ? edges.filter((edge) => HIERARCHY_PREDICATES.has(edge.data('predicate')))
+      : edges;
   const elements = nodes.union(layoutEdges);
-  const options = isHierarchy ? hierarchyOptions() : spreadOptions(nodes.length);
+  const options = isHierarchy ? hierarchyOptions(incremental) : spreadOptions(nodes.length);
 
+  const startedAt = performance.now();
   return new Promise((resolve, reject) => {
     try {
       const layout = elements.layout(options);
-      layout.one('layoutstop', () => resolve());
-      layout.run();
+      layout.one('layoutstop', () => {
+        // Exposed for the layout benchmark / UI checks.
+        cy.scratch('_layoutStats', {
+          runs: (cy.scratch('_layoutStats')?.runs ?? 0) + 1,
+          ms: performance.now() - startedAt,
+          type,
+        });
+        resolve();
+      });
+      if (isHierarchy) {
+        layout.run();
+      } else {
+        withSeededRandom(() => layout.run());
+      }
     } catch (error) {
       reject(error);
     }
+  });
+}
+
+const NEW_NODE_LAYER_GAP = 130;
+const NEW_NODE_SIBLING_GAP = 24;
+
+// Drops newly revealed nodes in a row just below `anchor`, so an incremental layout starts from a
+// sensible spot for them instead of wherever they were last seen.
+export function placeNodesBelow(anchor, newNodes) {
+  const count = newNodes.length;
+  if (count === 0) {
+    return;
+  }
+  const widths = newNodes.map((node) => node.width());
+  const total = widths.reduce((sum, width) => sum + width, 0) + NEW_NODE_SIBLING_GAP * (count - 1);
+  const origin = anchor.position();
+  let cursor = origin.x - total / 2;
+  newNodes.forEach((node, index) => {
+    node.position({ x: cursor + widths[index] / 2, y: origin.y + NEW_NODE_LAYER_GAP });
+    cursor += widths[index] + NEW_NODE_SIBLING_GAP;
   });
 }

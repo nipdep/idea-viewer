@@ -10,7 +10,8 @@ import {
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
-import { GRAPH_LAYOUT_LABELS, GRAPH_LAYOUT_TYPES, runGraphLayout } from './lib/graph-layouts';
+import { applyReadableViewport } from './lib/graph-fit';
+import { GRAPH_LAYOUT_LABELS, GRAPH_LAYOUT_TYPES, HIERARCHY_PREDICATES, placeNodesBelow, runGraphLayout } from './lib/graph-layouts';
 import {
   applyCollapseVisibility,
   autoExpand,
@@ -3747,6 +3748,10 @@ function ViewerApp() {
           },
         },
         {
+          selector: 'node, edge',
+          style: { 'min-zoomed-font-size': 7 },
+        },
+        {
           selector: '.collapse-hidden',
           style: { display: 'none' },
         },
@@ -4621,7 +4626,7 @@ function ViewerApp() {
       if (duration > 0) {
         fitCurrentGraphViewport(cy, duration);
       } else {
-        cy.fit(cy.nodes(), 42);
+        applyReadableViewport(cy, { anchorTop: lastLayoutTypeRef.current === GRAPH_LAYOUT_TYPES.HIERARCHY });
       }
     };
 
@@ -4658,9 +4663,12 @@ function ViewerApp() {
         // Decides which nodes are collapsed and mirrors that onto the elements.
         const applyHierarchyCollapse = () => {
           const { nodes, edges } = getLayoutGraph();
+          const toPair = (edge) => ({ source: edge.source().id(), target: edge.target().id() });
+          const isTaxonomyEdge = (edge) => HIERARCHY_PREDICATES.has(edge.data('predicate'));
           const index = buildHierarchyIndex(
             nodes.map((node) => node.id()),
-            edges.map((edge) => ({ source: edge.source().id(), target: edge.target().id() })),
+            edges.filter(isTaxonomyEdge).map(toPair),
+            edges.filter((edge) => !isTaxonomyEdge(edge)).map(toPair),
           );
           if (!collapseStateRef.current) {
             collapseStateRef.current = { expanded: autoExpand(index) };
@@ -4670,7 +4678,7 @@ function ViewerApp() {
           applyCollapseVisibility(cy, nodes, visible, countHiddenDescendants(index, visible, expanded));
           return index;
         };
-        const layoutVisibleGraph = () => {
+        const layoutVisibleGraph = (incremental = false) => {
           const nodes = cy.nodes(":visible").not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
           const nodeIds = new Set(nodes.map((node) => node.id()));
           const edges = cy.edges(":visible").filter((edge) => nodeIds.has(edge.source().id()) && nodeIds.has(edge.target().id()))
@@ -4678,17 +4686,19 @@ function ViewerApp() {
           if (nodes.length < 2) {
             return Promise.resolve();
           }
-          return runGraphLayout(cy, { type: graphLayoutType, nodes, edges })
+          return runGraphLayout(cy, { type: graphLayoutType, nodes, edges, incremental })
             .catch((error) => console.error('Graph layout failed', error));
         };
-        const finishLayout = (shouldFit) => {
+        const finishLayout = (viewportMode) => {
           if (cy.destroyed() || cancelled) {
             return;
           }
           synchronizeEdgeAnchorPositions(cy);
           synchronizeEdgeBendHandle(cy);
-          if (shouldFit) {
+          if (viewportMode === 'fit') {
             fitGraph(0);
+          } else if (typeof viewportMode === 'function') {
+            viewportMode();
           }
           cacheCurrentPositions();
           hasAppliedInitialLayoutRef.current = true;
@@ -4711,8 +4721,21 @@ function ViewerApp() {
               collapseStateRef.current = {
                 expanded: toggleExpanded(collapseStateRef.current.expanded, nodeId),
               };
+              const shownBefore = new Set(cy.nodes(':visible').map((node) => node.id()));
               applyHierarchyCollapse();
-              layoutVisibleGraph().then(() => finishLayout(true));
+              // Keep the toggled node where the user clicked it so the view does not jump.
+              const toggled = cy.getElementById(nodeId);
+              const before = toggled.renderedPosition();
+              placeNodesBelow(
+                toggled,
+                cy.nodes(':visible').filter((node) => !shownBefore.has(node.id()) && node.data('edgeAnchor') !== 1),
+              );
+              layoutVisibleGraph(true).then(() =>
+                finishLayout(() => {
+                  const after = toggled.renderedPosition();
+                  cy.panBy({ x: before.x - after.x, y: before.y - after.y });
+                }),
+              );
             },
           };
         } else {
@@ -4720,9 +4743,9 @@ function ViewerApp() {
         }
 
         if (needsLayout) {
-          layoutVisibleGraph().then(() => finishLayout(true));
+          layoutVisibleGraph().then(() => finishLayout('fit'));
         } else {
-          finishLayout(false);
+          finishLayout(null);
         }
       }, 0),
       setTimeout(() => {
@@ -4753,13 +4776,7 @@ function ViewerApp() {
     const timeoutId = setTimeout(() => {
       if (!cy.destroyed()) {
         cy.resize();
-        cy.fit(
-          cy
-            .nodes()
-            .not('[edgeAnchor = 1]')
-            .not('[edgeBendHandle = 1]'),
-          42,
-        );
+        applyReadableViewport(cy, { anchorTop: lastLayoutTypeRef.current === GRAPH_LAYOUT_TYPES.HIERARCHY });
         synchronizeEdgeBendHandle(cy);
       }
     }, 0);

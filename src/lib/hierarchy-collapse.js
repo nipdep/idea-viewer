@@ -8,7 +8,7 @@
 export const DEFAULT_VISIBLE_NODE_BUDGET = 120;
 export const DEFAULT_MAX_LEVEL_WIDTH = 24;
 
-export function buildHierarchyIndex(nodeIds, edges) {
+export function buildHierarchyIndex(nodeIds, edges, otherEdges = []) {
   const ids = [...new Set(nodeIds)];
   const known = new Set(ids);
   const parents = new Map(ids.map((id) => [id, new Set()]));
@@ -22,8 +22,22 @@ export function buildHierarchyIndex(nodeIds, edges) {
     children.get(target).add(source);
   });
 
+  // Satellites are nodes with no hierarchy edge at all (literals, individuals linked by properties).
+  // They are shown only while some neighbor is shown, so they never float free of a collapsed node.
+  const neighbors = new Map(ids.map((id) => [id, new Set()]));
+  [...edges, ...otherEdges].forEach(({ source, target }) => {
+    if (source === target || !known.has(source) || !known.has(target)) {
+      return;
+    }
+    neighbors.get(source).add(target);
+    neighbors.get(target).add(source);
+  });
+  const isSatellite = (id) => parents.get(id).size === 0 && children.get(id).size === 0;
+  const satellites = new Set(ids.filter(isSatellite));
+
   // Nodes in a cycle (or hanging off one) have no parent-free ancestor, so pick fallback roots.
   const roots = ids.filter((id) => parents.get(id).size === 0);
+  // (satellites are filtered out of the returned roots below)
   const reached = new Set();
   const markReachable = (start) => {
     const stack = [start];
@@ -46,7 +60,35 @@ export function buildHierarchyIndex(nodeIds, edges) {
       }
     });
 
-  return { ids, parents, children, roots };
+  // A satellite component with no hierarchy node in it has nothing to collapse into: keep it shown.
+  const freeSatellites = new Set();
+  const seenSatellites = new Set();
+  satellites.forEach((start) => {
+    if (seenSatellites.has(start)) {
+      return;
+    }
+    const component = [];
+    let anchored = false;
+    const stack = [start];
+    seenSatellites.add(start);
+    while (stack.length > 0) {
+      const id = stack.pop();
+      component.push(id);
+      neighbors.get(id).forEach((next) => {
+        if (!satellites.has(next)) {
+          anchored = true;
+        } else if (!seenSatellites.has(next)) {
+          seenSatellites.add(next);
+          stack.push(next);
+        }
+      });
+    }
+    if (!anchored) {
+      component.forEach((id) => freeSatellites.add(id));
+    }
+  });
+
+  return { ids, parents, children, roots: roots.filter((id) => !satellites.has(id)), neighbors, satellites, freeSatellites };
 }
 
 export function hasHierarchyChildren(index, id) {
@@ -66,16 +108,40 @@ export function computeVisibleNodes(index, expanded) {
       index.children.get(id).forEach((child) => stack.push(child));
     }
   }
+
+  // Satellites follow their neighbors: visible if linked (directly or via other satellites) to a visible node.
+  index.freeSatellites.forEach((id) => visible.add(id));
+  const queue = [...visible];
+  for (let head = 0; head < queue.length; head += 1) {
+    index.neighbors.get(queue[head]).forEach((next) => {
+      if (index.satellites.has(next) && !visible.has(next)) {
+        visible.add(next);
+        queue.push(next);
+      }
+    });
+  }
   return visible;
 }
 
-// Expands breadth-first from the roots while both the total node budget and the width of each
+// A node's visual cost: itself plus the satellites (literals, property-linked leaves) hanging off it.
+function nodeWeight(index, id) {
+  let weight = 1;
+  index.neighbors.get(id).forEach((other) => {
+    if (index.satellites.has(other)) {
+      weight += 1;
+    }
+  });
+  return weight;
+}
+
+// Expands breadth-first from the roots while both the total weight budget and the width of each
 // level (a layered layout gets unreadably wide otherwise) stay within their limits.
 export function autoExpand(index, { budget = DEFAULT_VISIBLE_NODE_BUDGET, maxLevelWidth = DEFAULT_MAX_LEVEL_WIDTH } = {}) {
   const expanded = new Set();
   const depthOf = new Map(index.roots.map((id) => [id, 0]));
-  const levelSizes = [index.roots.length];
-  let visibleCount = index.roots.length;
+  const rootWeight = index.roots.reduce((sum, id) => sum + nodeWeight(index, id), 0);
+  const levelSizes = [rootWeight];
+  let visibleWeight = rootWeight + index.freeSatellites.size;
   const queue = [...index.roots];
   for (let head = 0; head < queue.length; head += 1) {
     const id = queue[head];
@@ -88,12 +154,13 @@ export function autoExpand(index, { budget = DEFAULT_VISIBLE_NODE_BUDGET, maxLev
     }
     const depth = depthOf.get(id) + 1;
     const levelSize = levelSizes[depth] ?? 0;
-    if (visibleCount + revealed.length > budget || levelSize + revealed.length > maxLevelWidth) {
+    const cost = revealed.reduce((sum, child) => sum + nodeWeight(index, child), 0);
+    if (visibleWeight + cost > budget || levelSize + cost > maxLevelWidth) {
       continue;
     }
     expanded.add(id);
-    levelSizes[depth] = levelSize + revealed.length;
-    visibleCount += revealed.length;
+    levelSizes[depth] = levelSize + cost;
+    visibleWeight += cost;
     revealed.forEach((child) => {
       depthOf.set(child, depth);
       queue.push(child);
@@ -119,6 +186,29 @@ export function countHiddenDescendants(index, visible, expanded) {
       }
       seen.add(next);
       index.children.get(next).forEach((child) => stack.push(child));
+      index.neighbors.get(next).forEach((other) => {
+        if (index.satellites.has(other)) {
+          stack.push(other);
+        }
+      });
+    }
+    // Satellites linked directly to the collapsed node itself are hidden with it.
+    index.neighbors.get(id).forEach((other) => {
+      if (index.satellites.has(other) && !visible.has(other)) {
+        stack.push(other);
+      }
+    });
+    while (stack.length > 0) {
+      const next = stack.pop();
+      if (seen.has(next) || next === id || visible.has(next)) {
+        continue;
+      }
+      seen.add(next);
+      index.neighbors.get(next).forEach((other) => {
+        if (index.satellites.has(other)) {
+          stack.push(other);
+        }
+      });
     }
     if (seen.size > 0) {
       counts.set(id, seen.size);

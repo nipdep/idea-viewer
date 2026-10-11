@@ -96,8 +96,11 @@ function groupParallelClusterEdges(cy) {
   });
 }
 
+// Titles come from the best-connected non-literal member: literals (labels, numbers) make poor names.
 function clusterTitle(members, size) {
-  const hub = members.reduce((best, node) => (node.degree() > best.degree() ? node : best), members[0]);
+  const named = members.filter((node) => node.data('termType') !== 'Literal');
+  const pool = named.length > 0 ? named : members;
+  const hub = pool.reduce((best, node) => (node.degree() > best.degree() ? node : best), pool[0]);
   const name = String(hub.data('label') ?? '').split('\n')[0].trim();
   // Blank nodes have no label; fall back to a neutral name rather than a bare count.
   return `${name || 'Group'} +${size - 1}`;
@@ -108,6 +111,7 @@ function clusterTitle(members, size) {
  * @returns {number} the number of clusters created
  */
 export function applySpreadClusters(cy, layoutNodes, layoutEdges) {
+  const skipGrouping = import.meta.env.DEV && window.__ideaViewerLayoutOverrides?.skipEdgeGrouping;
   const clusters = computeClusters(
     layoutNodes.map((node) => node.id()),
     layoutEdges.map((edge) => ({ source: edge.source().id(), target: edge.target().id() })),
@@ -139,7 +143,9 @@ export function applySpreadClusters(cy, layoutNodes, layoutEdges) {
   });
   api.collapse(cy.nodes('[clusterNode = 1]'));
   syncAnchorVisibility(cy);
-  groupParallelClusterEdges(cy);
+  if (!skipGrouping) {
+    groupParallelClusterEdges(cy);
+  }
   return clusters.size;
 }
 

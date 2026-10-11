@@ -5393,7 +5393,10 @@ function ViewerApp() {
         const metadataRows = [];
 
         for (const parsed of parsedFiles) {
-          mergedQuads.push(...parsed.contentQuads);
+          // Not push(...quads): spreading a large file's quads as arguments overflows the call stack.
+          for (const quad of parsed.contentQuads) {
+            mergedQuads.push(quad);
+          }
 
           parsed.headerQuads.forEach((quad, index) => {
             metadataRows.push({

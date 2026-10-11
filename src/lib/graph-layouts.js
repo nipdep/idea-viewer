@@ -113,11 +113,56 @@ function hierarchyOptions(incremental) {
   };
 }
 
+// Isolated nodes carry no structure, but force/layered layouts spend most of their time on them
+// (CSO: 14,950 isolated of 15,012 nodes took 68 s). Above this count they are gridded instead.
+const ISOLATED_GRID_THRESHOLD = 40;
+const GRID_GAP = 28;
+const GRID_MARGIN_TOP = 140;
+
+function placeInGrid(nodes, origin) {
+  const count = nodes.length;
+  if (count === 0) {
+    return;
+  }
+  const cellWidth = Math.max(...nodes.map((node) => node.width())) + GRID_GAP;
+  const cellHeight = Math.max(...nodes.map((node) => node.height())) + GRID_GAP;
+  const columns = Math.max(1, Math.ceil(Math.sqrt(count * 1.6)));
+  nodes.forEach((node, index) => {
+    node.position({
+      x: origin.x + (index % columns) * cellWidth + cellWidth / 2,
+      y: origin.y + Math.floor(index / columns) * cellHeight + cellHeight / 2,
+    });
+  });
+}
+
+function splitIsolated(nodes, edges) {
+  const connectedIds = new Set();
+  edges.forEach((edge) => {
+    connectedIds.add(edge.source().id());
+    connectedIds.add(edge.target().id());
+  });
+  const isolated = nodes.filter((node) => !connectedIds.has(node.id()) && !node.isParent());
+  return isolated.length > ISOLATED_GRID_THRESHOLD ? isolated : null;
+}
+
 /**
  * Lays out `nodes`/`edges` in place. Resolves once all node positions are final.
  */
-export function runGraphLayout(cy, { type, nodes, edges, incremental = false, fixedNodes = null }) {
+export function runGraphLayout(cy, { type, nodes: allNodes, edges, incremental = false, fixedNodes = null }) {
   registerLayouts();
+  const isolated = incremental ? null : splitIsolated(allNodes, edges);
+  const nodes = isolated ? allNodes.difference(isolated) : allNodes;
+  const finish = () => {
+    if (!isolated) {
+      return;
+    }
+    const bounds = nodes.nonempty() ? nodes.boundingBox() : null;
+    placeInGrid(isolated, bounds ? { x: bounds.x1, y: bounds.y2 + GRID_MARGIN_TOP } : { x: 0, y: 0 });
+  };
+  if (nodes.length === 0) {
+    finish();
+    return Promise.resolve();
+  }
   const isHierarchy = type === GRAPH_LAYOUT_TYPES.HIERARCHY;
   // All edges feed the layering: ranking by taxonomy edges alone left property edges very long
   // (benchmark: ~2x median edge length and ~3-10x more crossings). 'taxonomy' remains as an override.
@@ -154,6 +199,7 @@ export function runGraphLayout(cy, { type, nodes, edges, incremental = false, fi
           ms: performance.now() - startedAt,
           type,
         });
+        finish();
         resolve();
       });
       if (isHierarchy) {

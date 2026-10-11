@@ -71,8 +71,8 @@ function spreadOptions(nodeCount, averageNodeSize) {
     uniformNodeDimensions: false,
     packComponents: true,
     tile: true,
-    idealEdgeLength: lerp(140, 200, density) * sizeScale,
-    nodeRepulsion: lerp(12000, 30000, density) * sizeScale * sizeScale,
+    idealEdgeLength: lerp(180, 240, density) * sizeScale,
+    nodeRepulsion: lerp(18000, 36000, density) * sizeScale * sizeScale,
     edgeElasticity: lerp(0.35, 0.1, density),
     nodeSeparation: 90,
     gravity: 0.25,
@@ -113,8 +113,10 @@ function hierarchyOptions(incremental) {
   };
 }
 
-const NODE_GAP_X = 44;
-const NODE_GAP_Y = 32;
+// Layout units, not screen pixels: at the default zoom (~0.6) these are roughly 50 x 36 px on screen,
+// enough to keep a short edge label readable between two neighbours.
+const NODE_GAP_X = 84;
+const NODE_GAP_Y = 60;
 const MAX_SEPARATION_PASSES = 80;
 
 /**

@@ -1395,6 +1395,7 @@ function ViewerApp() {
   const [graphLayoutType, setGraphLayoutType] = useState(GRAPH_LAYOUT_TYPES.SPREAD);
   const lastLayoutTypeRef = useRef(graphLayoutType);
   const collapseStateRef = useRef(null);
+  const previousNodeIdsRef = useRef(null);
   const collapseControllerRef = useRef(null);
   const pendingFocusTimerRef = useRef(null);
   const [owlProjectionLevel, setOwlProjectionLevel] = useState(OWL_PROJECTION_LEVELS.ONTOLOGY);
@@ -4660,6 +4661,34 @@ function ViewerApp() {
       return undefined;
     }
 
+    // Rebuilding the elements (e.g. a filter change) drops their positions, which used to leave every node
+    // stacked on one point. Restore them from the last layout; nodes it has never seen need a fresh layout.
+    let nodesWithoutPosition = 0;
+    if (hasAppliedInitialLayoutRef.current) {
+      cy.batch(() => {
+        cy.nodes()
+          .not('[edgeAnchor = 1]')
+          .not('[edgeBendHandle = 1]')
+          .forEach((node) => {
+            const cached = positionCache.get(node.id());
+            if (cached) {
+              node.position(cached);
+            } else {
+              nodesWithoutPosition += 1;
+            }
+          });
+      });
+    }
+    const currentNodeIds = new Set(
+      cy.nodes().not('[edgeAnchor = 1]').not('[edgeBendHandle = 1]').map((node) => node.id()),
+    );
+    const previousNodeIds = previousNodeIdsRef.current;
+    const nodeSetChanged =
+      !previousNodeIds ||
+      previousNodeIds.size !== currentNodeIds.size ||
+      [...currentNodeIds].some((id) => !previousNodeIds.has(id));
+    previousNodeIdsRef.current = currentNodeIds;
+
     const cacheCurrentPositions = () => {
       positionCache.clear();
       cy.nodes().not('[edgeAnchor = 1]').forEach((node) => {
@@ -4691,7 +4720,8 @@ function ViewerApp() {
         (element) => !element?.data?.source && element?.data?.edgeAnchor !== 1 && element?.data?.edgeBendHandle !== 1,
       ).length > CLUSTER_NODE_THRESHOLD;
     // Elements were just rebuilt, so large spread graphs must be re-clustered and re-laid out.
-    const needsLayout = layoutTypeChanged || !hasAppliedInitialLayoutRef.current || isLargeSpreadGraph;
+    const needsLayout =
+      layoutTypeChanged || !hasAppliedInitialLayoutRef.current || isLargeSpreadGraph || nodesWithoutPosition > 0;
     let layoutSettled = !needsLayout;
     const finishRenderTelemetry = () => {
       const renderSpan = pendingRenderSpanRef.current;
@@ -4827,7 +4857,8 @@ function ViewerApp() {
         if (needsLayout) {
           layoutVisibleGraph().then(() => finishLayout('fit'));
         } else {
-          finishLayout(null);
+          // Only re-fit when the set of nodes changed (a filter), not for edge-curve edits.
+          finishLayout(nodeSetChanged ? 'fit' : null);
         }
       }, 0),
       setTimeout(() => {

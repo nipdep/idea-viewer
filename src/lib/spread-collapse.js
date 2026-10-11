@@ -56,6 +56,17 @@ export function syncAnchorVisibility(cy) {
   });
 }
 
+// While clusters are folded, Cytoscape's renderer can throw from findEdgeControlPoints ("reading 'source'",
+// seen on the DBpedia ontology): its bezier bundling pass ends up with an empty group of parallel edges.
+// Straight edges skip that pass entirely, so plain (non-meta) edges are drawn straight in clustered graphs.
+// The root cause inside Cytoscape is not pinned down; this was verified to remove the error. Expanding a
+// cluster restores its original edges as new bezier edges, so this runs after every toggle too.
+const FLAT_EDGE_CLASS = 'flat-edge';
+
+function flattenPlainEdges(cy) {
+  cy.edges().not('.cy-expand-collapse-meta-edge').not(`.${FLAT_EDGE_CLASS}`).addClass(FLAT_EDGE_CLASS);
+}
+
 const PRIMARY_EDGE_CLASS = 'cluster-edge-primary';
 const DUPLICATE_EDGE_CLASS = 'cluster-edge-duplicate';
 
@@ -142,6 +153,7 @@ export function applySpreadClusters(cy, layoutNodes, layoutEdges) {
     });
   });
   api.collapse(cy.nodes('[clusterNode = 1]'));
+  flattenPlainEdges(cy);
   syncAnchorVisibility(cy);
   if (!skipGrouping) {
     groupParallelClusterEdges(cy);
@@ -179,6 +191,7 @@ export async function toggleCluster(cy, nodeId, relayout) {
   if (api.isCollapsible(cluster)) {
     api.collapse(cluster);
     syncAnchorVisibility(cy);
+    flattenPlainEdges(cy);
     groupParallelClusterEdges(cy);
     return cy.getElementById(clusterId);
   }
@@ -186,6 +199,7 @@ export async function toggleCluster(cy, nodeId, relayout) {
   const center = { ...cluster.position() };
   const shownBefore = new Set(cy.nodes(':visible').map((node) => node.id()));
   api.expand(cluster);
+  flattenPlainEdges(cy);
   syncAnchorVisibility(cy);
   const expanded = cy.getElementById(clusterId);
   const members = expanded.children().not('[edgeAnchor = 1]');

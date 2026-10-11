@@ -3775,6 +3775,10 @@ function ViewerApp() {
           },
         },
         {
+          selector: 'edge.flat-edge',
+          style: { 'curve-style': 'straight' },
+        },
+        {
           selector: 'edge.cluster-edge-primary',
           style: { label: 'data(collapsedCountLabel)', width: 3.5, 'line-style': 'solid' },
         },

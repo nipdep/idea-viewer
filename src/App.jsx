@@ -10,7 +10,7 @@ import {
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
-import { applyRankAwareRadialBfsLayout } from './lib/rank-aware-radial-bfs-layout';
+import { GRAPH_LAYOUT_LABELS, GRAPH_LAYOUT_TYPES, runGraphLayout } from './lib/graph-layouts';
 import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
 import './styles.css';
 
@@ -1379,6 +1379,8 @@ function ViewerApp() {
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
   const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.OWL);
+  const [graphLayoutType, setGraphLayoutType] = useState(GRAPH_LAYOUT_TYPES.SPREAD);
+  const lastLayoutTypeRef = useRef(graphLayoutType);
   const [owlProjectionLevel, setOwlProjectionLevel] = useState(OWL_PROJECTION_LEVELS.ONTOLOGY);
   const [rdfProjectionLevel, setRdfProjectionLevel] = useState(RDF_PROJECTION_LEVELS.ALL);
 
@@ -4578,38 +4580,60 @@ function ViewerApp() {
       }
     };
 
+    let cancelled = false;
+    const layoutTypeChanged = lastLayoutTypeRef.current !== graphLayoutType;
+    lastLayoutTypeRef.current = graphLayoutType;
+    const needsLayout = layoutTypeChanged || !hasAppliedInitialLayoutRef.current;
+    let layoutSettled = !needsLayout;
+    const finishRenderTelemetry = () => {
+      const renderSpan = pendingRenderSpanRef.current;
+      pendingRenderSpanRef.current = null;
+      renderSpan?.end(buildTelemetryContext(visibleElements));
+      const firstViewSpan = pendingFirstViewSpanRef.current;
+      pendingFirstViewSpanRef.current = null;
+      firstViewSpan?.end(buildTelemetryContext(visibleElements));
+      if (firstViewSpan) {
+        firstVisualizationRecordedRef.current = true;
+      }
+    };
+
     const timeoutIds = [
       setTimeout(() => {
         if (cy.destroyed()) {
           return;
         }
-        if (!hasAppliedInitialLayoutRef.current) {
+        const finishLayout = () => {
+          if (cy.destroyed() || cancelled) {
+            return;
+          }
+          synchronizeEdgeAnchorPositions(cy);
+          synchronizeEdgeBendHandle(cy);
+          if (needsLayout) {
+            fitGraph(0);
+          }
+          cacheCurrentPositions();
+          hasAppliedInitialLayoutRef.current = true;
+          layoutSettled = true;
+          finishRenderTelemetry();
+        };
+        if (needsLayout) {
           const layoutNodes = cy.nodes(":visible").not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
           const layoutNodeIds = new Set(layoutNodes.map((node) => node.id()));
           const layoutEdges = cy.edges(":visible").filter((edge) => layoutNodeIds.has(edge.source().id()) && layoutNodeIds.has(edge.target().id()))
             .not("[edgeAnchorTether = 1]").not("[edgeAttachedConnector = 1]").not("[owlRelationConnector = 1]");
-          if (layoutNodes.length > 1) applyRankAwareRadialBfsLayout(cy, { nodes: layoutNodes, edges: layoutEdges });
-          synchronizeEdgeAnchorPositions(cy);
-          synchronizeEdgeBendHandle(cy);
-          fitGraph(0);
+          if (layoutNodes.length > 1) {
+            runGraphLayout(cy, { type: graphLayoutType, nodes: layoutNodes, edges: layoutEdges })
+              .catch((error) => console.error('Graph layout failed', error))
+              .then(finishLayout);
+          } else {
+            finishLayout();
+          }
         } else {
-          synchronizeEdgeAnchorPositions(cy);
-          synchronizeEdgeBendHandle(cy);
-        }
-        cacheCurrentPositions();
-        hasAppliedInitialLayoutRef.current = true;
-        const renderSpan = pendingRenderSpanRef.current;
-        pendingRenderSpanRef.current = null;
-        renderSpan?.end(buildTelemetryContext(visibleElements));
-        const firstViewSpan = pendingFirstViewSpanRef.current;
-        pendingFirstViewSpanRef.current = null;
-        firstViewSpan?.end(buildTelemetryContext(visibleElements));
-        if (firstViewSpan) {
-          firstVisualizationRecordedRef.current = true;
+          finishLayout();
         }
       }, 0),
       setTimeout(() => {
-        if (cy.destroyed()) {
+        if (cy.destroyed() || !layoutSettled) {
           return;
         }
         synchronizeEdgeAnchorPositions(cy);
@@ -4619,9 +4643,10 @@ function ViewerApp() {
     ];
 
     return () => {
+      cancelled = true;
       timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
     };
-  }, [visibleElements]);
+  }, [visibleElements, graphLayoutType]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -6252,6 +6277,41 @@ function ViewerApp() {
                     />
                   </svg>
                 </button>
+              </div>
+
+              <div className="projection-toggle layout-type-toggle" role="group" aria-label="Graph layout type">
+                {Object.values(GRAPH_LAYOUT_TYPES).map((layoutType) => (
+                  <button
+                    key={layoutType}
+                    type="button"
+                    data-layout-type={layoutType}
+                    className={`projection-toggle-button layout-type-button ${graphLayoutType === layoutType ? 'active' : ''}`}
+                    onClick={() => setGraphLayoutType(layoutType)}
+                    aria-pressed={graphLayoutType === layoutType}
+                    aria-label={GRAPH_LAYOUT_LABELS[layoutType]}
+                    title={GRAPH_LAYOUT_LABELS[layoutType]}
+                  >
+                    {layoutType === GRAPH_LAYOUT_TYPES.SPREAD ? (
+                      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <circle cx="8" cy="8" r="1.6" fill="currentColor" />
+                        <circle cx="3" cy="4" r="1.2" fill="currentColor" />
+                        <circle cx="13" cy="4" r="1.2" fill="currentColor" />
+                        <circle cx="3" cy="12.5" r="1.2" fill="currentColor" />
+                        <circle cx="13" cy="12.5" r="1.2" fill="currentColor" />
+                        <path d="M8 8L3 4M8 8L13 4M8 8L3 12.5M8 8L13 12.5" stroke="currentColor" strokeWidth="1" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <circle cx="8" cy="3" r="1.4" fill="currentColor" />
+                        <circle cx="4" cy="9" r="1.2" fill="currentColor" />
+                        <circle cx="12" cy="9" r="1.2" fill="currentColor" />
+                        <circle cx="2.5" cy="14" r="1" fill="currentColor" />
+                        <circle cx="5.5" cy="14" r="1" fill="currentColor" />
+                        <path d="M8 3L4 9M8 3L12 9M4 9L2.5 14M4 9L5.5 14" stroke="currentColor" strokeWidth="1" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
               </div>
 
               <div className={`graph-search-panel ${isGraphSearchOpen ? 'open' : ''}`}>

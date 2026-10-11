@@ -1951,3 +1951,20 @@ textarea {
 .flyout-hover-zone.right {
   right: 0;
 }
+
+.layout-type-toggle {
+  width: 92px;
+  height: 38px;
+  border-radius: 999px;
+  gap: 0;
+}
+
+.layout-type-button {
+  height: 100%;
+}
+
+.layout-type-button.active {
+  background: rgba(42, 111, 110, 0.14);
+  border-color: rgba(42, 111, 110, 0.28);
+  border-radius: 999px;
+}

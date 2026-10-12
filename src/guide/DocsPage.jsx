@@ -102,8 +102,17 @@ export default function DocsPage() {
   return (
     <div className="docs-shell">
       <nav className="docs-nav" aria-label="Contents">
-        <a className="docs-brand" href="./">
-          IDEA<span>*</span> viewer
+        <a className="docs-back-button" href="./">
+          ← Go back to the viewer
+        </a>
+        <a className="brand-title" href="./" aria-label="IDEA* Viewer">
+          <span className="brand-lockup">
+            <span className="brand-word">IDEA</span>
+            <span className="brand-star" aria-hidden="true">
+              *
+            </span>
+          </span>
+          <span className="brand-word brand-word-viewer">VIEWER</span>
         </a>
         <div className="docs-nav-sub">Usage guide</div>
         <ul>
@@ -126,9 +135,6 @@ export default function DocsPage() {
             </li>
           ))}
         </ul>
-        <a className="docs-back" href="./">
-          ← Back to the viewer
-        </a>
       </nav>
 
       <main className="docs-main">

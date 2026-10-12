@@ -3,6 +3,7 @@
   --muted: #6b6157;
   --line: rgba(30, 27, 22, 0.14);
   --accent: #1f5f5e;
+  --brand-accent: #c05635;
   --paper: #fffaf2;
 }
 
@@ -39,15 +40,12 @@ body {
   font-size: 0.86rem;
 }
 
-.docs-brand { color: var(--ink); font-size: 1.25rem; font-weight: 700; letter-spacing: 0.04em; text-decoration: none; }
-.docs-brand span { color: #c4522a; }
 .docs-nav-sub { margin: 2px 0 14px; color: var(--muted); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .docs-nav ul { list-style: none; margin: 0; padding: 0; }
 .docs-nav ul ul { margin: 2px 0 6px 12px; border-left: 1px solid var(--line); }
 .docs-nav li a { display: block; padding: 3px 9px; border-radius: 6px; color: #4f463d; text-decoration: none; }
 .docs-nav li a:hover { background: rgba(42, 111, 110, 0.1); }
 .docs-nav li a.active { background: rgba(42, 111, 110, 0.16); color: var(--accent); font-weight: 700; }
-.docs-back { display: inline-block; margin-top: 16px; color: var(--accent); font-weight: 700; text-decoration: none; }
 
 .docs-main {
   min-width: 0;
@@ -144,3 +142,44 @@ code {
   .docs-nav { position: static; max-height: none; padding-bottom: 8px; }
   .docs-row { grid-template-columns: 70px minmax(0, 1fr); }
 }
+
+/* Same wordmark as the viewer header (font, size, star placement). */
+@font-face {
+  font-family: "Eternal Bloom";
+  src: url("/assets/Eternal Bloom.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.brand-title {
+  display: inline-flex;
+  align-items: center;
+  margin: 18px 0 0;
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 0.88;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  font-family: "Eternal Bloom", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  text-decoration: none;
+}
+.brand-lockup { position: relative; display: inline-block; padding-right: 0.4em; }
+.brand-word { display: inline-block; }
+.brand-word-viewer { margin-left: 0.04em; }
+.brand-star { position: absolute; left: calc(100% - 0.62em); top: -0.22em; color: var(--brand-accent); font-weight: 700; line-height: 1; }
+
+.docs-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid rgba(42, 111, 110, 0.36);
+  border-radius: 10px;
+  background: rgba(42, 111, 110, 0.12);
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+.docs-back-button:hover { background: rgba(42, 111, 110, 0.22); }

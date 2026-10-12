@@ -935,6 +935,11 @@ function runNodeNameFilter(graphData, queryText) {
 }
 
 // Data properties a class carries through axioms (restrictions, domain/range), shown as edges to a datatype.
+// rdf:/rdfs:/owl: relations (equivalentClass, sameAs, ...) are axioms between entities, not properties of them.
+function isBuiltinVocabularyPredicate(iri) {
+  return /^http:\/\/www\.w3\.org\/(1999\/02\/22-rdf-syntax-ns|2000\/01\/rdf-schema|2002\/07\/owl)#/.test(String(iri ?? ''));
+}
+
 // Property label without the restriction quantifier "(some)", cardinality or "*" marks.
 function barePropertyName(label) {
   return String(label ?? '').replace(/^\([^)]*\)\s*/, '').replace(/\s*\[[^\]]*\]/g, '').replace(/\*+$/, '').trim();
@@ -948,7 +953,7 @@ function buildAxiomDataPropertyRows(selectedNodeId, graphData, visibleElements) 
   const seen = new Set();
   for (const element of visibleElements ?? []) {
     const data = element?.data;
-    if (!data?.source || data.category !== 'data' || data.source !== selectedNodeId) {
+    if (!data?.source || data.category !== 'data' || data.source !== selectedNodeId || isBuiltinVocabularyPredicate(data.predicate)) {
       continue;
     }
     const name = barePropertyName(data.predicateLabel || data.predicate);
@@ -978,7 +983,7 @@ function buildNeighborRows(selectedNodeId, graphData, visibleElements) {
   for (const element of visibleElements ?? []) {
     const edge = element?.data;
     // Only object properties: subclass, equivalence, type and other structural edges are not properties.
-    if (!edge?.source || edge.category !== 'object') {
+    if (!edge?.source || edge.category !== 'object' || isBuiltinVocabularyPredicate(edge.predicate)) {
       continue;
     }
     if (edge.source !== selectedNodeId && edge.target !== selectedNodeId) {

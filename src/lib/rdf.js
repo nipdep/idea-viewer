@@ -64,6 +64,7 @@ const OWL_COMPLEMENT_OF = `${OWL_NS}complementOf`;
 const OWL_ONE_OF = `${OWL_NS}oneOf`;
 const OWL_RESTRICTION = `${OWL_NS}Restriction`;
 const OWL_ON_PROPERTY = `${OWL_NS}onProperty`;
+const OWL_PROPERTY_CHAIN_AXIOM = `${OWL_NS}propertyChainAxiom`;
 const OWL_SOME_VALUES_FROM = `${OWL_NS}someValuesFrom`;
 const OWL_ALL_VALUES_FROM = `${OWL_NS}allValuesFrom`;
 const OWL_HAS_VALUE = `${OWL_NS}hasValue`;
@@ -2179,6 +2180,37 @@ export function buildGraphData(quads, options = {}) {
     if (quad.predicate.value === RDFS_SUBCLASS_OF && isEntityTerm(quad.subject) && isEntityTerm(quad.object)) {
       classNodeIds.add(getTermId(quad.subject));
       classNodeIds.add(getTermId(quad.object));
+    }
+  }
+
+  // Properties that are only used (by a restriction, a chain, an inverse, ...) and never declared are still
+  // properties: without this they would be drawn as nodes, as if they were individuals.
+  const declaredProperty = (iri) => objectPropertyIris.has(iri) || dataPropertyIris.has(iri) || annotationPropertyIris.has(iri);
+  const noteUsedProperty = (term, isData = false) => {
+    if (term?.termType !== 'NamedNode' || declaredProperty(term.value) || isHiddenBackgroundClassIri(term.value)) {
+      return;
+    }
+    (isData ? dataPropertyIris : objectPropertyIris).add(term.value);
+  };
+  for (const quad of graphQuads) {
+    if (quad.predicate.value === OWL_ON_PROPERTY && quad.subject.termType === 'BlankNode') {
+      const restrictionQuads = store.getQuads(quad.subject, null, null, null);
+      const isData = restrictionQuads.some(
+        (entry) =>
+          entry.predicate.value === OWL_ON_DATA_RANGE ||
+          ((entry.predicate.value === OWL_SOME_VALUES_FROM || entry.predicate.value === OWL_ALL_VALUES_FROM) &&
+            entry.object.termType === 'NamedNode' &&
+            entry.object.value.startsWith(XSD_NS)) ||
+          (entry.predicate.value === OWL_HAS_VALUE && entry.object.termType === 'Literal'),
+      );
+      noteUsedProperty(quad.object, isData);
+    } else if (quad.predicate.value === OWL_PROPERTY_CHAIN_AXIOM) {
+      for (const member of readRdfListFromStore(store, quad.object)) {
+        noteUsedProperty(member);
+      }
+    } else if (quad.predicate.value === OWL_INVERSE_OF || quad.predicate.value === OWL_EQUIVALENT_PROPERTY) {
+      noteUsedProperty(quad.subject);
+      noteUsedProperty(quad.object);
     }
   }
 

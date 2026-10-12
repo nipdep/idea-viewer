@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
 import { DataFactory, Writer } from 'n3';
@@ -27,6 +27,7 @@ import {
   toggleExpanded,
 } from './lib/hierarchy-collapse';
 import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
+import { buildDatasetOverview } from './lib/dataset-overview';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -1210,6 +1211,125 @@ function partitionOntologyHeaderQuads(quads) {
   };
 }
 
+function LongText({ text }) {
+  if (text.length <= 220) {
+    return <span className="overview-text">{text}</span>;
+  }
+  return (
+    <details className="overview-more">
+      <summary>{text.slice(0, 200).trimEnd()}…</summary>
+      <span className="overview-text">{text}</span>
+    </details>
+  );
+}
+
+function OverviewValue({ value }) {
+  return value.iri ? (
+    <span className="overview-iri breakable" title={value.iri}>
+      {value.iri}
+    </span>
+  ) : (
+    <LongText text={value.text} />
+  );
+}
+
+function DatasetOverview({ overview, prefixRows, graphData }) {
+  const counts = { classes: 0, objectProperties: 0, dataProperties: 0, individuals: 0 };
+  for (const node of graphData.nodes ?? []) {
+    if (node.entityCategory === 'class') counts.classes += 1;
+    else if (node.entityCategory === 'object-property') counts.objectProperties += 1;
+    else if (node.entityCategory === 'data-property') counts.dataProperties += 1;
+    else if (node.entityCategory === 'individual') counts.individuals += 1;
+  }
+  const stats = [
+    ['Classes', counts.classes],
+    ['Object properties', counts.objectProperties],
+    ['Data properties', counts.dataProperties],
+    ['Individuals', counts.individuals],
+  ].filter(([, count]) => count > 0);
+
+  return (
+    <div className="dataset-overview">
+      <h3 className="entity-title">{overview?.title ?? 'Dataset'}</h3>
+      {overview?.ontologyIri && <div className="overview-iri breakable">{overview.ontologyIri}</div>}
+      <p className="muted overview-hint">Click a node or relation to inspect it.</p>
+
+      {stats.length > 0 && (
+        <div className="overview-stats">
+          {stats.map(([label, count]) => (
+            <div key={label} className="overview-stat">
+              <b>{count}</b>
+              <span>{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {overview?.facts.length > 0 && (
+        <>
+          <h4>Ontology</h4>
+          <dl className="overview-facts">
+            {overview.facts.map((fact) => (
+              <Fragment key={fact.predicate}>
+                <dt>{fact.label}</dt>
+                <dd>
+                  {fact.values.map((value) => (
+                    <OverviewValue key={`${value.iri}${value.text}`} value={value} />
+                  ))}
+                </dd>
+              </Fragment>
+            ))}
+          </dl>
+        </>
+      )}
+
+      {overview?.annotations.length > 0 && (
+        <>
+          <h4>Annotations ({overview.annotations.length})</h4>
+          <dl className="overview-facts">
+            {overview.annotations.map((annotation) => (
+              <Fragment key={annotation.predicate}>
+                <dt>{annotation.label}</dt>
+                <dd>
+                  {annotation.values.map((value) => (
+                    <OverviewValue key={`${value.iri}${value.text}`} value={value} />
+                  ))}
+                </dd>
+              </Fragment>
+            ))}
+          </dl>
+        </>
+      )}
+
+      {overview?.imports.length > 0 && (
+        <details className="overview-fold">
+          <summary>Imports ({overview.imports.length})</summary>
+          <ul className="overview-list">
+            {overview.imports.map((value) => (
+              <li key={value.iri || value.text}>
+                <OverviewValue value={value} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {prefixRows.length > 0 && (
+        <details className="overview-fold">
+          <summary>Prefixes ({prefixRows.length})</summary>
+          <ul className="overview-list mono">
+            {prefixRows.map((row) => (
+              <li key={row.id} className="breakable">
+                {row.value}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function formatTermForInspector(term) {
   if (!term) {
     return '';
@@ -1511,6 +1631,14 @@ function ViewerApp() {
   const [loadError, setLoadError] = useState('');
   const [filterError, setFilterError] = useState('');
   const [ontologyMetadataRows, setOntologyMetadataRows] = useState([]);
+  const datasetOverview = useMemo(
+    () => buildDatasetOverview(ontologyMetadataRows.filter((row) => row.fileName !== 'Derived prefixes')),
+    [ontologyMetadataRows],
+  );
+  const datasetPrefixRows = useMemo(
+    () => ontologyMetadataRows.filter((row) => row.fileName === 'Derived prefixes'),
+    [ontologyMetadataRows],
+  );
   const [multiClassBadgeTooltip, setMultiClassBadgeTooltip] = useState(null);
   const [restrictionNodeTooltip, setRestrictionNodeTooltip] = useState(null);
   const [hoverTooltip, setHoverTooltip] = useState(null);
@@ -5602,6 +5730,11 @@ function ViewerApp() {
               subject: formatTermForInspector(quad.subject),
               predicate: formatTermForInspector(quad.predicate),
               value: formatTermForInspector(quad.object),
+              subjectIri: getTermId(quad.subject),
+              predicateIri: quad.predicate.value,
+              valueText: quad.object.termType === 'NamedNode' ? quad.object.value : formatTermForInspector(quad.object),
+              valueIsIri: quad.object.termType === 'NamedNode',
+              valueIri: quad.object.termType === 'NamedNode' ? quad.object.value : '',
             });
           });
         }
@@ -7067,23 +7200,16 @@ function ViewerApp() {
               <section className="panel-section details-card">
                 <h2>Entity Inspector</h2>
 
-                {!selectedNode && !selectedEdge && ontologyMetadataRows.length === 0 && (
+                {!selectedNode && !selectedEdge && !graphData && (
                   <p className="muted">Click a node or relation to inspect metadata and provenance.</p>
                 )}
 
-                {!selectedNode && !selectedEdge && ontologyMetadataRows.length > 0 && (
-                  <>
-                    <h4>Dataset metadata ({ontologyMetadataRows.length})</h4>
-                    <div className="property-list">
-                      {ontologyMetadataRows.map((row) => (
-                        <div key={row.id} className="property-row" title={row.fileName}>
-                          <div className="property-name">{row.predicate}</div>
-                          <div className="property-meta breakable">{row.subject}</div>
-                          <div className="property-value breakable">{row.value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
+                {!selectedNode && !selectedEdge && graphData && (
+                  <DatasetOverview
+                    overview={datasetOverview}
+                    prefixRows={datasetPrefixRows}
+                    graphData={graphData}
+                  />
                 )}
 
                 {selectedEdge && (

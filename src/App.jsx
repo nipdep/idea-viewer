@@ -911,6 +911,34 @@ function runNodeNameFilter(graphData, queryText) {
   return matchedNodeIds;
 }
 
+// Data properties a class carries through axioms (restrictions, domain/range), shown as edges to a datatype.
+function buildAxiomDataPropertyRows(selectedNodeId, graphData, visibleElements) {
+  if (!selectedNodeId || !graphData) {
+    return [];
+  }
+  const rows = [];
+  const seen = new Set();
+  for (const element of visibleElements ?? []) {
+    const data = element?.data;
+    if (!data?.source || data.category !== 'data' || data.source !== selectedNodeId) {
+      continue;
+    }
+    const targetLabel = graphData.nodeMap.get(data.target)?.fullLabel ?? data.target;
+    const name = String(data.predicateLabel || data.predicate || '').replace(/\*+$/, '').trim();
+    const hover = typeof data.hoverText === 'string' ? data.hoverText : '';
+    const value = data.axiomKind === 'Restriction' && hover.includes(' SubClassOf ')
+      ? hover.slice(hover.indexOf(' SubClassOf ') + ' SubClassOf '.length)
+      : `${name} → ${targetLabel}`;
+    const key = `${data.predicate}|${value}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    rows.push({ id: data.id, predicate: data.predicate, predicateLabel: name, value });
+  }
+  return rows;
+}
+
 function buildNeighborRows(selectedNodeId, graphData, visibleElements) {
   if (!selectedNodeId || !graphData) {
     return [];
@@ -3081,6 +3109,10 @@ function ViewerApp() {
   const selectedNodeDataProperties = useMemo(
     () => selectedNodeAllLiteralProperties.filter((row) => row.category !== 'annotation'),
     [selectedNodeAllLiteralProperties],
+  );
+  const selectedNodeAxiomDataProperties = useMemo(
+    () => buildAxiomDataPropertyRows(selectedNodeId, graphData, visibleElements),
+    [selectedNodeId, graphData, visibleElements],
   );
   const selectedNodeStatements = useMemo(
     () => (selectedNodeId && graphData ? getNodeStatementBuckets(graphData, selectedNodeId) : { processed: [], unprocessed: [] }),
@@ -7103,23 +7135,17 @@ function ViewerApp() {
                       ))}
                     </div>
 
-                    <h4>Unprocessed statements ({selectedNodeStatements.unprocessed.length})</h4>
+                    <h4>Data properties ({selectedNodeDataProperties.length + selectedNodeAxiomDataProperties.length})</h4>
                     <div className="property-list">
-                      {selectedNodeStatements.unprocessed.length === 0 && (
-                        <p className="muted">No unprocessed source/property statements for this node.</p>
-                      )}
-                      {selectedNodeStatements.unprocessed.map((row) => (
-                        <div key={row.id} className="property-row">
-                          <div className="property-value statement-value breakable">{row.statement}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <h4>Data properties ({selectedNodeDataProperties.length})</h4>
-                    <div className="property-list">
-                      {selectedNodeDataProperties.length === 0 && (
+                      {selectedNodeDataProperties.length + selectedNodeAxiomDataProperties.length === 0 && (
                         <p className="muted">No literal properties available for this node.</p>
                       )}
+                      {selectedNodeAxiomDataProperties.map((property) => (
+                        <div key={property.id} className="property-row" title={property.predicate}>
+                          <div className="property-name">{property.predicateLabel}</div>
+                          <div className="property-value breakable">{property.value}</div>
+                        </div>
+                      ))}
                       {selectedNodeDataProperties.map((property, index) => (
                         <div
                           key={`${property.predicate}-${property.value.slice(0, 18)}-${index}`}
@@ -7150,6 +7176,18 @@ function ViewerApp() {
                             {row.predicateLabel} → {row.neighborLabel}
                           </span>
                         </button>
+                      ))}
+                    </div>
+
+                    <h4>Unprocessed statements ({selectedNodeStatements.unprocessed.length})</h4>
+                    <div className="property-list">
+                      {selectedNodeStatements.unprocessed.length === 0 && (
+                        <p className="muted">No unprocessed source/property statements for this node.</p>
+                      )}
+                      {selectedNodeStatements.unprocessed.map((row) => (
+                        <div key={row.id} className="property-row">
+                          <div className="property-value statement-value breakable">{row.statement}</div>
+                        </div>
                       ))}
                     </div>
                   </>

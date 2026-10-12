@@ -1125,7 +1125,7 @@ textarea {
 }
 
 .graph-search-fields input {
-  flex: 1 1 auto;
+  flex: 1 0 100%;
   min-width: 0;
   height: 34px;
   border: 1px solid rgba(30, 27, 22, 0.14);
@@ -2017,10 +2017,12 @@ textarea {
 }
 
 .graph-search-kinds {
-  flex: 1 0 100%;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  margin-left: 4px;
 }
 
 .graph-search-kind {

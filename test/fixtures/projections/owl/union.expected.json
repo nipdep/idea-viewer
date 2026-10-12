@@ -41,10 +41,10 @@
     {
       "sourceHint": "helper:union",
       "targetHint": "Father",
-      "predicate": "subClassOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
+      "category": "type",
+      "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
       "isSelfLoop": false
@@ -52,10 +52,10 @@
     {
       "sourceHint": "helper:union",
       "targetHint": "Mother",
-      "predicate": "subClassOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
+      "category": "type",
+      "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
       "isSelfLoop": false

@@ -10,15 +10,6 @@
       "termType": "NamedNode"
     },
     {
-      "idHint": "helper:restriction",
-      "label": "",
-      "entityCategory": "class-expression-connector",
-      "ontologyKind": "",
-      "blankExpressionType": "Restriction",
-      "graphRole": "class-expression-connector",
-      "termType": "BlankNode"
-    },
-    {
       "idHint": "helper:union",
       "label": "∪",
       "entityCategory": "owl-expression",
@@ -99,35 +90,24 @@
       "isSelfLoop": false
     },
     {
-      "sourceHint": "helper:restriction",
+      "sourceHint": "helper:union",
+      "targetHint": "ManualSignal",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:union",
       "targetHint": "Meaning",
       "predicate": "hasMeaning",
       "predicateLabel": "(some) hasMeaning*",
       "category": "object",
       "axiomKind": "ClassExpressionRestriction",
       "owlEdgeStyle": "straight",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
-      "sourceHint": "helper:union",
-      "targetHint": "helper:restriction",
-      "predicate": "subClassOf",
-      "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
-      "owlEdgeStyle": "dotted",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
-      "sourceHint": "helper:union",
-      "targetHint": "ManualSignal",
-      "predicate": "subClassOf",
-      "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
-      "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
       "isSelfLoop": false
     }

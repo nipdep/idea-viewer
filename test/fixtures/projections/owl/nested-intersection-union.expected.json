@@ -70,10 +70,10 @@
     {
       "sourceHint": "helper:intersection",
       "targetHint": "helper:union",
-      "predicate": "subClassOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
+      "category": "type",
+      "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
       "isSelfLoop": false
@@ -81,10 +81,10 @@
     {
       "sourceHint": "helper:intersection",
       "targetHint": "Person",
-      "predicate": "subClassOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
+      "category": "type",
+      "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
       "isSelfLoop": false
@@ -92,9 +92,9 @@
     {
       "sourceHint": "helper:union",
       "targetHint": "Employee",
-      "predicate": "unionOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
+      "category": "type",
       "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
@@ -103,9 +103,9 @@
     {
       "sourceHint": "helper:union",
       "targetHint": "Volunteer",
-      "predicate": "unionOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
+      "category": "type",
       "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",

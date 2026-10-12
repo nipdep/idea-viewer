@@ -2232,6 +2232,7 @@ function buildProjectedRestrictionTargetNode(
   for (const memberId of memberIds) {
     let resolvedTargetId = memberId;
     let nestedProjection = null;
+    let inlineEdges = null;
     if (!visibleNodeIds.has(memberId)) {
       nestedProjection = buildProjectedRestrictionTargetNode(
         graphData,
@@ -2246,8 +2247,9 @@ function buildProjectedRestrictionTargetNode(
         continue;
       }
       resolvedTargetId = nestedProjection.rootTargetId;
-      synthesizedNodes.push(...nestedProjection.synthesizedNodes);
-      synthesizedEdges.push(...nestedProjection.synthesizedEdges);
+      inlineEdges = INLINE_RESTRICTION_KINDS.has(config.kind) ? splitInlineableRestriction(nestedProjection) : null;
+      synthesizedNodes.push(...(inlineEdges ? inlineEdges.nodes : nestedProjection.synthesizedNodes));
+      synthesizedEdges.push(...(inlineEdges ? inlineEdges.rest : nestedProjection.synthesizedEdges));
       for (const hiddenNodeId of nestedProjection.hiddenNodeIds) {
         hiddenNodeIds.add(hiddenNodeId);
       }
@@ -2257,8 +2259,12 @@ function buildProjectedRestrictionTargetNode(
     }
 
     connectorTexts.push(manchesterNodeText(graphData, memberId));
-    synthesizedEdges.push({
-      data: {
+    if (inlineEdges) {
+      synthesizedEdges.push(...inlinedRestrictionEdges(connectorId, inlineEdges.nested));
+      continue;
+    }
+    synthesizedEdges.push(
+      connectorMemberEdge(config.kind, connectorId, resolvedTargetId, `${resolvedTargetId}:${memberId}`, {
         id: `${connectorId}:member:${resolvedTargetId}:${memberId}`,
         source: connectorId,
         target: resolvedTargetId,
@@ -2268,8 +2274,8 @@ function buildProjectedRestrictionTargetNode(
         axiomKind: 'ClassExpression',
         owlEdgeStyle: 'dotted',
         owlSynthesized: 1,
-      },
-    });
+      }),
+    );
   }
 
   if (connectorTexts.length === 0) {
@@ -3021,6 +3027,65 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
   };
 }
 
+
+// Intersection and union connectors: a member that is a restriction needs no circle of its own. Its property edges
+// leave the connector directly ("A = B and (some) p C" reads as one picture), and the edge from the connector to a
+// direct class member is a membership ("typeOf") edge. Restrictions that cannot be expressed that way (cardinality
+// nodes, hasSelf loops) keep their circle.
+const INLINE_RESTRICTION_KINDS = new Set(['Intersection', 'Union']);
+
+function splitInlineableRestriction(projection) {
+  const connectorId = projection?.rootTargetId;
+  if (!String(connectorId ?? '').startsWith('owl-target-restr:')) {
+    return null;
+  }
+  const edges = projection.synthesizedEdges ?? [];
+  const nested = edges.filter((edge) => edge.data.source === connectorId);
+  if (nested.length === 0) {
+    return null;
+  }
+  const unsafe = nested.some(
+    (edge) =>
+      edge.data.target === connectorId ||
+      edge.data.isSelfLoop === 1 ||
+      String(edge.data.target).startsWith('owl-card:'),
+  );
+  const referencedElsewhere = edges.some((edge) => edge.data.source !== connectorId && edge.data.target === connectorId);
+  if (unsafe || referencedElsewhere) {
+    return null;
+  }
+  return {
+    nested,
+    nodes: (projection.synthesizedNodes ?? []).filter((node) => node.data.id !== connectorId),
+    rest: edges.filter((edge) => edge.data.source !== connectorId),
+  };
+}
+
+function connectorMemberEdge(kind, connectorId, targetId, idSuffix, legacyData) {
+  if (!INLINE_RESTRICTION_KINDS.has(kind)) {
+    return { data: legacyData };
+  }
+  return {
+    data: {
+      id: `${connectorId}:member:${idSuffix}`,
+      source: connectorId,
+      target: targetId,
+      predicate: RDF_TYPE,
+      predicateLabel: '',
+      category: 'type',
+      axiomKind: 'ClassExpression',
+      owlEdgeStyle: 'dotted',
+      owlSynthesized: 1,
+    },
+  };
+}
+
+function inlinedRestrictionEdges(connectorId, nestedEdges) {
+  return nestedEdges.map((edge) => ({
+    data: { ...edge.data, id: `${connectorId}:restriction:${edge.data.id}`, source: connectorId },
+  }));
+}
+
 function synthesizeClassExpressionProjection(graphData, visibleNodeIds, propertyDeclarations) {
   const outgoingBySource = buildOutgoingEdgeIndex(graphData);
   const incomingByTarget = buildIncomingEdgeIndex(graphData);
@@ -3128,11 +3193,13 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
         if (!nestedProjection) {
           return null;
         }
+        const inline = INLINE_RESTRICTION_KINDS.has(config.kind) ? splitInlineableRestriction(nestedProjection) : null;
         return {
           kind: 'node',
           targetId: nestedProjection.rootTargetId,
-          synthesizedNodes: nestedProjection.synthesizedNodes,
-          synthesizedEdges: nestedProjection.synthesizedEdges,
+          synthesizedNodes: inline ? inline.nodes : nestedProjection.synthesizedNodes,
+          synthesizedEdges: inline ? inline.rest : nestedProjection.synthesizedEdges,
+          inlineEdges: inline ? inline.nested : null,
           hiddenNodeIds: nestedProjection.hiddenNodeIds,
           supplementalNodeIds: nestedProjection.supplementalNodeIds,
         };
@@ -3231,8 +3298,12 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
             },
       });
       for (const member of projectedMembers) {
-        synthesizedEdges.push({
-          data: {
+        if (member.inlineEdges) {
+          synthesizedEdges.push(...inlinedRestrictionEdges(helperNodeId, member.inlineEdges));
+          continue;
+        }
+        synthesizedEdges.push(
+          connectorMemberEdge(config.kind, helperNodeId, member.targetId, member.targetId, {
             id: `${helperNodeId}:member:${member.targetId}`,
             source: helperNodeId,
             target: member.targetId,
@@ -3242,8 +3313,8 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
             axiomKind: 'SubClassOf',
             owlEdgeStyle: 'dotted',
             owlSynthesized: 1,
-          },
-        });
+          }),
+        );
       }
     }
   }

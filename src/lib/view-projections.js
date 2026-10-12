@@ -1,4 +1,12 @@
-import { buildFocusedSubset, compactIri, DEFAULT_VIEW_OPTIONS, getNodeStatementBuckets, getTermId } from './rdf';
+import {
+  buildFocusedSubset,
+  compactIri,
+  computeNodeMetrics,
+  DEFAULT_VIEW_OPTIONS,
+  getNodeStatementBuckets,
+  getTermId,
+  makeDisplayLabel,
+} from './rdf';
 import { relationPaletteCategory } from './relation-palette';
 
 export const GRAPH_VIEW_MODES = Object.freeze({
@@ -252,6 +260,16 @@ function applyRelationPalette(elements) {
   });
 }
 
+// Sets a node's label to `text` wrapped by measured width, and resizes the node to fit it.
+function applyFittedLabel(data, text) {
+  const label = makeDisplayLabel(text);
+  const metrics = computeNodeMetrics(label);
+  data.label = label;
+  data.nodeWidth = metrics.nodeWidth;
+  data.nodeHeight = metrics.nodeHeight;
+  data.textMaxWidth = metrics.textMaxWidth;
+}
+
 function applyRdfLabels(elements) {
   return elements.map((element) => {
     if (element?.data?.source) {
@@ -262,7 +280,8 @@ function applyRdfLabels(elements) {
     const { data } = next;
     if (data.termType === 'Literal') {
       const literalLabel = data.literalValue || data.fullLabel || data.label || '';
-      data.label = literalLabel;
+      // The full value stays in fullLabel (side panel); the node shows it wrapped, in a box sized to that text.
+      applyFittedLabel(data, literalLabel);
       data.fullLabel = literalLabel;
       return next;
     }
@@ -271,7 +290,12 @@ function applyRdfLabels(elements) {
       const existingDisplay = data.displayLabel || data.label || '';
       const existingFull = data.fullLabel || '';
       const compact = compactIri(data.iri || data.id || '');
-      data.label = existingDisplay || existingFull || compact;
+      if (existingDisplay) {
+        data.label = existingDisplay;
+      } else {
+        // No wrapped label to reuse: wrap the fallback text and size the box to it.
+        applyFittedLabel(data, existingFull || compact);
+      }
       if (!data.fullLabel && compact) {
         data.fullLabel = compact;
       }
@@ -940,20 +964,6 @@ function makeNodeElementFromGraphNode(node) {
   };
 }
 
-function measureFallbackNode(label) {
-  const normalized = String(label || '').trim() || '?';
-  const lines = normalized.split('\n').filter(Boolean);
-  const lineCount = Math.max(lines.length, 1);
-  const maxLineLength = lines.reduce((max, line) => Math.max(max, line.length), 1);
-
-  return {
-    nodeWidth: Math.max(46, Math.min(192, Math.round(maxLineLength * 5.75 + 8))),
-    nodeHeight: Math.max(24, Math.min(154, Math.round(lineCount * 14 + 4))),
-    textMaxWidth: Math.max(38, Math.min(188, Math.round(maxLineLength * 5.75 + 4))),
-    labelLength: Math.min(Math.max(maxLineLength * lineCount, 4), 120),
-  };
-}
-
 function makeFallbackNodeElement(term) {
   if (!term) {
     return null;
@@ -986,11 +996,13 @@ function makeFallbackNodeElement(term) {
     iri = term.value || '';
   }
 
-  const metrics = measureFallbackNode(fullLabel);
+  // Same wrap-and-measure sizing as every other node (see text-fit.js).
+  const displayLabel = makeDisplayLabel(fullLabel);
+  const metrics = computeNodeMetrics(displayLabel);
   return {
     data: {
       id,
-      label: fullLabel,
+      label: displayLabel,
       fullLabel,
       iri,
       baseIri: '',
@@ -1008,7 +1020,7 @@ function makeFallbackNodeElement(term) {
       literalValue,
       literalDatatype,
       literalLanguage,
-      labelLength: metrics.labelLength,
+      labelLength: Math.min(Math.max(metrics.maxLineLength * metrics.lineCount, 4), 120),
       nodeWidth: metrics.nodeWidth,
       nodeHeight: metrics.nodeHeight,
       textMaxWidth: metrics.textMaxWidth,

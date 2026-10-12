@@ -1,4 +1,5 @@
 import { DataFactory, Parser, Store } from 'n3';
+import { AVERAGE_CHAR_WIDTH, computeTextBox, wrapToWidth } from './text-fit.js';
 
 export const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 export const RDFS_SUBCLASS_OF = 'http://www.w3.org/2000/01/rdf-schema#subClassOf';
@@ -473,81 +474,30 @@ export function makeDisplayLabel(label, maxLineLength = NODE_TEXT_LINE_LENGTH, t
   }
 
   const shouldTruncate = sanitized.length > truncateAt;
-  const sourceText = shouldTruncate ? `${sanitized.slice(0, truncateAt).trimEnd()}…` : sanitized;
-  const words = sourceText.split(' ');
-  const lines = [];
-  let current = '';
+  const sourceText = shouldTruncate ? `${sanitized.slice(0, truncateAt).trimEnd()}\u2026` : sanitized;
+  // Wrapped by measured width (see text-fit.js); `maxLineLength` keeps its old meaning of "characters per line".
+  const wrapped = wrapToWidth(sourceText, maxLineLength * AVERAGE_CHAR_WIDTH, NODE_TEXT_MAX_LINES + 1);
+  // Lines beyond the cap are dropped, which must be visible as an ellipsis rather than a silent cut.
+  const droppedLines = wrapped.length > NODE_TEXT_MAX_LINES;
+  const lines = wrapped.slice(0, NODE_TEXT_MAX_LINES);
 
-  for (const word of words) {
-    if (current) {
-      const next = `${current} ${word}`;
-      if (next.length <= maxLineLength) {
-        current = next;
-        continue;
-      }
-
-      lines.push(current);
-      current = '';
-      if (lines.length >= NODE_TEXT_MAX_LINES) {
-        break;
-      }
-    }
-
-    if (word.length <= maxLineLength) {
-      current = word;
-      continue;
-    }
-
-    let remainder = word;
-    while (remainder.length > maxLineLength && lines.length < NODE_TEXT_MAX_LINES) {
-      lines.push(remainder.slice(0, maxLineLength));
-      remainder = remainder.slice(maxLineLength);
-    }
-
-    if (lines.length >= NODE_TEXT_MAX_LINES) {
-      current = '';
-      break;
-    }
-
-    current = remainder;
-  }
-
-  if (lines.length < NODE_TEXT_MAX_LINES && current) {
-    lines.push(current);
-  }
-
-  if (lines.length > NODE_TEXT_MAX_LINES) {
-    lines.length = NODE_TEXT_MAX_LINES;
-  }
-
-  if (shouldTruncate && lines.length > 0 && !lines[lines.length - 1].endsWith('…')) {
-    lines[lines.length - 1] = `${lines[lines.length - 1].replace(/…+$/, '').trimEnd()}…`;
+  if ((shouldTruncate || droppedLines) && lines.length > 0 && !lines[lines.length - 1].endsWith('\u2026')) {
+    lines[lines.length - 1] = `${lines[lines.length - 1].replace(/\u2026+$/, '').trimEnd()}\u2026`;
   }
 
   return lines.join('\n');
 }
 
-function computeNodeMetrics(displayLabel) {
+/** Box size for an already wrapped label (see text-fit.js). */
+export function computeNodeMetrics(displayLabel) {
   const lines = (displayLabel || '').split('\n').filter((line) => line.length > 0);
-  const lineCount = Math.max(lines.length, 1);
-  let maxLineLength = 1;
-
-  for (const line of lines) {
-    if (line.length > maxLineLength) {
-      maxLineLength = line.length;
-    }
-  }
-
-  const nodeWidth = Math.max(46, Math.min(192, Math.round(maxLineLength * 5.75 + 8)));
-  const nodeHeight = Math.max(24, Math.min(154, Math.round(lineCount * 14 + 4)));
-  const textMaxWidth = Math.max(38, nodeWidth - 4);
-
+  const box = computeTextBox(lines);
   return {
-    nodeWidth,
-    nodeHeight,
-    textMaxWidth,
-    lineCount,
-    maxLineLength,
+    nodeWidth: box.nodeWidth,
+    nodeHeight: box.nodeHeight,
+    textMaxWidth: box.textMaxWidth,
+    lineCount: box.lineCount,
+    maxLineLength: Math.max(1, ...lines.map((line) => line.length)),
   };
 }
 

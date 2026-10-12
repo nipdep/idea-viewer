@@ -12,6 +12,7 @@ import { applyLayoutPositions } from './lib/incremental-graph-layout';
 import { filterBuiltinVocabulary } from './lib/builtin-vocabulary-filter';
 import { connectorTransparentNeighborhood } from './lib/focus-neighborhood';
 import { fetchRdfSource } from './lib/remote-source';
+import { isTextBoxData, NODE_FONT_FAMILY, scaledBoxPatch } from './lib/text-fit';
 import { applyReadableViewport, revealInViewport } from './lib/graph-fit';
 import { applySpreadClusters, getCluster, toggleCluster } from './lib/spread-collapse';
 import { CLUSTER_NODE_THRESHOLD } from './lib/spread-clusters';
@@ -1400,6 +1401,7 @@ function ViewerApp() {
   const lastLayoutTypeRef = useRef(graphLayoutType);
   const collapseStateRef = useRef(null);
   const previousNodeIdsRef = useRef(null);
+  const graphFontSizeRef = useRef(DEFAULT_GRAPH_FONT_SIZE);
   const collapseControllerRef = useRef(null);
   const pendingFocusTimerRef = useRef(null);
   const [owlProjectionLevel, setOwlProjectionLevel] = useState(OWL_PROJECTION_LEVELS.ONTOLOGY);
@@ -1437,6 +1439,7 @@ function ViewerApp() {
   const [graphSearchActiveIndex, setGraphSearchActiveIndex] = useState(0);
   const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
   const [graphFontSize, setGraphFontSize] = useState(DEFAULT_GRAPH_FONT_SIZE);
+  graphFontSizeRef.current = graphFontSize;
   const [graphThemeMode, setGraphThemeMode] = useState(GRAPH_THEME_MODES.CLASSIC);
   const [showDottedEdgeLabels, setShowDottedEdgeLabels] = useState(true);
 
@@ -3189,6 +3192,8 @@ function ViewerApp() {
             color: '#1e1b16',
             'font-size': DEFAULT_GRAPH_FONT_SIZE,
             'font-weight': 600,
+            // The same stack text-fit.js measures with: Cytoscape's default, now stated so the two cannot drift.
+            'font-family': NODE_FONT_FAMILY,
             'text-wrap': 'wrap',
             'text-max-width': 'data(textMaxWidth)',
             'text-justification': 'center',
@@ -4406,6 +4411,15 @@ function ViewerApp() {
 
     const clampedZoomSpeed = Math.min(MAX_GRAPH_ZOOM_SPEED, Math.max(MIN_GRAPH_ZOOM_SPEED, graphZoomSpeed));
     const clampedFontSize = Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, graphFontSize));
+    // The setting changes the text, so the boxes follow (see scaledBoxPatch).
+    const boxScale = clampedFontSize / DEFAULT_GRAPH_FONT_SIZE;
+    cy.batch(() => {
+      cy.nodes().forEach((node) => {
+        if (isTextBoxData(node.data())) {
+          node.data(scaledBoxPatch(node.data(), boxScale));
+        }
+      });
+    });
     const isHighContrast = graphThemeMode === GRAPH_THEME_MODES.HIGH_CONTRAST;
 
     if (cy._private?.options) {
@@ -4631,12 +4645,20 @@ function ViewerApp() {
       if (visibleElements.length > 0) {
         // Cytoscape keeps references to the `data` objects it is given and cluster collapse rewrites
         // edge endpoints in place, so hand it copies to keep visibleElements pristine.
+        const boxScale =
+          Math.min(MAX_GRAPH_FONT_SIZE, Math.max(MIN_GRAPH_FONT_SIZE, graphFontSizeRef.current)) / DEFAULT_GRAPH_FONT_SIZE;
         cy.add(
-          visibleElements.map((element) => ({
-            ...element,
-            data: { ...element.data },
-            ...(element.position ? { position: { ...element.position } } : {}),
-          })),
+          visibleElements.map((element) => {
+            const data = { ...element.data };
+            if (boxScale !== 1 && !data.source && isTextBoxData(data)) {
+              Object.assign(data, scaledBoxPatch(data, boxScale));
+            }
+            return {
+              ...element,
+              data,
+              ...(element.position ? { position: { ...element.position } } : {}),
+            };
+          }),
         );
       }
     });

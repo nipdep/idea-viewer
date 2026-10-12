@@ -1070,7 +1070,7 @@ textarea {
 
 .graph-search-panel {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-height: 36px;
 }

@@ -1,30 +1,21 @@
 {
   "nodes": [
     {
-      "idHint": "blank:classexpression",
-      "label": "",
-      "entityCategory": "class-expression",
-      "ontologyKind": "",
-      "blankExpressionType": "ClassExpression",
-      "graphRole": "",
-      "termType": "BlankNode"
-    },
-    {
-      "idHint": "blank:list",
-      "label": "",
-      "entityCategory": "class-expression",
-      "ontologyKind": "",
-      "blankExpressionType": "List",
-      "graphRole": "",
-      "termType": "BlankNode"
-    },
-    {
       "idHint": "blank:oneof",
       "label": "",
       "entityCategory": "class-expression",
       "ontologyKind": "",
       "blankExpressionType": "OneOf",
       "graphRole": "",
+      "termType": "BlankNode"
+    },
+    {
+      "idHint": "blank:rdflistconnector",
+      "label": "",
+      "entityCategory": "rdf-connector",
+      "ontologyKind": "",
+      "blankExpressionType": "RdfListConnector",
+      "graphRole": "owl-collection-connector",
       "termType": "BlankNode"
     },
     {
@@ -75,52 +66,8 @@
   ],
   "edges": [
     {
-      "sourceHint": "blank:classexpression",
-      "targetHint": "blank:list",
-      "predicate": "rest",
-      "predicateLabel": "rest",
-      "category": "object",
-      "axiomKind": "PropertyAssertion",
-      "owlEdgeStyle": "straight",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
-      "sourceHint": "blank:classexpression",
-      "targetHint": "Red",
-      "predicate": "first",
-      "predicateLabel": "first",
-      "category": "object",
-      "axiomKind": "PropertyAssertion",
-      "owlEdgeStyle": "straight",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
-      "sourceHint": "blank:list",
-      "targetHint": "nil",
-      "predicate": "rest",
-      "predicateLabel": "rest",
-      "category": "object",
-      "axiomKind": "PropertyAssertion",
-      "owlEdgeStyle": "straight",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
-      "sourceHint": "blank:list",
-      "targetHint": "Yellow",
-      "predicate": "first",
-      "predicateLabel": "first",
-      "category": "object",
-      "axiomKind": "PropertyAssertion",
-      "owlEdgeStyle": "straight",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
       "sourceHint": "blank:oneof",
-      "targetHint": "blank:classexpression",
+      "targetHint": "blank:rdflistconnector",
       "predicate": "oneOf",
       "predicateLabel": "oneOf",
       "category": "object",
@@ -136,6 +83,28 @@
       "predicateLabel": "",
       "category": "type",
       "axiomKind": "ClassAssertion",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "blank:rdflistconnector",
+      "targetHint": "Red",
+      "predicate": "List",
+      "predicateLabel": "1st",
+      "category": "object",
+      "axiomKind": "ListMember",
+      "owlEdgeStyle": "straight",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "blank:rdflistconnector",
+      "targetHint": "Yellow",
+      "predicate": "List",
+      "predicateLabel": "2nd",
+      "category": "object",
+      "axiomKind": "ListMember",
       "owlEdgeStyle": "straight",
       "sourceCardinality": "",
       "isSelfLoop": false

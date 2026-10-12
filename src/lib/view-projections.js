@@ -1237,6 +1237,33 @@ function readListMembers(startId, outgoingBySource) {
   return members;
 }
 
+/**
+ * A well-formed RDF list: every cell has exactly one rdf:first and one rdf:rest, there is no cycle, and the
+ * chain ends in rdf:nil. Only such chains are collapsed when the cells carry no rdf:List type, so a malformed or
+ * partial structure is shown as the raw triples it is rather than silently reinterpreted.
+ */
+function isProperList(startId, outgoingBySource) {
+  if (!startId || startId === RDF_NIL) {
+    return false;
+  }
+  const visited = new Set();
+  let currentId = startId;
+  while (currentId !== RDF_NIL) {
+    if (!currentId || visited.has(currentId)) {
+      return false;
+    }
+    visited.add(currentId);
+    const edges = outgoingBySource.get(currentId) ?? [];
+    const firstEdges = edges.filter((edge) => edge.predicate === RDF_FIRST);
+    const restEdges = edges.filter((edge) => edge.predicate === RDF_REST);
+    if (firstEdges.length !== 1 || restEdges.length !== 1) {
+      return false;
+    }
+    currentId = restEdges[0].target;
+  }
+  return true;
+}
+
 function collectListCellIds(startId, outgoingBySource) {
   if (!startId || startId === RDF_NIL) {
     return [];
@@ -1699,7 +1726,7 @@ function applyRdfSpecProjection(graphData, elements) {
           hiddenEdgeIds.add(rawEdge.data.id);
         }
       }
-      const restEdge = (outgoingBySource.get(cursorId) ?? []).find((edge) => edge.predicate === RDF_REST);
+      const restEdge = (listIndex.get(cursorId) ?? []).find((edge) => edge.predicate === RDF_REST);
       cursorId = restEdge?.target ?? '';
     }
 
@@ -1826,16 +1853,43 @@ function applyRdfSpecProjection(graphData, elements) {
     }
   }
 
+  // List heads to collapse: typed lists as before, plus plain cons cells (e.g. the lists behind owl:unionOf /
+  // owl:intersectionOf / owl:oneOf) that form a well-formed list.
+  //
+  // Plain lists are read from the projection's own edges, not graphData.objectEdges: the latter never records the
+  // closing `rest -> rdf:nil` edge (so every list would look unterminated) nor members that are literals.
+  const outgoingByElement = new Map();
+  for (const edge of edgeElements) {
+    const rows = outgoingByElement.get(edge.data.source) ?? [];
+    rows.push({ predicate: edge.data.predicate, target: edge.data.target });
+    outgoingByElement.set(edge.data.source, rows);
+  }
+  const listHeadKinds = new Map();
   for (const [nodeId, nodeElement] of nodeElementsById.entries()) {
-    const nodeData = nodeElement.data;
+    if (handledListHeads.has(nodeId)) {
+      continue;
+    }
+    if ((incomingByTarget.get(nodeId) ?? []).some((edge) => edge.predicate === RDF_REST)) {
+      continue;
+    }
     const typeTargets = new Set((typeEdgesBySource.get(nodeId) ?? []).map((edge) => edge.target));
-    const isListCell = nodeData.blankExpressionType === 'List' || typeTargets.has(RDF_LIST);
-    const hasIncomingRest = (incomingByTarget.get(nodeId) ?? []).some((edge) => edge.predicate === RDF_REST);
-    if (!isListCell || handledListHeads.has(nodeId) || hasIncomingRest) {
+    if (nodeElement.data.blankExpressionType === 'List' || typeTargets.has(RDF_LIST)) {
+      listHeadKinds.set(nodeId, 'typed');
+    } else if (isProperList(nodeId, outgoingByElement)) {
+      listHeadKinds.set(nodeId, 'plain');
+    }
+  }
+  const listHeadIds = new Set(listHeadKinds.keys());
+  const listIndexFor = (nodeId) => (listHeadKinds.get(nodeId) === 'plain' ? outgoingByElement : outgoingBySource);
+  const memberTarget = (memberId) => (listHeadIds.has(memberId) ? `rdf-list:${memberId}` : memberId);
+
+  for (const nodeId of listHeadIds) {
+    if (handledListHeads.has(nodeId)) {
       continue;
     }
 
-    const memberIds = readListMembers(nodeId, outgoingBySource);
+    const listIndex = listIndexFor(nodeId);
+    const memberIds = readListMembers(nodeId, listIndex);
     if (memberIds.length === 0) {
       continue;
     }
@@ -1884,11 +1938,13 @@ function applyRdfSpecProjection(graphData, elements) {
     }
 
     memberIds.forEach((memberId, index) => {
-      ensureNodeVisible(memberId);
+      if (!listHeadIds.has(memberId)) {
+        ensureNodeVisible(memberId);
+      }
       addSyntheticEdge({
         id: `${connectorId}:member:${index}`,
         source: connectorId,
-        target: memberId,
+        target: memberTarget(memberId),
         predicate: RDF_LIST,
         predicateLabel: ordinalLabel(index),
         category: 'object',

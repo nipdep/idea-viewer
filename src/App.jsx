@@ -1686,6 +1686,14 @@ function ViewerApp() {
     setFocusedNodeIds(nodeId ? [nodeId] : []);
   }
 
+  // Selecting a property from the node inspector selects the property's edge, not a node.
+  function selectEdgeFromInspector(edgeId) {
+    setSelectedNodeId(null);
+    setFocusedNodeId(null);
+    setFocusedNodeIds([]);
+    setSelectedEdgeId(edgeId);
+  }
+
   function extendFocusedNodes(nodeId) {
     if (!nodeId) {
       return;
@@ -7149,9 +7157,15 @@ function ViewerApp() {
                         <p className="muted">No literal properties available for this node.</p>
                       )}
                       {selectedNodeAxiomDataProperties.map((property) => (
-                        <div key={property.id} className="property-row" title={property.predicate}>
-                          <div className="property-value breakable">{property.predicateLabel}</div>
-                        </div>
+                        <button
+                          key={property.id}
+                          className="neighbor-row"
+                          type="button"
+                          onClick={() => selectEdgeFromInspector(property.id)}
+                          title={property.predicate}
+                        >
+                          <span className="neighbor-text">{property.predicateLabel}</span>
+                        </button>
                       ))}
                       {selectedNodeDataProperties.map((property, index) => (
                         <div
@@ -7173,10 +7187,8 @@ function ViewerApp() {
                           key={row.edgeId}
                           className="neighbor-row"
                           type="button"
-                          onClick={() => {
-                            setSingleFocusedNode(row.neighborId);
-                          }}
-                          title={row.neighborLabel}
+                          onClick={() => selectEdgeFromInspector(row.edgeId)}
+                          title={row.predicateLabel}
                         >
                           <span className="badge">{row.direction}</span>
                           <span className="neighbor-text">

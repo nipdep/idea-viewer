@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
 import { DataFactory, Writer } from 'n3';
-import { buildGraphData, compactIri, extractOntologyModel, getNodeStatementBuckets, getTermId, parseRdfText } from './lib/rdf';
+import { buildGraphData, collectDeclaredOntologyIris, compactIri, extractOntologyModel, getNodeStatementBuckets, getTermId, parseRdfText } from './lib/rdf';
 import {
   buildProjectedElements,
   createViewOptions,
@@ -76,6 +76,10 @@ const GRAPH_FILTER_AXES = {
   TBOX: 't-box',
   ABOX: 'a-box',
 };
+const DEFAULT_LAYOUT_BY_VIEW = Object.freeze({
+  [GRAPH_PROJECTION_MODES.OWL]: GRAPH_LAYOUT_TYPES.HIERARCHY,
+  [GRAPH_PROJECTION_MODES.RDF]: GRAPH_LAYOUT_TYPES.SPREAD,
+});
 const PROJECTION_MODE_LABELS = {
   [GRAPH_PROJECTION_MODES.OWL]: 'OWL View',
   [GRAPH_PROJECTION_MODES.RDF]: 'RDF View',
@@ -1397,7 +1401,10 @@ function ViewerApp() {
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
   const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.OWL);
-  const [graphLayoutType, setGraphLayoutType] = useState(GRAPH_LAYOUT_TYPES.SPREAD);
+  // Each view keeps its own layout: the OWL view reads best as a hierarchy, the RDF view as a spread graph.
+  const [layoutByView, setLayoutByView] = useState(DEFAULT_LAYOUT_BY_VIEW);
+  const graphLayoutType = layoutByView[graphProjectionMode] ?? GRAPH_LAYOUT_TYPES.SPREAD;
+  const setGraphLayoutType = (layoutType) => setLayoutByView((current) => ({ ...current, [graphProjectionMode]: layoutType }));
   const lastLayoutTypeRef = useRef(graphLayoutType);
   const collapseStateRef = useRef(null);
   const previousNodeIdsRef = useRef(null);
@@ -3134,7 +3141,9 @@ function ViewerApp() {
   const hasNamedIndividuals = Boolean(
     graphData?.nodes?.some((node) => node.isInstanceNode),
   );
-  const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
+  // Class Type exists to filter instances by class in the RDF view; the OWL view shows classes themselves.
+  const showClassTypeFilter =
+    graphProjectionMode === GRAPH_PROJECTION_MODES.RDF && hasNamedIndividuals && allClassIris.length > 0;
   const showNamedGraphFilter = (graphData?.namedGraphs?.length ?? 0) > 0;
 
   const isAllClassesSelected =
@@ -5357,6 +5366,7 @@ function ViewerApp() {
     firstVisualizationRecordedRef.current = false;
     setUploadedFiles([]);
     setSourceUrlError('');
+    setLayoutByView(DEFAULT_LAYOUT_BY_VIEW);
     setGraphData(null);
     setVisibleElements([]);
     setSelectedClassIris([]);
@@ -5491,7 +5501,12 @@ function ViewerApp() {
         const graphBuildSpan = telemetry.startSpan('dataset.graph.build', {
           datasetTripletCount: mergedQuads.length,
         });
+        // The ontology header statements are split off before the graph is built; they still say which IRIs are
+        // ontologies, which decides how entities group into base IRIs.
+        const ontologyIris = new Set();
+        parsedFiles.forEach((parsed) => collectDeclaredOntologyIris(parsed.headerQuads).forEach((iri) => ontologyIris.add(iri)));
         const nextGraphData = buildGraphData(mergedQuads, {
+          ontologyIris,
           // Stop classifying uploads as "ontology" vs "KG".
           // We always render uploaded data through the ontology-style path,
           // while still extracting declarations from the triples themselves.

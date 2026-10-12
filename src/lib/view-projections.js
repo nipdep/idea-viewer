@@ -469,7 +469,33 @@ function computeSelfLoopStepSize(node) {
   return Math.max(42, Math.min(110, Math.round(Math.max(widthDriven, heightDriven))));
 }
 
+// Self-loops of one node fan out on its left and right sides (layouts keep those sides freer than the top and
+// bottom, where the hierarchy edges attach). Each loop gets its own direction, so its label sits at its own height
+// instead of on top of the others; a node with many loops starts a second, larger ring.
+const SELF_LOOP_SLOT_ANGLES = [0, -26, 26, -52, 52];
+const SELF_LOOP_RING_SIZE = SELF_LOOP_SLOT_ANGLES.length * 2;
+const SELF_LOOP_CHAR_WIDTH = 6.6;
+const SELF_LOOP_LABEL_MAX_WIDTH = 110;
+
+export function planSelfLoop(index, node, label) {
+  const side = index % 2 === 0 ? 1 : -1;
+  const slot = Math.floor(index / 2);
+  const ring = Math.floor(index / SELF_LOOP_RING_SIZE);
+  const angle = SELF_LOOP_SLOT_ANGLES[slot % SELF_LOOP_SLOT_ANGLES.length];
+  // Cytoscape measures a loop's direction from 12 o'clock, clockwise: 90deg is east, 270deg is west.
+  const direction = side === 1 ? 90 + angle : 270 - angle;
+  const labelWidth = Math.min(SELF_LOOP_LABEL_MAX_WIDTH, String(label ?? '').length * SELF_LOOP_CHAR_WIDTH);
+  return {
+    selfLoopStepSize: Math.round(Math.max(70, computeSelfLoopStepSize(node) * 1.5) * (1 + ring * 0.7)),
+    selfLoopDirection: `${direction}deg`,
+    selfLoopSweep: '40deg',
+    // Pushes the label outward from the node so it sits beyond the loop's apex, not across the node.
+    selfLoopLabelDx: Math.round(side * (labelWidth / 2 - 6)),
+  };
+}
+
 function applySelfLoopGeometry(graphData, elements) {
+  const nextIndexByNode = new Map();
   return elements.map((element) => {
     const data = element?.data;
     if (!data?.source || (data.isSelfLoop !== 1 && data.source !== data.target)) {
@@ -477,9 +503,11 @@ function applySelfLoopGeometry(graphData, elements) {
     }
 
     const sourceNode = graphData?.nodeMap?.get(data.source);
+    const index = nextIndexByNode.get(data.source) ?? 0;
+    nextIndexByNode.set(data.source, index + 1);
     const next = cloneElement(element);
     next.data.isSelfLoop = 1;
-    next.data.selfLoopStepSize = computeSelfLoopStepSize(sourceNode);
+    Object.assign(next.data, planSelfLoop(index, sourceNode, data.predicateLabel));
     return next;
   });
 }

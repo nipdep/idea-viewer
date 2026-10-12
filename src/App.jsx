@@ -3983,13 +3983,12 @@ function ViewerApp() {
           selector: 'edge[isSelfLoop = 1]',
           style: {
             'curve-style': 'bezier',
-            'source-endpoint': '180deg',
-            'target-endpoint': '-90deg',
             'control-point-step-size': 'data(selfLoopStepSize)',
-            'loop-direction': '-135deg',
-            'loop-sweep': '34deg',
+            'loop-direction': 'data(selfLoopDirection)',
+            'loop-sweep': 'data(selfLoopSweep)',
             'text-rotation': 'none',
-            'text-margin-y': -12,
+            'text-margin-x': 'data(selfLoopLabelDx)',
+            'text-margin-y': 0,
           },
         },
         {

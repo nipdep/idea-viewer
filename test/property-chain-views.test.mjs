@@ -82,3 +82,14 @@ test('OWL view also marks restriction edges that use a chain property', async ()
   assert.equal(restriction.data.propertyChainSteps[0].members.length, 2);
   assert.equal((restriction.data.predicateLabel.match(/⛓/g) ?? []).length, 1, 'mark not doubled');
 });
+
+test('self-loops of one node fan out on both sides with distinct directions', async () => {
+  const { planSelfLoop } = await import('../src/lib/view-projections.js');
+  const node = { nodeWidth: 160, nodeHeight: 46 };
+  const plans = Array.from({ length: 6 }, (_, index) => planSelfLoop(index, node, 'some property'));
+  const directions = plans.map((plan) => plan.selfLoopDirection);
+  assert.equal(new Set(directions).size, 6, `directions ${directions}`);
+  assert.deepEqual(directions.slice(0, 2), ['90deg', '270deg'], 'first loops: east then west');
+  assert.ok(plans[0].selfLoopLabelDx > 0 && plans[1].selfLoopLabelDx < 0, 'labels pushed outward on each side');
+  assert.ok(planSelfLoop(10, node, 'x').selfLoopStepSize > plans[0].selfLoopStepSize, 'second ring is larger');
+});

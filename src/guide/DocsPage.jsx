@@ -36,6 +36,24 @@ const TOC = [
   { id: 'using', title: 'Using the viewer', children: [{ id: 'loading', title: 'Loading data' }, { id: 'layouts', title: 'Layouts and large graphs' }, { id: 'focus', title: 'Selecting and focusing' }, { id: 'search', title: 'Search and filters' }, { id: 'inspector', title: 'Entity inspector' }] },
 ];
 
+// Opened from the viewer: close this tab and return to it (the loaded graph lives there). Opened directly: navigate.
+function goBackToViewer(event) {
+  const opener = window.opener;
+  if (opener && !opener.closed) {
+    event.preventDefault();
+    try {
+      opener.focus();
+    } catch {
+      // Focus is best effort.
+    }
+    window.close();
+    // A tab the browser refuses to close falls back to a normal navigation.
+    window.setTimeout(() => {
+      window.location.href = './';
+    }, 250);
+  }
+}
+
 function Section({ id, level = 2, title, children }) {
   const Tag = `h${level}`;
   return (
@@ -102,10 +120,10 @@ export default function DocsPage() {
   return (
     <div className="docs-shell">
       <nav className="docs-nav" aria-label="Contents">
-        <a className="docs-back-button" href="./">
+        <a className="docs-back-button" href="./" onClick={goBackToViewer}>
           ← Go back to the viewer
         </a>
-        <a className="brand-title" href="./" aria-label="IDEA* Viewer">
+        <a className="brand-title" href="./" onClick={goBackToViewer} aria-label="IDEA* Viewer">
           <span className="brand-lockup">
             <span className="brand-word">IDEA</span>
             <span className="brand-star" aria-hidden="true">

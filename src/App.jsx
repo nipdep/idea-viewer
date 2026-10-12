@@ -28,7 +28,7 @@ import {
 } from './lib/hierarchy-collapse';
 import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
 import Legend from './notation/Legend';
-import { docsUrl } from './notation/docs-url';
+import { docsUrl, openGuide } from './notation/docs-url';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -6016,8 +6016,7 @@ function ViewerApp() {
           <a
             className="header-icon-link"
             href={docsUrl()}
-            target="_blank"
-            rel="noreferrer"
+            onClick={openGuide}
             aria-label="Open the usage guide"
             title="Usage guide"
           >

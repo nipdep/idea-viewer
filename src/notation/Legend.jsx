@@ -1,6 +1,6 @@
 import React from 'react';
 import { EdgeSymbol, MarkSymbol, NodeSymbol } from './symbols';
-import { docsUrl } from './docs-url';
+import { docsUrl, openGuide } from './docs-url';
 
 // The legend lists only what is needed to read a graph at a glance. Every row links to its section of the
 // documentation page, which holds the complete notation (patterns, edge cases, the OWL / RDF differences).
@@ -82,13 +82,13 @@ export default function Legend({ mode }) {
           <div className="graph-legend-heading">{section.title}</div>
           <div className="graph-legend-list">
             {(section.rows ?? []).map((row) => (
-              <a key={row.text} className="graph-legend-item" href={docsUrl(row.anchor)} target="_blank" rel="noreferrer">
+              <a key={row.text} className="graph-legend-item" href={docsUrl(row.anchor)} onClick={(event) => openGuide(event, row.anchor)}>
                 <span className="graph-legend-symbol">{row.symbol}</span>
                 <span>{row.text}</span>
               </a>
             ))}
             {(section.marks ?? []).map((row) => (
-              <a key={row.text} className="graph-legend-item" href={docsUrl(row.anchor)} target="_blank" rel="noreferrer">
+              <a key={row.text} className="graph-legend-item" href={docsUrl(row.anchor)} onClick={(event) => openGuide(event, row.anchor)}>
                 <span className="graph-legend-symbol">
                   <MarkSymbol text={row.mark} />
                 </span>
@@ -98,7 +98,7 @@ export default function Legend({ mode }) {
           </div>
         </div>
       ))}
-      <a className="graph-legend-docs-link" href={docsUrl(view)} target="_blank" rel="noreferrer">
+      <a className="graph-legend-docs-link" href={docsUrl(view)} onClick={(event) => openGuide(event, view)}>
         Full usage guide ↗
       </a>
     </div>

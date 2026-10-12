@@ -49,12 +49,25 @@ test('primitives named by rdf:type (owl:Class, owl:Restriction) are hidden with 
   assert.equal(result.filter((e) => e.data.source).length, 1, 'only the real edge is left');
 });
 
-test('rdf:nil is hidden with its edges; owl:Thing and rdfs:Literal are drawn per the formatting spec', () => {
+test('rdf:nil that ends a visible list is kept, so the last list cell is not left dangling', () => {
   const nil = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+  const rest = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+  const cell = { data: { id: '_:cell2', kind: 'blank' } };
+  const toNil = { data: { id: 'rest-nil', source: '_:cell2', target: nil, predicate: rest } };
+  const result = filterBuiltinVocabulary([cell, node(nil), toNil]);
+  assert.deepEqual(ids(result).sort(), ['_:cell2', nil].sort());
+  assert.equal(result.filter((e) => e.data.source).length, 1, 'the rest -> nil edge survives');
+});
+
+test('an rdf:nil that nothing points at is dropped as an isolated built-in term', () => {
+  const nil = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+  assert.deepEqual(ids(filterBuiltinVocabulary([node(nil), node('http://ex/A')])), ['http://ex/A']);
+});
+
+test('owl:Thing and rdfs:Literal are drawn per the formatting spec, even when they are rdf:type objects', () => {
   const thing = `${OWL}Thing`;
-  const elements = [node('_:list', undefined), node(nil), node('http://ex/A'), node(thing), edge('_:list', nil), typed('http://ex/A', thing)];
-  const result = hideRdfPrimitives(elements);
-  assert.deepEqual(ids(result).sort(), ['_:list', 'http://ex/A', thing].sort());
+  const elements = [node('http://ex/A'), node(thing), typed('http://ex/A', thing)];
+  assert.deepEqual(ids(hideRdfPrimitives(elements)).sort(), ['http://ex/A', thing].sort());
 });
 
 test('edge-anchor helpers go with a removed edge, and terms orphaned by the removal are then dropped', () => {

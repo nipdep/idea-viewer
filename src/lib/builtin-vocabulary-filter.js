@@ -2,8 +2,11 @@
 // property" (see the formatting figure in docs), so the terms that merely name those categories are noise.
 //
 //  1. Primitives: rdf/rdfs/owl terms used as the object of rdf:type (owl:Class, owl:Restriction,
-//     owl:ObjectProperty, rdf:Property, ...) and rdf:nil, together with every edge that touches them.
+//     owl:ObjectProperty, rdf:Property, ...), together with every edge that touches them.
 //     owl:Thing, rdfs:Resource and rdfs:Literal are kept: the formatting spec draws them as resources/literals.
+//     rdf:nil is NOT a primitive: when the RDF view shows a list as raw first/rest cells, rdf:nil is what ends the
+//     last cell, and hiding it left that cell dangling with its `rest` edge cut off. (Lists that are collapsed
+//     into one connector never reach this filter with a nil, and an unattached nil is dropped by rule 2.)
 //  2. Isolated built-in terms (owl:Thing, skos:ConceptScheme, xsd:anyURI, ...) that connect to nothing.
 //     Connected ones are part of the graph's structure and stay.
 const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
@@ -12,7 +15,6 @@ const OWL_NS = 'http://www.w3.org/2002/07/owl#';
 const BUILTIN_NAMESPACES = [RDF_NS, RDFS_NS, OWL_NS, 'http://www.w3.org/2001/XMLSchema#', 'http://www.w3.org/2004/02/skos/core#'];
 const PRIMITIVE_NAMESPACES = [RDF_NS, RDFS_NS, OWL_NS];
 const RDF_TYPE = `${RDF_NS}type`;
-const RDF_NIL = `${RDF_NS}nil`;
 const DRAWN_AS_RESOURCES = new Set([`${OWL_NS}Thing`, `${RDFS_NS}Resource`, `${RDFS_NS}Literal`]);
 
 export function isBuiltinVocabularyIri(iri) {
@@ -64,7 +66,7 @@ export function hideRdfPrimitives(elements, keepIds = []) {
     if (!isNodeData(data) || keep.has(data.id) || !isPrimitiveIri(data.iri) || DRAWN_AS_RESOURCES.has(data.iri)) {
       return;
     }
-    if (data.iri === RDF_NIL || typeObjects.has(data.id)) {
+    if (typeObjects.has(data.id)) {
       primitives.add(data.id);
     }
   });

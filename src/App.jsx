@@ -912,6 +912,11 @@ function runNodeNameFilter(graphData, queryText) {
 }
 
 // Data properties a class carries through axioms (restrictions, domain/range), shown as edges to a datatype.
+// Property label without the restriction quantifier "(some)", cardinality or "*" marks.
+function barePropertyName(label) {
+  return String(label ?? '').replace(/^\([^)]*\)\s*/, '').replace(/\s*\[[^\]]*\]/g, '').replace(/\*+$/, '').trim();
+}
+
 function buildAxiomDataPropertyRows(selectedNodeId, graphData, visibleElements) {
   if (!selectedNodeId || !graphData) {
     return [];
@@ -923,18 +928,13 @@ function buildAxiomDataPropertyRows(selectedNodeId, graphData, visibleElements) 
     if (!data?.source || data.category !== 'data' || data.source !== selectedNodeId) {
       continue;
     }
-    const targetLabel = graphData.nodeMap.get(data.target)?.fullLabel ?? data.target;
-    const name = String(data.predicateLabel || data.predicate || '').replace(/\*+$/, '').trim();
-    const hover = typeof data.hoverText === 'string' ? data.hoverText : '';
-    const value = data.axiomKind === 'Restriction' && hover.includes(' SubClassOf ')
-      ? hover.slice(hover.indexOf(' SubClassOf ') + ' SubClassOf '.length)
-      : `${name} → ${targetLabel}`;
-    const key = `${data.predicate}|${value}`;
-    if (seen.has(key)) {
+    const name = barePropertyName(data.predicateLabel || data.predicate);
+    const key = String(data.predicate);
+    if (!name || seen.has(key)) {
       continue;
     }
     seen.add(key);
-    rows.push({ id: data.id, predicate: data.predicate, predicateLabel: name, value });
+    rows.push({ id: data.id, predicate: data.predicate, predicateLabel: name });
   }
   return rows;
 }
@@ -964,11 +964,11 @@ function buildNeighborRows(selectedNodeId, graphData, visibleElements) {
     const outgoing = edge.source === selectedNodeId;
     const neighborId = outgoing ? edge.target : edge.source;
     const neighborLabel = graphData.nodeMap.get(neighborId)?.fullLabel ?? nodeLabels.get(neighborId) ?? neighborId;
-    const name = String(edge.predicateLabel || '').replace(/\*+$/, '').trim();
+    const name = barePropertyName(edge.predicateLabel);
     if (!name) {
       continue;
     }
-    const key = `${edge.predicate}|${outgoing}|${neighborId}|${name}`;
+    const key = `${edge.predicate}|${outgoing}`;
     if (seen.has(key)) {
       continue;
     }
@@ -7150,8 +7150,7 @@ function ViewerApp() {
                       )}
                       {selectedNodeAxiomDataProperties.map((property) => (
                         <div key={property.id} className="property-row" title={property.predicate}>
-                          <div className="property-name">{property.predicateLabel}</div>
-                          <div className="property-value breakable">{property.value}</div>
+                          <div className="property-value breakable">{property.predicateLabel}</div>
                         </div>
                       ))}
                       {selectedNodeDataProperties.map((property, index) => (
@@ -7181,7 +7180,7 @@ function ViewerApp() {
                         >
                           <span className="badge">{row.direction}</span>
                           <span className="neighbor-text">
-                            {row.predicateLabel} → {row.neighborLabel}
+                            {row.predicateLabel}
                           </span>
                         </button>
                       ))}

@@ -1,4 +1,13 @@
-import { buildFocusedSubset, compactIri, DEFAULT_VIEW_OPTIONS, getNodeStatementBuckets, getTermId } from './rdf';
+import {
+  buildFocusedSubset,
+  compactIri,
+  computeNodeMetrics,
+  DEFAULT_VIEW_OPTIONS,
+  getNodeStatementBuckets,
+  getTermId,
+  makeDisplayLabel,
+} from './rdf';
+import { relationPaletteCategory } from './relation-palette';
 
 export const GRAPH_VIEW_MODES = Object.freeze({
   OWL: 'owl',
@@ -239,21 +248,6 @@ function suppressMetadataEdges(elements) {
   });
 }
 
-function relationPaletteCategory(predicate) {
-  if (
-    predicate &&
-    (
-      predicate.startsWith(RDF_NS) ||
-      predicate.startsWith('http://www.w3.org/2000/01/rdf-schema#') ||
-      predicate.startsWith('rdf:') ||
-      predicate.startsWith('rdfs:')
-    )
-  ) {
-    return 'base';
-  }
-  return 'property';
-}
-
 function applyRelationPalette(elements) {
   return elements.map((element) => {
     const data = element?.data;
@@ -266,6 +260,16 @@ function applyRelationPalette(elements) {
   });
 }
 
+// Sets a node's label to `text` wrapped by measured width, and resizes the node to fit it.
+function applyFittedLabel(data, text) {
+  const label = makeDisplayLabel(text);
+  const metrics = computeNodeMetrics(label);
+  data.label = label;
+  data.nodeWidth = metrics.nodeWidth;
+  data.nodeHeight = metrics.nodeHeight;
+  data.textMaxWidth = metrics.textMaxWidth;
+}
+
 function applyRdfLabels(elements) {
   return elements.map((element) => {
     if (element?.data?.source) {
@@ -276,7 +280,8 @@ function applyRdfLabels(elements) {
     const { data } = next;
     if (data.termType === 'Literal') {
       const literalLabel = data.literalValue || data.fullLabel || data.label || '';
-      data.label = literalLabel;
+      // The full value stays in fullLabel (side panel); the node shows it wrapped, in a box sized to that text.
+      applyFittedLabel(data, literalLabel);
       data.fullLabel = literalLabel;
       return next;
     }
@@ -285,7 +290,12 @@ function applyRdfLabels(elements) {
       const existingDisplay = data.displayLabel || data.label || '';
       const existingFull = data.fullLabel || '';
       const compact = compactIri(data.iri || data.id || '');
-      data.label = existingDisplay || existingFull || compact;
+      if (existingDisplay) {
+        data.label = existingDisplay;
+      } else {
+        // No wrapped label to reuse: wrap the fallback text and size the box to it.
+        applyFittedLabel(data, existingFull || compact);
+      }
       if (!data.fullLabel && compact) {
         data.fullLabel = compact;
       }
@@ -542,6 +552,12 @@ function manchesterNodeText(graphData, nodeId) {
   return compactIri(node.iri || node.id || node.fullLabel || node.label || nodeId);
 }
 
+// Asserted class relations whose edge to a class-expression connector is drawn exactly like a plain asserted edge.
+const ASSERTED_CONNECTOR_RELATIONS = new Map([
+  [OWL_EQUIVALENT_CLASS, { category: 'object', axiomKind: 'EquivalentClasses' }],
+  [RDFS_SUBCLASS_OF, { category: 'subclass', axiomKind: 'SubClassOf' }],
+]);
+
 function relationManchesterKeyword(predicate) {
   if (predicate === RDFS_SUBCLASS_OF) {
     return 'SubClassOf';
@@ -622,6 +638,13 @@ function applyHoverMetadata(graphData, elements) {
 
     if (data.owlExpressionNode || data.entityCategory === 'all-different') {
       next.data.hoverText = connectorHoverLabel(data);
+      return next;
+    }
+
+    // Class nodes carry no hover explanation: their statements are in the side panel, and the pop-up
+    // (a Manchester-syntax dump) only added noise on top of the drawn restrictions and axioms.
+    if (data.entityCategory === 'class') {
+      next.data.hoverText = '';
       return next;
     }
 
@@ -941,20 +964,6 @@ function makeNodeElementFromGraphNode(node) {
   };
 }
 
-function measureFallbackNode(label) {
-  const normalized = String(label || '').trim() || '?';
-  const lines = normalized.split('\n').filter(Boolean);
-  const lineCount = Math.max(lines.length, 1);
-  const maxLineLength = lines.reduce((max, line) => Math.max(max, line.length), 1);
-
-  return {
-    nodeWidth: Math.max(46, Math.min(192, Math.round(maxLineLength * 5.75 + 8))),
-    nodeHeight: Math.max(24, Math.min(154, Math.round(lineCount * 14 + 4))),
-    textMaxWidth: Math.max(38, Math.min(188, Math.round(maxLineLength * 5.75 + 4))),
-    labelLength: Math.min(Math.max(maxLineLength * lineCount, 4), 120),
-  };
-}
-
 function makeFallbackNodeElement(term) {
   if (!term) {
     return null;
@@ -987,11 +996,13 @@ function makeFallbackNodeElement(term) {
     iri = term.value || '';
   }
 
-  const metrics = measureFallbackNode(fullLabel);
+  // Same wrap-and-measure sizing as every other node (see text-fit.js).
+  const displayLabel = makeDisplayLabel(fullLabel);
+  const metrics = computeNodeMetrics(displayLabel);
   return {
     data: {
       id,
-      label: fullLabel,
+      label: displayLabel,
       fullLabel,
       iri,
       baseIri: '',
@@ -1009,7 +1020,7 @@ function makeFallbackNodeElement(term) {
       literalValue,
       literalDatatype,
       literalLanguage,
-      labelLength: metrics.labelLength,
+      labelLength: Math.min(Math.max(metrics.maxLineLength * metrics.lineCount, 4), 120),
       nodeWidth: metrics.nodeWidth,
       nodeHeight: metrics.nodeHeight,
       textMaxWidth: metrics.textMaxWidth,
@@ -1224,6 +1235,33 @@ function readListMembers(startId, outgoingBySource) {
   }
 
   return members;
+}
+
+/**
+ * A well-formed RDF list: every cell has exactly one rdf:first and one rdf:rest, there is no cycle, and the
+ * chain ends in rdf:nil. Only such chains are collapsed when the cells carry no rdf:List type, so a malformed or
+ * partial structure is shown as the raw triples it is rather than silently reinterpreted.
+ */
+function isProperList(startId, outgoingBySource) {
+  if (!startId || startId === RDF_NIL) {
+    return false;
+  }
+  const visited = new Set();
+  let currentId = startId;
+  while (currentId !== RDF_NIL) {
+    if (!currentId || visited.has(currentId)) {
+      return false;
+    }
+    visited.add(currentId);
+    const edges = outgoingBySource.get(currentId) ?? [];
+    const firstEdges = edges.filter((edge) => edge.predicate === RDF_FIRST);
+    const restEdges = edges.filter((edge) => edge.predicate === RDF_REST);
+    if (firstEdges.length !== 1 || restEdges.length !== 1) {
+      return false;
+    }
+    currentId = restEdges[0].target;
+  }
+  return true;
 }
 
 function collectListCellIds(startId, outgoingBySource) {
@@ -1688,7 +1726,7 @@ function applyRdfSpecProjection(graphData, elements) {
           hiddenEdgeIds.add(rawEdge.data.id);
         }
       }
-      const restEdge = (outgoingBySource.get(cursorId) ?? []).find((edge) => edge.predicate === RDF_REST);
+      const restEdge = (listIndex.get(cursorId) ?? []).find((edge) => edge.predicate === RDF_REST);
       cursorId = restEdge?.target ?? '';
     }
 
@@ -1815,16 +1853,43 @@ function applyRdfSpecProjection(graphData, elements) {
     }
   }
 
+  // List heads to collapse: typed lists as before, plus plain cons cells (e.g. the lists behind owl:unionOf /
+  // owl:intersectionOf / owl:oneOf) that form a well-formed list.
+  //
+  // Plain lists are read from the projection's own edges, not graphData.objectEdges: the latter never records the
+  // closing `rest -> rdf:nil` edge (so every list would look unterminated) nor members that are literals.
+  const outgoingByElement = new Map();
+  for (const edge of edgeElements) {
+    const rows = outgoingByElement.get(edge.data.source) ?? [];
+    rows.push({ predicate: edge.data.predicate, target: edge.data.target });
+    outgoingByElement.set(edge.data.source, rows);
+  }
+  const listHeadKinds = new Map();
   for (const [nodeId, nodeElement] of nodeElementsById.entries()) {
-    const nodeData = nodeElement.data;
+    if (handledListHeads.has(nodeId)) {
+      continue;
+    }
+    if ((incomingByTarget.get(nodeId) ?? []).some((edge) => edge.predicate === RDF_REST)) {
+      continue;
+    }
     const typeTargets = new Set((typeEdgesBySource.get(nodeId) ?? []).map((edge) => edge.target));
-    const isListCell = nodeData.blankExpressionType === 'List' || typeTargets.has(RDF_LIST);
-    const hasIncomingRest = (incomingByTarget.get(nodeId) ?? []).some((edge) => edge.predicate === RDF_REST);
-    if (!isListCell || handledListHeads.has(nodeId) || hasIncomingRest) {
+    if (nodeElement.data.blankExpressionType === 'List' || typeTargets.has(RDF_LIST)) {
+      listHeadKinds.set(nodeId, 'typed');
+    } else if (isProperList(nodeId, outgoingByElement)) {
+      listHeadKinds.set(nodeId, 'plain');
+    }
+  }
+  const listHeadIds = new Set(listHeadKinds.keys());
+  const listIndexFor = (nodeId) => (listHeadKinds.get(nodeId) === 'plain' ? outgoingByElement : outgoingBySource);
+  const memberTarget = (memberId) => (listHeadIds.has(memberId) ? `rdf-list:${memberId}` : memberId);
+
+  for (const nodeId of listHeadIds) {
+    if (handledListHeads.has(nodeId)) {
       continue;
     }
 
-    const memberIds = readListMembers(nodeId, outgoingBySource);
+    const listIndex = listIndexFor(nodeId);
+    const memberIds = readListMembers(nodeId, listIndex);
     if (memberIds.length === 0) {
       continue;
     }
@@ -1873,11 +1938,13 @@ function applyRdfSpecProjection(graphData, elements) {
     }
 
     memberIds.forEach((memberId, index) => {
-      ensureNodeVisible(memberId);
+      if (!listHeadIds.has(memberId)) {
+        ensureNodeVisible(memberId);
+      }
       addSyntheticEdge({
         id: `${connectorId}:member:${index}`,
         source: connectorId,
-        target: memberId,
+        target: memberTarget(memberId),
         predicate: RDF_LIST,
         predicateLabel: ordinalLabel(index),
         category: 'object',
@@ -2110,7 +2177,10 @@ function buildProjectedRestrictionTargetNode(
           restrictionKind: restrictionProjection.restrictionKind || compactIri(targetSpec.predicate),
           sourceCardinality: targetSpec.sourceCardinality,
           showSourceCardinality: targetSpec.sourceCardinality ? 1 : 0,
-          owlEdgeStyle: 'dotted',
+          // The restriction's property edge is an ordinary property edge (solid for an object property, dashed
+          // for a data property) whether the restriction hangs off a class or sits inside an expression. Only the
+          // connector -> member links, which project RDF list membership, are dotted.
+          owlEdgeStyle: restrictionProjection.propertyKind === 'data-property' ? 'dashed' : 'straight',
           owlSynthesized: 1,
           isSelfLoop: resolvedTargetId === connectorId || targetSpec.isSelfLoop ? 1 : 0,
           projectedMetadataRows: targetSpec.projectedMetadataRows,
@@ -3130,18 +3200,35 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
       synthesizedNodes.push({
         data: expressionNodeData,
       });
+      // `anchor owl:equivalentClass|rdfs:subClassOf [ owl:intersectionOf (...) ]`: the edge from the anchor to the
+      // connector IS the asserted statement, so it is drawn like any asserted equivalence / subsumption edge
+      // (solid; the "≡" mark and the hollow arrowhead come from the shared styling). Only the connector's edges to
+      // its members are projections of the RDF list, and those stay dotted.
+      const assertedRelation = ASSERTED_CONNECTOR_RELATIONS.get(anchorDescriptor.relationPredicate);
       synthesizedEdges.push({
-        data: {
-          id: `${helperNodeId}:source`,
-          source: anchorSourceId,
-          target: helperNodeId,
-          predicate: edge.predicate,
-          predicateLabel: '',
-          category: 'object',
-          axiomKind: 'ClassExpression',
-          owlEdgeStyle: 'dotted',
-          owlSynthesized: 1,
-        },
+        data: assertedRelation
+          ? {
+              id: `${helperNodeId}:source`,
+              source: anchorSourceId,
+              target: helperNodeId,
+              predicate: anchorDescriptor.relationPredicate,
+              predicateLabel: '',
+              category: assertedRelation.category,
+              axiomKind: assertedRelation.axiomKind,
+              owlEdgeStyle: 'straight',
+              owlSynthesized: 1,
+            }
+          : {
+              id: `${helperNodeId}:source`,
+              source: anchorSourceId,
+              target: helperNodeId,
+              predicate: edge.predicate,
+              predicateLabel: '',
+              category: 'object',
+              axiomKind: 'ClassExpression',
+              owlEdgeStyle: 'dotted',
+              owlSynthesized: 1,
+            },
       });
       for (const member of projectedMembers) {
         synthesizedEdges.push({

@@ -54,7 +54,7 @@
       "predicateLabel": "hasChild*",
       "category": "object",
       "axiomKind": "ClassExpressionRestriction",
-      "owlEdgeStyle": "dotted",
+      "owlEdgeStyle": "straight",
       "sourceCardinality": "0..1",
       "isSelfLoop": false
     },
@@ -83,11 +83,11 @@
     {
       "sourceHint": "LimitedRole",
       "targetHint": "helper:union",
-      "predicate": "unionOf",
-      "predicateLabel": "",
+      "predicate": "equivalentClass",
+      "predicateLabel": "≡",
       "category": "object",
-      "axiomKind": "ClassExpression",
-      "owlEdgeStyle": "dotted",
+      "axiomKind": "EquivalentClasses",
+      "owlEdgeStyle": "straight",
       "sourceCardinality": "",
       "isSelfLoop": false
     }

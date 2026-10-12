@@ -59,11 +59,11 @@
     {
       "sourceHint": "CompositeSignal",
       "targetHint": "helper:union",
-      "predicate": "unionOf",
-      "predicateLabel": "",
+      "predicate": "equivalentClass",
+      "predicateLabel": "≡",
       "category": "object",
-      "axiomKind": "ClassExpression",
-      "owlEdgeStyle": "dotted",
+      "axiomKind": "EquivalentClasses",
+      "owlEdgeStyle": "straight",
       "sourceCardinality": "",
       "isSelfLoop": false
     },

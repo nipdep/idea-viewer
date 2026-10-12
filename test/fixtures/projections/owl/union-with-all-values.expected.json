@@ -54,7 +54,7 @@
       "predicateLabel": "(all) hasPet*",
       "category": "object",
       "axiomKind": "ClassExpressionRestriction",
-      "owlEdgeStyle": "dotted",
+      "owlEdgeStyle": "straight",
       "sourceCardinality": "",
       "isSelfLoop": false
     },
@@ -83,11 +83,11 @@
     {
       "sourceHint": "SelectiveOwner",
       "targetHint": "helper:union",
-      "predicate": "unionOf",
-      "predicateLabel": "",
+      "predicate": "equivalentClass",
+      "predicateLabel": "≡",
       "category": "object",
-      "axiomKind": "ClassExpression",
-      "owlEdgeStyle": "dotted",
+      "axiomKind": "EquivalentClasses",
+      "owlEdgeStyle": "straight",
       "sourceCardinality": "",
       "isSelfLoop": false
     }

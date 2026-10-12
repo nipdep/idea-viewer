@@ -68,11 +68,11 @@
     {
       "sourceHint": "AdaptiveSignal",
       "targetHint": "helper:union",
-      "predicate": "unionOf",
-      "predicateLabel": "",
+      "predicate": "equivalentClass",
+      "predicateLabel": "≡",
       "category": "object",
-      "axiomKind": "ClassExpression",
-      "owlEdgeStyle": "dotted",
+      "axiomKind": "EquivalentClasses",
+      "owlEdgeStyle": "straight",
       "sourceCardinality": "",
       "isSelfLoop": false
     },
@@ -105,7 +105,7 @@
       "predicateLabel": "(some) hasMeaning*",
       "category": "object",
       "axiomKind": "ClassExpressionRestriction",
-      "owlEdgeStyle": "dotted",
+      "owlEdgeStyle": "straight",
       "sourceCardinality": "",
       "isSelfLoop": false
     },

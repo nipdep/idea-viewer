@@ -625,6 +625,13 @@ function applyHoverMetadata(graphData, elements) {
       return next;
     }
 
+    // Class nodes carry no hover explanation: their statements are in the side panel, and the pop-up
+    // (a Manchester-syntax dump) only added noise on top of the drawn restrictions and axioms.
+    if (data.entityCategory === 'class') {
+      next.data.hoverText = '';
+      return next;
+    }
+
     const buckets = getNodeStatementBuckets(graphData, data.id);
     const hoverStatements =
       data.ontologyKind === 'object-property' || data.ontologyKind === 'data-property' || data.ontologyKind === 'annotation-property'

@@ -3,6 +3,7 @@ import { EdgeSymbol, MarkSymbol, NodeSymbol, NOTATION_COLORS } from '../notation
 
 const TOC = [
   { id: 'overview', title: 'Overview' },
+  { id: 'cheatsheet', title: 'Cheat sheet' },
   { id: 'views', title: 'The two views', children: [{ id: 'owl-view', title: 'OWL view' }, { id: 'rdf-view', title: 'RDF view' }] },
   {
     id: 'nodes',
@@ -33,7 +34,6 @@ const TOC = [
   },
   { id: 'hidden', title: 'What is not drawn' },
   { id: 'using', title: 'Using the viewer', children: [{ id: 'loading', title: 'Loading data' }, { id: 'layouts', title: 'Layouts and large graphs' }, { id: 'focus', title: 'Selecting and focusing' }, { id: 'search', title: 'Search and filters' }, { id: 'inspector', title: 'Entity inspector' }] },
-  { id: 'cheatsheet', title: 'Cheat sheet' },
 ];
 
 function Section({ id, level = 2, title, children }) {
@@ -159,6 +159,37 @@ export default function DocsPage() {
               </li>
             </ol>
           </div>
+        </Section>
+
+        <Section id="cheatsheet" title="Cheat sheet">
+          <table className="docs-table">
+            <thead>
+              <tr>
+                <th>You see</th>
+                <th>It means</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><NodeSymbol kind="class" /></td><td>class</td></tr>
+              <tr><td><NodeSymbol kind="individual" /></td><td>named individual</td></tr>
+              <tr><td><NodeSymbol kind="datatype" /></td><td>datatype</td></tr>
+              <tr><td><NodeSymbol kind="literal" /></td><td>literal</td></tr>
+              <tr><td><NodeSymbol kind="connector" label="∩" /></td><td>intersection (∪ union, ¬ complement)</td></tr>
+              <tr><td><NodeSymbol kind="enumeration" /></td><td>owl:oneOf area</td></tr>
+              <tr><td><EdgeSymbol tone="property" /></td><td>object property (ontology)</td></tr>
+              <tr><td><EdgeSymbol tone="property" line="dashed" /></td><td>data property (ontology)</td></tr>
+              <tr><td><EdgeSymbol arrow="hollow" /></td><td>subClassOf / subPropertyOf</td></tr>
+              <tr><td><EdgeSymbol /></td><td>built-in rdf / rdfs / owl relation</td></tr>
+              <tr><td><EdgeSymbol line="dotted" /></td><td>added by the viewer (connector or list member)</td></tr>
+              <tr><td><MarkSymbol text="(some) (all)" /></td><td>restriction quantifier</td></tr>
+              <tr><td><MarkSymbol text="* **" /></td><td>from subClassOf / from equivalentClass</td></tr>
+              <tr><td><MarkSymbol text="0..*" /></td><td>cardinality (class side)</td></tr>
+              <tr><td><MarkSymbol text="≡ ≢" /></td><td>equivalent / disjoint or different</td></tr>
+              <tr><td><MarkSymbol text="[F] [IF] [T] [S]" /></td><td>functional, inverse functional, transitive, symmetric</td></tr>
+              <tr><td><MarkSymbol text="⛓" /></td><td>property chain (read it in the side panel)</td></tr>
+              <tr><td><MarkSymbol text="[+N]" /></td><td>N folded nodes beneath</td></tr>
+            </tbody>
+          </table>
         </Section>
 
         <Section id="views" title="The two views">
@@ -451,36 +482,6 @@ export default function DocsPage() {
           </Section>
         </Section>
 
-        <Section id="cheatsheet" title="Cheat sheet">
-          <table className="docs-table">
-            <thead>
-              <tr>
-                <th>You see</th>
-                <th>It means</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td><NodeSymbol kind="class" /></td><td>class</td></tr>
-              <tr><td><NodeSymbol kind="individual" /></td><td>named individual</td></tr>
-              <tr><td><NodeSymbol kind="datatype" /></td><td>datatype</td></tr>
-              <tr><td><NodeSymbol kind="literal" /></td><td>literal</td></tr>
-              <tr><td><NodeSymbol kind="connector" label="∩" /></td><td>intersection (∪ union, ¬ complement)</td></tr>
-              <tr><td><NodeSymbol kind="enumeration" /></td><td>owl:oneOf area</td></tr>
-              <tr><td><EdgeSymbol tone="property" /></td><td>object property (ontology)</td></tr>
-              <tr><td><EdgeSymbol tone="property" line="dashed" /></td><td>data property (ontology)</td></tr>
-              <tr><td><EdgeSymbol arrow="hollow" /></td><td>subClassOf / subPropertyOf</td></tr>
-              <tr><td><EdgeSymbol /></td><td>built-in rdf / rdfs / owl relation</td></tr>
-              <tr><td><EdgeSymbol line="dotted" /></td><td>added by the viewer (connector or list member)</td></tr>
-              <tr><td><MarkSymbol text="(some) (all)" /></td><td>restriction quantifier</td></tr>
-              <tr><td><MarkSymbol text="* **" /></td><td>from subClassOf / from equivalentClass</td></tr>
-              <tr><td><MarkSymbol text="0..*" /></td><td>cardinality (class side)</td></tr>
-              <tr><td><MarkSymbol text="≡ ≢" /></td><td>equivalent / disjoint or different</td></tr>
-              <tr><td><MarkSymbol text="[F] [IF] [T] [S]" /></td><td>functional, inverse functional, transitive, symmetric</td></tr>
-              <tr><td><MarkSymbol text="⛓" /></td><td>property chain (read it in the side panel)</td></tr>
-              <tr><td><MarkSymbol text="[+N]" /></td><td>N folded nodes beneath</td></tr>
-            </tbody>
-          </table>
-        </Section>
       </main>
     </div>
   );

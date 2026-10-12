@@ -542,6 +542,12 @@ function manchesterNodeText(graphData, nodeId) {
   return compactIri(node.iri || node.id || node.fullLabel || node.label || nodeId);
 }
 
+// Asserted class relations whose edge to a class-expression connector is drawn exactly like a plain asserted edge.
+const ASSERTED_CONNECTOR_RELATIONS = new Map([
+  [OWL_EQUIVALENT_CLASS, { category: 'object', axiomKind: 'EquivalentClasses' }],
+  [RDFS_SUBCLASS_OF, { category: 'subclass', axiomKind: 'SubClassOf' }],
+]);
+
 function relationManchesterKeyword(predicate) {
   if (predicate === RDFS_SUBCLASS_OF) {
     return 'SubClassOf';
@@ -3137,18 +3143,35 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
       synthesizedNodes.push({
         data: expressionNodeData,
       });
+      // `anchor owl:equivalentClass|rdfs:subClassOf [ owl:intersectionOf (...) ]`: the edge from the anchor to the
+      // connector IS the asserted statement, so it is drawn like any asserted equivalence / subsumption edge
+      // (solid; the "≡" mark and the hollow arrowhead come from the shared styling). Only the connector's edges to
+      // its members are projections of the RDF list, and those stay dotted.
+      const assertedRelation = ASSERTED_CONNECTOR_RELATIONS.get(anchorDescriptor.relationPredicate);
       synthesizedEdges.push({
-        data: {
-          id: `${helperNodeId}:source`,
-          source: anchorSourceId,
-          target: helperNodeId,
-          predicate: edge.predicate,
-          predicateLabel: '',
-          category: 'object',
-          axiomKind: 'ClassExpression',
-          owlEdgeStyle: 'dotted',
-          owlSynthesized: 1,
-        },
+        data: assertedRelation
+          ? {
+              id: `${helperNodeId}:source`,
+              source: anchorSourceId,
+              target: helperNodeId,
+              predicate: anchorDescriptor.relationPredicate,
+              predicateLabel: '',
+              category: assertedRelation.category,
+              axiomKind: assertedRelation.axiomKind,
+              owlEdgeStyle: 'straight',
+              owlSynthesized: 1,
+            }
+          : {
+              id: `${helperNodeId}:source`,
+              source: anchorSourceId,
+              target: helperNodeId,
+              predicate: edge.predicate,
+              predicateLabel: '',
+              category: 'object',
+              axiomKind: 'ClassExpression',
+              owlEdgeStyle: 'dotted',
+              owlSynthesized: 1,
+            },
       });
       for (const member of projectedMembers) {
         synthesizedEdges.push({

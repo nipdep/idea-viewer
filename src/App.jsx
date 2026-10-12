@@ -1213,6 +1213,36 @@ function partitionOntologyHeaderQuads(quads) {
   };
 }
 
+// A property chain drawn as steps: each member, "then" between them, and what the chain implies.
+function PropertyChainView({ steps }) {
+  return (
+    <div className="chain-view">
+      <h4>Property chain{steps.length > 1 ? `s (${steps.length})` : ''}</h4>
+      {steps.map((step, index) => (
+        <div key={index} className="chain-card">
+          {step.members.map((member, memberIndex) => (
+            <Fragment key={memberIndex}>
+              {memberIndex > 0 && <div className="chain-then">then</div>}
+              <div className="chain-step">
+                <span className="chain-index">{memberIndex + 1}</span>
+                <span className="chain-name">
+                  {member.inverse && <em>inverse of </em>}
+                  {member.label}
+                </span>
+              </div>
+            </Fragment>
+          ))}
+          <div className="chain-then chain-implies">implies</div>
+          <div className="chain-step chain-result">
+            <span className="chain-index">⛓</span>
+            <span className="chain-name">{step.result}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function LongText({ text }) {
   if (text.length <= 220) {
     return <span className="overview-text">{text}</span>;
@@ -1717,6 +1747,7 @@ function ViewerApp() {
         restrictionKind: data.restrictionKind ?? '',
         // Rows a projection attaches to its own edges (cardinality details, property chains, ...).
         projectedMetadataRows: Array.isArray(data.projectedMetadataRows) ? data.projectedMetadataRows : [],
+        propertyChainSteps: Array.isArray(data.propertyChainSteps) ? data.propertyChainSteps : [],
       };
     },
     [selectedEdgeId, graphData, visibleElements],
@@ -7230,6 +7261,10 @@ function ViewerApp() {
                         </button>
                       </dd>
                     </dl>
+
+                    {selectedEdge.propertyChainSteps?.length > 0 && (
+                      <PropertyChainView steps={selectedEdge.propertyChainSteps} />
+                    )}
 
                     <h4>Relation metadata ({selectedEdgeMetadataRows.length})</h4>
                     <div className="property-list">

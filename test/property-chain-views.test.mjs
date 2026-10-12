@@ -33,8 +33,10 @@ for (const [name, builder, mode] of [
     const chainEdge = edges.find((edge) => /serves/.test(edge.data.predicateLabel ?? ''));
     assert.ok(chainEdge, 'property edge present');
     assert.match(chainEdge.data.predicateLabel, /⛓/);
-    const rows = chainEdge.data.projectedMetadataRows ?? [];
-    assert.ok(rows.some((row) => row.key === 'Property chain' && /hasPart o connectsTo -> serves/.test(row.value)), JSON.stringify(rows));
+    const steps = chainEdge.data.propertyChainSteps ?? [];
+    assert.deepEqual(steps.map((step) => step.members.map((member) => member.label)), [['hasPart', 'connectsTo']]);
+    assert.equal(steps[0].result, 'serves');
+    assert.match(chainEdge.data.hoverText, /hasPart o connectsTo -> serves/);
   });
 
   test(`${name} view leaves no list connector or cons-cell nodes for the chain`, async () => {
@@ -77,6 +79,6 @@ test('OWL view also marks restriction edges that use a chain property', async ()
   const restriction = elements.find((element) => element.data.source && element.data.axiomKind === 'Restriction');
   assert.ok(restriction, 'restriction edge present');
   assert.match(restriction.data.predicateLabel, /⛓/);
-  assert.ok(restriction.data.projectedMetadataRows.some((row) => /hasPart o connectsTo -> serves/.test(row.value)));
+  assert.equal(restriction.data.propertyChainSteps[0].members.length, 2);
   assert.equal((restriction.data.predicateLabel.match(/⛓/g) ?? []).length, 1, 'mark not doubled');
 });

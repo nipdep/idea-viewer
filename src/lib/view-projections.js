@@ -7,7 +7,7 @@ import {
   getTermId,
   makeDisplayLabel,
 } from './rdf';
-import { formatPropertyChain, markChainLabel, PROPERTY_CHAIN_ROW_KEY } from './property-chains';
+import { formatPropertyChain, markChainLabel } from './property-chains';
 import { relationPaletteCategory } from './relation-palette';
 
 export const GRAPH_VIEW_MODES = Object.freeze({
@@ -4428,10 +4428,11 @@ function annotatePropertyChains(graphData, elements) {
       .map((chain) => formatPropertyChain(chain.members, chain.propertyLabel));
     next.data.predicateLabel = markChainLabel(next.data.predicateLabel);
     next.data.propertyChain = 1;
-    next.data.projectedMetadataRows = [
-      ...(Array.isArray(next.data.projectedMetadataRows) ? next.data.projectedMetadataRows : []),
-      ...texts.map((value) => ({ key: PROPERTY_CHAIN_ROW_KEY, value })),
-    ];
+    // Structured for the inspector, which draws the chain step by step instead of as one line of text.
+    next.data.propertyChainSteps = chains.get(data.predicate).map((chain) => ({
+      members: chain.members.map((member) => ({ label: member.label, inverse: Boolean(member.inverse) })),
+      result: chain.propertyLabel,
+    }));
     next.data.hoverText = [next.data.hoverText, ...texts].filter(Boolean).join('\n');
     return next;
   });

@@ -944,33 +944,41 @@ function buildNeighborRows(selectedNodeId, graphData, visibleElements) {
     return [];
   }
 
-  const visibleEdgeIds = new Set(
-    (visibleElements ?? [])
-      .filter((element) => element?.data?.source)
-      .map((element) => element.data.id),
-  );
+  const nodeLabels = new Map();
+  for (const element of visibleElements ?? []) {
+    if (element?.data && !element.data.source) {
+      nodeLabels.set(element.data.id, element.data.fullLabel ?? element.data.label);
+    }
+  }
   const rows = [];
-  for (const edge of graphData.objectEdges ?? []) {
-    if (edge.category === 'type') {
+  const seen = new Set();
+  for (const element of visibleElements ?? []) {
+    const edge = element?.data;
+    // Only object properties: subclass, equivalence, type and other structural edges are not properties.
+    if (!edge?.source || edge.category !== 'object') {
       continue;
     }
-    if (visibleEdgeIds.size > 0 && !visibleEdgeIds.has(edge.id)) {
+    if (edge.source !== selectedNodeId && edge.target !== selectedNodeId) {
       continue;
     }
-
-    const { source, target, predicateLabel } = edge;
-    if (source !== selectedNodeId && target !== selectedNodeId) {
+    const outgoing = edge.source === selectedNodeId;
+    const neighborId = outgoing ? edge.target : edge.source;
+    const neighborLabel = graphData.nodeMap.get(neighborId)?.fullLabel ?? nodeLabels.get(neighborId) ?? neighborId;
+    const name = String(edge.predicateLabel || '').replace(/\*+$/, '').trim();
+    if (!name) {
       continue;
     }
-
-    const neighborId = source === selectedNodeId ? target : source;
-    const neighborNode = graphData.nodeMap.get(neighborId);
+    const key = `${edge.predicate}|${outgoing}|${neighborId}|${name}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
     rows.push({
       edgeId: edge.id,
-      direction: source === selectedNodeId ? 'outgoing' : 'incoming',
-      predicateLabel,
+      direction: outgoing ? 'outgoing' : 'incoming',
+      predicateLabel: name,
       neighborId,
-      neighborLabel: neighborNode?.fullLabel ?? neighborId,
+      neighborLabel,
     });
   }
 
@@ -7158,9 +7166,9 @@ function ViewerApp() {
                       ))}
                     </div>
 
-                    <h4>Object connections ({neighborRows.length})</h4>
+                    <h4>Object properties ({neighborRows.length})</h4>
                     <div className="neighbors">
-                      {neighborRows.length === 0 && <p className="muted">No object connections available for this node.</p>}
+                      {neighborRows.length === 0 && <p className="muted">No object properties available for this node.</p>}
                       {neighborRows.map((row) => (
                         <button
                           key={row.edgeId}

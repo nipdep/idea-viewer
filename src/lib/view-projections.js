@@ -1,4 +1,5 @@
 import { buildFocusedSubset, compactIri, DEFAULT_VIEW_OPTIONS, getNodeStatementBuckets, getTermId } from './rdf';
+import { relationPaletteCategory } from './relation-palette';
 
 export const GRAPH_VIEW_MODES = Object.freeze({
   OWL: 'owl',
@@ -237,21 +238,6 @@ function suppressMetadataEdges(elements) {
     const predicate = element?.data?.predicate;
     return !predicate || !METADATA_PREDICATES.has(predicate);
   });
-}
-
-function relationPaletteCategory(predicate) {
-  if (
-    predicate &&
-    (
-      predicate.startsWith(RDF_NS) ||
-      predicate.startsWith('http://www.w3.org/2000/01/rdf-schema#') ||
-      predicate.startsWith('rdf:') ||
-      predicate.startsWith('rdfs:')
-    )
-  ) {
-    return 'base';
-  }
-  return 'property';
 }
 
 function applyRelationPalette(elements) {

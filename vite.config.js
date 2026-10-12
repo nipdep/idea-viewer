@@ -126,6 +126,14 @@ export default defineConfig(({ mode }) => {
       __VERCEL_DEPLOYMENT__: JSON.stringify(isVercelDeployment),
       __TELEMETRY_ENABLED__: JSON.stringify(telemetryEnabled),
     },
+    build: {
+      rollupOptions: {
+        input: {
+          main: path.resolve(process.cwd(), 'index.html'),
+          docs: path.resolve(process.cwd(), 'docs.html'),
+        },
+      },
+    },
     plugins: [react(), ...(telemetryEnabled ? [telemetryPersistencePlugin()] : [])],
     server: {
       host: env.VITE_DEV_HOST || '0.0.0.0',

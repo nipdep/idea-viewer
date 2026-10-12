@@ -27,6 +27,8 @@ import {
   toggleExpanded,
 } from './lib/hierarchy-collapse';
 import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
+import Legend from './notation/Legend';
+import { docsUrl, openGuide, GUIDE_CLOSE_MESSAGE, GUIDE_OPEN_EVENT } from './notation/docs-url';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -1494,6 +1496,29 @@ function ViewerApp() {
   const [rightFlyoutOpen, setRightFlyoutOpen] = useState(false);
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
+  const [guideAnchor, setGuideAnchor] = useState(null);
+
+  useEffect(() => {
+    const onOpen = (event) => setGuideAnchor(event.detail?.anchor ?? '');
+    const onMessage = (event) => {
+      if (event.origin === window.location.origin && event.data?.type === GUIDE_CLOSE_MESSAGE) {
+        setGuideAnchor(null);
+      }
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        setGuideAnchor(null);
+      }
+    };
+    window.addEventListener(GUIDE_OPEN_EVENT, onOpen);
+    window.addEventListener('message', onMessage);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener(GUIDE_OPEN_EVENT, onOpen);
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGraphSearchOpen, setIsGraphSearchOpen] = useState(false);
@@ -6013,6 +6038,17 @@ function ViewerApp() {
         <div className="header-actions">
           <a
             className="header-icon-link"
+            href={docsUrl()}
+            onClick={openGuide}
+            aria-label="Open the usage guide"
+            title="Usage guide"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1Zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5Z" />
+            </svg>
+          </a>
+          <a
+            className="header-icon-link"
             href={GITHUB_ISSUES_URL}
             target="_blank"
             rel="noreferrer"
@@ -6916,72 +6952,7 @@ function ViewerApp() {
               )}
             </div>
 
-            {isLegendOpen && (
-              <div className="graph-legend-popover" role="dialog" aria-label="Graph legend">
-                <div className="graph-legend-title">Legend</div>
-                <div className="graph-legend-list">
-                  {graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? (
-                    <>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-class" />
-                        <span>Class or named resource</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-individual" />
-                        <span>Named individual or KG instance</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-literal" />
-                        <span>Literal value</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-rdf-syntax" />
-                        <span>Blank RDF / OWL syntax node</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-edge-marker edge-marker-base" />
-                        <span>`rdf:` / `rdfs:` relation</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-edge-marker edge-marker-property" />
-                        <span>Other relation, including `owl:`</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-edge-marker edge-marker-dotted" />
-                        <span>Added connector edge</span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-class" />
-                        <span>Class</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-individual" />
-                        <span>Named individual or KG instance</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-literal" />
-                        <span>Literal value</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-datatype" />
-                        <span>Datatype</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-marker marker-class-expression" />
-                        <span>OWL connector or set</span>
-                      </div>
-                      <div className="graph-legend-item">
-                        <span className="graph-legend-edge-marker" />
-                        <span>Labeled relation edge</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
+            {isLegendOpen && <Legend mode={graphProjectionMode === GRAPH_PROJECTION_MODES.RDF ? 'rdf' : 'owl'} />}
           </div>
 
           <div
@@ -7315,6 +7286,12 @@ function ViewerApp() {
           </>
         )}
       </div>
+
+      {guideAnchor !== null && (
+        <div className="guide-overlay" role="dialog" aria-label="Usage guide">
+          <iframe className="guide-frame" title="Usage guide" src={docsUrl(guideAnchor)} />
+        </div>
+      )}
 
       <footer className="app-footer">
         Copyright © 2026 Rensselaer Polytechnic Institute | Tetherless World Constellation

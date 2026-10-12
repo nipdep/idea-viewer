@@ -867,6 +867,26 @@ function filterProjectedElementsByGraphAxis(elements, graphFilterAxis) {
   return filteredElements;
 }
 
+const GRAPH_SEARCH_KINDS = [
+  { id: 'class', label: 'Classes' },
+  { id: 'object-property', label: 'Object properties' },
+  { id: 'data-property', label: 'Data properties' },
+  { id: 'datatype', label: 'Datatypes' },
+  { id: 'individual', label: 'Individuals' },
+];
+
+function getNodeSearchKind(node) {
+  switch (node?.entityCategory) {
+    case 'object-property':
+    case 'data-property':
+    case 'datatype':
+    case 'individual':
+      return node.entityCategory;
+    default:
+      return 'class';
+  }
+}
+
 function normalizeSearchText(value) {
   return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -1478,6 +1498,7 @@ function ViewerApp() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGraphSearchOpen, setIsGraphSearchOpen] = useState(false);
   const [graphSearchQuery, setGraphSearchQuery] = useState('');
+  const [graphSearchKinds, setGraphSearchKinds] = useState(() => GRAPH_SEARCH_KINDS.map((kind) => kind.id));
   const [debouncedGraphSearchQuery, setDebouncedGraphSearchQuery] = useState('');
   const [graphSearchActiveIndex, setGraphSearchActiveIndex] = useState(0);
   const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
@@ -1566,25 +1587,61 @@ function ViewerApp() {
         .map((entry) => entry.data.id),
     );
 
-    const matches = (graphData?.nodes ?? []).filter((node) => {
-      if (!searchableNodeIds.has(node.id)) {
-        return false;
+    const enabledKinds = new Set(graphSearchKinds);
+    const matches = (graphData?.nodes ?? [])
+      .filter((node) => {
+        if (!searchableNodeIds.has(node.id)) {
+          return false;
+        }
+        if (GRAPH_AXIS_HELPER_CATEGORIES.has(node.entityCategory ?? '')) {
+          return false;
+        }
+        if (node.edgeAnchor || node.edgeBendHandle) {
+          return false;
+        }
+        if (!enabledKinds.has(getNodeSearchKind(node))) {
+          return false;
+        }
+        return doesNodeMatchSearchQuery(node, normalizedQuery);
+      })
+      .map((node) => ({ id: node.id, kind: 'node' }));
+
+    // In the OWL view object and data properties are drawn as edges, so match them there (one hit per property).
+    const seenProperties = new Set(
+      (graphData?.nodes ?? [])
+        .filter(
+          (node) =>
+            searchableNodeIds.has(node.id) &&
+            (node.entityCategory === 'object-property' || node.entityCategory === 'data-property'),
+        )
+        .map((node) => node.iri ?? node.id),
+    );
+    for (const entry of visibleElements) {
+      const edge = entry?.data;
+      if (!edge?.source || (edge.category !== 'object' && edge.category !== 'data')) {
+        continue;
       }
-      if (GRAPH_AXIS_HELPER_CATEGORIES.has(node.entityCategory ?? '')) {
-        return false;
+      const kind = edge.category === 'data' ? 'data-property' : 'object-property';
+      if (!enabledKinds.has(kind) || !edge.predicate || seenProperties.has(edge.predicate)) {
+        continue;
       }
-      if (node.edgeAnchor || node.edgeBendHandle) {
-        return false;
+      const name = barePropertyName(edge.predicateLabel);
+      if (
+        !normalizeSearchText(name).includes(normalizedQuery) &&
+        !normalizeSearchText(edge.predicate).includes(normalizedQuery)
+      ) {
+        continue;
       }
-      return doesNodeMatchSearchQuery(node, normalizedQuery);
-    });
+      seenProperties.add(edge.predicate);
+      matches.push({ id: edge.id, kind: 'edge' });
+    }
     graphSearchMetricsRef.current = {
       durationMs: Number((performance.now() - startedAt).toFixed(3)),
       matchCount: matches.length,
       queryLength: debouncedGraphSearchQuery.trim().length,
     };
     return matches;
-  }, [debouncedGraphSearchQuery, graphData, visibleElements]);
+  }, [debouncedGraphSearchQuery, graphData, visibleElements, graphSearchKinds]);
   const activeGraphSearchMatch =
     graphSearchMatches.length > 0 ? graphSearchMatches[graphSearchActiveIndex] ?? graphSearchMatches[0] : null;
 
@@ -4368,9 +4425,15 @@ function ViewerApp() {
       return;
     }
 
-    const nextNodeId = graphSearchMatches[safeIndex]?.id ?? null;
-    if (nextNodeId) {
-      setSingleFocusedNode(nextNodeId);
+    const nextMatch = graphSearchMatches[safeIndex] ?? null;
+    if (nextMatch?.kind === 'edge') {
+      selectEdgeFromInspector(nextMatch.id);
+      const edge = cyRef.current?.getElementById(nextMatch.id);
+      if (edge && edge.nonempty()) {
+        cyRef.current.animate({ center: { eles: edge.connectedNodes() } }, { duration: 200 });
+      }
+    } else if (nextMatch?.id) {
+      setSingleFocusedNode(nextMatch.id);
     }
   }, [isGraphSearchOpen, debouncedGraphSearchQuery, graphSearchMatches, graphSearchActiveIndex]);
 
@@ -6700,8 +6763,8 @@ function ViewerApp() {
                         setGraphSearchQuery(event.target.value);
                         setGraphSearchActiveIndex(0);
                       }}
-                      placeholder="Find visible nodes by name..."
-                      aria-label="Find visible nodes by name"
+                      placeholder="Find classes, properties, datatypes, individuals..."
+                      aria-label="Find in graph by name"
                     />
                     <button
                       type="button"
@@ -6732,6 +6795,27 @@ function ViewerApp() {
                     >
                       <span aria-hidden="true">×</span>
                     </button>
+                    <div className="graph-search-kinds" role="group" aria-label="Search types">
+                      {GRAPH_SEARCH_KINDS.map((kind) => {
+                        const active = graphSearchKinds.includes(kind.id);
+                        return (
+                          <button
+                            key={kind.id}
+                            type="button"
+                            className={`graph-search-kind ${active ? 'active' : ''}`}
+                            aria-pressed={active}
+                            onClick={() => {
+                              setGraphSearchKinds((current) =>
+                                current.includes(kind.id) ? current.filter((id) => id !== kind.id) : [...current, kind.id],
+                              );
+                              setGraphSearchActiveIndex(0);
+                            }}
+                          >
+                            {kind.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

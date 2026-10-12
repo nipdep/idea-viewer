@@ -44,3 +44,22 @@ for (const [name, builder, mode] of [
     assert.deepEqual(nodes.filter((node) => /hasPart|connectsTo/.test(node.data.label ?? '')), []);
   });
 }
+
+test('properties that are only used (restriction, chain) and never declared are not drawn as nodes', async () => {
+  const quads = await parseRdfText(
+    `@prefix : <http://ex/> . @prefix ext: <http://other/> . @prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+:A a owl:Class ; rdfs:subClassOf [ a owl:Restriction ; owl:onProperty ext:identifies ; owl:someValuesFrom :A ],
+  [ a owl:Restriction ; owl:onProperty ext:size ; owl:someValuesFrom xsd:integer ] .
+:p a owl:ObjectProperty ; rdfs:domain :A ; rdfs:range :A ; owl:propertyChainAxiom ( :p ext:comprises ) .`,
+    'undeclared.ttl',
+  );
+  const graphData = buildGraphData(quads, { hasKg: false, hasOntology: true, ontologyModel: extractOntologyModel(quads) });
+  const category = (iri) => graphData.nodes.find((node) => node.id === iri)?.entityCategory;
+  assert.equal(category('http://other/identifies'), 'object-property');
+  assert.equal(category('http://other/comprises'), 'object-property');
+  assert.equal(category('http://other/size'), 'data-property');
+  const elements = buildOwlViewProjection(graphData, null, createViewOptions(GRAPH_VIEW_MODES.OWL, {}));
+  const drawn = elements.filter((element) => !element.data.source).map((element) => element.data.id);
+  assert.ok(!drawn.some((id) => id.startsWith('http://other/')), `drawn nodes: ${drawn}`);
+});

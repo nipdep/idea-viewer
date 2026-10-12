@@ -7,6 +7,7 @@ import {
   getTermId,
   makeDisplayLabel,
 } from './rdf';
+import { formatPropertyChain, markChainLabel, PROPERTY_CHAIN_ROW_KEY } from './property-chains';
 import { relationPaletteCategory } from './relation-palette';
 
 export const GRAPH_VIEW_MODES = Object.freeze({
@@ -1660,6 +1661,21 @@ function applyRdfSpecProjection(graphData, elements) {
 
   const handledListHeads = new Set();
 
+  // Property-chain lists are not drawn: the chain is shown on the property's own edge (see annotatePropertyChains).
+  const chainCellIds = graphData?.propertyChainCellIds instanceof Set ? graphData.propertyChainCellIds : new Set();
+  const chainMemberIds = graphData?.propertyChainMemberIds instanceof Set ? graphData.propertyChainMemberIds : new Set();
+  if (chainCellIds.size > 0) {
+    graphData.propertyChainHeadIds.forEach((headId) => handledListHeads.add(headId));
+    chainCellIds.forEach((cellId) => hiddenNodeIds.add(cellId));
+    for (const rawEdge of edgeElements) {
+      const data = rawEdge.data;
+      const isListEdge = data.predicate === RDF_FIRST || data.predicate === RDF_REST;
+      if ((chainCellIds.has(data.source) && isListEdge) || chainCellIds.has(data.target)) {
+        hiddenEdgeIds.add(data.id);
+      }
+    }
+  }
+
   for (const [sourceId, typeEdges] of typeEdgesBySource.entries()) {
     const typeTargets = new Set(typeEdges.map((edge) => edge.target));
     const isAllDifferent = typeTargets.has(OWL_ALL_DIFFERENT);
@@ -1956,8 +1972,18 @@ function applyRdfSpecProjection(graphData, elements) {
     });
   }
 
-  const filteredNodes = Array.from(nodeElementsById.values()).filter((element) => !hiddenNodeIds.has(element.data.id));
   const filteredEdges = edgeElements.filter((element) => !hiddenEdgeIds.has(element.data.id));
+  // A property that only appeared as a node because it was a chain member has nothing left to attach to.
+  const connectedNodeIds = new Set();
+  [...filteredEdges, ...addedEdges].forEach((element) => {
+    connectedNodeIds.add(element.data.source);
+    connectedNodeIds.add(element.data.target);
+  });
+  const filteredNodes = Array.from(nodeElementsById.values()).filter(
+    (element) =>
+      !hiddenNodeIds.has(element.data.id) &&
+      !(chainMemberIds.has(element.data.id) && !connectedNodeIds.has(element.data.id)),
+  );
   return [...filteredNodes, ...filteredEdges, ...addedEdges];
 }
 
@@ -4382,6 +4408,34 @@ export function createViewOptions(mode, flags = {}) {
   };
 }
 
+
+// `p owl:propertyChainAxiom (a b)`: p's own edge (domain -> range) gets the chain mark in its label, and the chain
+// (`a o b -> p`) is listed in the inspector and the hover text. The list itself is not drawn (see the RDF view).
+function annotatePropertyChains(graphData, elements) {
+  const chains = graphData?.propertyChains;
+  if (!(chains instanceof Map) || chains.size === 0) {
+    return elements;
+  }
+  return elements.map((element) => {
+    const data = element?.data;
+    if (!data?.source || data.axiomKind !== 'PropertyProjection' || !chains.has(data.predicate)) {
+      return element;
+    }
+    const next = cloneElement(element);
+    const texts = chains
+      .get(data.predicate)
+      .map((chain) => formatPropertyChain(chain.members, chain.propertyLabel));
+    next.data.predicateLabel = markChainLabel(next.data.predicateLabel);
+    next.data.propertyChain = 1;
+    next.data.projectedMetadataRows = [
+      ...(Array.isArray(next.data.projectedMetadataRows) ? next.data.projectedMetadataRows : []),
+      ...texts.map((value) => ({ key: PROPERTY_CHAIN_ROW_KEY, value })),
+    ];
+    next.data.hoverText = [next.data.hoverText, ...texts].filter(Boolean).join('\n');
+    return next;
+  });
+}
+
 export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
   const rdfProjectionLevel = viewOptions?.rdfProjectionLevel ?? RDF_PROJECTION_LEVELS.ALL;
   const options = normalizeProjectionFlags({
@@ -4418,10 +4472,13 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
     ),
   );
 
-  return suppressInfrastructureNodes(
+  return annotatePropertyChains(
     graphData,
-    suppressDisplayOnlyNodes(
-      rdfProjectionLevel === RDF_PROJECTION_LEVELS.ALL ? stripNodeBadges(projectedElements) : projectedElements,
+    suppressInfrastructureNodes(
+      graphData,
+      suppressDisplayOnlyNodes(
+        rdfProjectionLevel === RDF_PROJECTION_LEVELS.ALL ? stripNodeBadges(projectedElements) : projectedElements,
+      ),
     ),
   );
 }
@@ -4471,9 +4528,12 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
         owlProjectionLevel,
       ),
     );
-    return suppressInfrastructureNodes(
+    return annotatePropertyChains(
       graphData,
-      stripNodeBadges(projectedElements),
+      suppressInfrastructureNodes(
+        graphData,
+        stripNodeBadges(projectedElements),
+      ),
     );
   } catch (error) {
     console.error('OWL projection failed; falling back to base ontology graph.', error);

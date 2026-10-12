@@ -1,5 +1,6 @@
 import { DataFactory, Parser, Store } from 'n3';
 import { createBaseIriResolver, namespaceOf } from './base-iri.js';
+import { readPropertyChains } from './property-chains.js';
 import { AVERAGE_CHAR_WIDTH, computeTextBox, wrapToWidth } from './text-fit.js';
 
 export const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -2590,10 +2591,17 @@ export function buildGraphData(quads, options = {}) {
     .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
   const namedGraphs = Array.from(namedGraphMap.values()).sort((a, b) => a.label.localeCompare(b.label));
 
+  // owl:propertyChainAxiom statements: drawn as a mark on the property's own edge, not as a list of nodes.
+  const propertyChains = readPropertyChains(store, (iri) => labelIndex.get(iri) ?? compactIri(iri));
+
   const graphData = {
     store,
     nodes,
     edges,
+    propertyChains: propertyChains.byProperty,
+    propertyChainHeadIds: propertyChains.headIds,
+    propertyChainCellIds: propertyChains.cellIds,
+    propertyChainMemberIds: propertyChains.memberIds,
     objectEdges,
     literalEdges,
     classes,

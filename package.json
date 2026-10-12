@@ -10,10 +10,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "plot:scale-stats": "node scripts/plot-scale-stats.mjs",
-    "test:projections": "node --import ./test/projection-helpers/register-node-loader.mjs --test test/view-projections.test.mjs test/rdf-list-collapse.test.mjs test/property-characteristics.test.mjs",
+    "test:projections": "node --import ./test/projection-helpers/register-node-loader.mjs --test test/view-projections.test.mjs test/rdf-list-collapse.test.mjs test/property-characteristics.test.mjs test/property-chain-views.test.mjs",
     "test:projections:summary": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/projection-test-manifest-summary.mjs",
     "test:projections:generate": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/generate-projection-expectations.mjs",
-    "test:collapse": "node --test test/hierarchy-collapse.test.mjs test/builtin-vocabulary-filter.test.mjs test/relative-iri.test.mjs test/remote-source.test.mjs test/focus-neighborhood.test.mjs test/relation-palette.test.mjs test/text-fit.test.mjs test/base-iri.test.mjs test/class-types.test.mjs",
+    "test:collapse": "node --test test/hierarchy-collapse.test.mjs test/builtin-vocabulary-filter.test.mjs test/relative-iri.test.mjs test/remote-source.test.mjs test/focus-neighborhood.test.mjs test/relation-palette.test.mjs test/text-fit.test.mjs test/base-iri.test.mjs test/class-types.test.mjs test/property-chains.test.mjs",
     "bench:layout": "node scripts/layout-benchmark.mjs",
     "bench:layout:stability": "node scripts/layout-stability.mjs"
   },

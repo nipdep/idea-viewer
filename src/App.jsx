@@ -1505,6 +1505,8 @@ function ViewerApp() {
         category: data.category ?? 'object',
         axiomKind: data.axiomKind ?? '',
         restrictionKind: data.restrictionKind ?? '',
+        // Rows a projection attaches to its own edges (cardinality details, property chains, ...).
+        projectedMetadataRows: Array.isArray(data.projectedMetadataRows) ? data.projectedMetadataRows : [],
       };
     },
     [selectedEdgeId, graphData, visibleElements],

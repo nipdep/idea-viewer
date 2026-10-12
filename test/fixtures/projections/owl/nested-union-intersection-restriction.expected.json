@@ -37,15 +37,6 @@
       "termType": "BlankNode"
     },
     {
-      "idHint": "helper:restriction",
-      "label": "",
-      "entityCategory": "class-expression-connector",
-      "ontologyKind": "",
-      "blankExpressionType": "Restriction",
-      "graphRole": "class-expression-connector",
-      "termType": "BlankNode"
-    },
-    {
       "idHint": "helper:union",
       "label": "∪",
       "entityCategory": "owl-expression",
@@ -78,28 +69,6 @@
     },
     {
       "sourceHint": "helper:intersection",
-      "targetHint": "Caretaker",
-      "predicate": "intersectionOf",
-      "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "ClassExpression",
-      "owlEdgeStyle": "dotted",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
-      "sourceHint": "helper:intersection",
-      "targetHint": "helper:restriction",
-      "predicate": "intersectionOf",
-      "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "ClassExpression",
-      "owlEdgeStyle": "dotted",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
-      "sourceHint": "helper:restriction",
       "targetHint": "Animal",
       "predicate": "hasPet",
       "predicateLabel": "(some) hasPet*",
@@ -110,12 +79,23 @@
       "isSelfLoop": false
     },
     {
+      "sourceHint": "helper:intersection",
+      "targetHint": "Caretaker",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
+      "isSelfLoop": false
+    },
+    {
       "sourceHint": "helper:union",
       "targetHint": "helper:intersection",
-      "predicate": "subClassOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
+      "category": "type",
+      "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
       "isSelfLoop": false
@@ -123,10 +103,10 @@
     {
       "sourceHint": "helper:union",
       "targetHint": "Person",
-      "predicate": "subClassOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
+      "category": "type",
+      "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
       "isSelfLoop": false

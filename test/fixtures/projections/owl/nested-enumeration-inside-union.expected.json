@@ -92,10 +92,10 @@
     {
       "sourceHint": "helper:union",
       "targetHint": "helper:oneof",
-      "predicate": "subClassOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
+      "category": "type",
+      "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
       "isSelfLoop": false
@@ -103,10 +103,10 @@
     {
       "sourceHint": "helper:union",
       "targetHint": "SignalConcept",
-      "predicate": "subClassOf",
+      "predicate": "type",
       "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
+      "category": "type",
+      "axiomKind": "ClassExpression",
       "owlEdgeStyle": "dotted",
       "sourceCardinality": "",
       "isSelfLoop": false

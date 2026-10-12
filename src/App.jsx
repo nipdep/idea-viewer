@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import { QueryEngine } from '@comunica/query-sparql';
 import { DataFactory, Writer } from 'n3';
-import { buildGraphData, compactIri, extractOntologyModel, getNodeStatementBuckets, getTermId, parseRdfText } from './lib/rdf';
+import { buildGraphData, collectDeclaredOntologyIris, compactIri, extractOntologyModel, getNodeStatementBuckets, getTermId, parseRdfText } from './lib/rdf';
 import {
   buildProjectedElements,
   createViewOptions,
@@ -76,6 +76,10 @@ const GRAPH_FILTER_AXES = {
   TBOX: 't-box',
   ABOX: 'a-box',
 };
+const DEFAULT_LAYOUT_BY_VIEW = Object.freeze({
+  [GRAPH_PROJECTION_MODES.OWL]: GRAPH_LAYOUT_TYPES.HIERARCHY,
+  [GRAPH_PROJECTION_MODES.RDF]: GRAPH_LAYOUT_TYPES.SPREAD,
+});
 const PROJECTION_MODE_LABELS = {
   [GRAPH_PROJECTION_MODES.OWL]: 'OWL View',
   [GRAPH_PROJECTION_MODES.RDF]: 'RDF View',
@@ -863,6 +867,26 @@ function filterProjectedElementsByGraphAxis(elements, graphFilterAxis) {
   return filteredElements;
 }
 
+const GRAPH_SEARCH_KINDS = [
+  { id: 'class', label: 'Classes' },
+  { id: 'object-property', label: 'Object properties' },
+  { id: 'data-property', label: 'Data properties' },
+  { id: 'datatype', label: 'Datatypes' },
+  { id: 'individual', label: 'Individuals' },
+];
+
+function getNodeSearchKind(node) {
+  switch (node?.entityCategory) {
+    case 'object-property':
+    case 'data-property':
+    case 'datatype':
+    case 'individual':
+      return node.entityCategory;
+    default:
+      return 'class';
+  }
+}
+
 function normalizeSearchText(value) {
   return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -907,38 +931,74 @@ function runNodeNameFilter(graphData, queryText) {
   return matchedNodeIds;
 }
 
+// Data properties a class carries through axioms (restrictions, domain/range), shown as edges to a datatype.
+// Property label without the restriction quantifier "(some)", cardinality or "*" marks.
+function barePropertyName(label) {
+  return String(label ?? '').replace(/^\([^)]*\)\s*/, '').replace(/\s*\[[^\]]*\]/g, '').replace(/\*+$/, '').trim();
+}
+
+function buildAxiomDataPropertyRows(selectedNodeId, graphData, visibleElements) {
+  if (!selectedNodeId || !graphData) {
+    return [];
+  }
+  const rows = [];
+  const seen = new Set();
+  for (const element of visibleElements ?? []) {
+    const data = element?.data;
+    if (!data?.source || data.category !== 'data' || data.source !== selectedNodeId) {
+      continue;
+    }
+    const name = barePropertyName(data.predicateLabel || data.predicate);
+    const key = String(data.predicate);
+    if (!name || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    rows.push({ id: data.id, predicate: data.predicate, predicateLabel: name });
+  }
+  return rows;
+}
+
 function buildNeighborRows(selectedNodeId, graphData, visibleElements) {
   if (!selectedNodeId || !graphData) {
     return [];
   }
 
-  const visibleEdgeIds = new Set(
-    (visibleElements ?? [])
-      .filter((element) => element?.data?.source)
-      .map((element) => element.data.id),
-  );
+  const nodeLabels = new Map();
+  for (const element of visibleElements ?? []) {
+    if (element?.data && !element.data.source) {
+      nodeLabels.set(element.data.id, element.data.fullLabel ?? element.data.label);
+    }
+  }
   const rows = [];
-  for (const edge of graphData.objectEdges ?? []) {
-    if (edge.category === 'type') {
+  const seen = new Set();
+  for (const element of visibleElements ?? []) {
+    const edge = element?.data;
+    // Only object properties: subclass, equivalence, type and other structural edges are not properties.
+    if (!edge?.source || edge.category !== 'object') {
       continue;
     }
-    if (visibleEdgeIds.size > 0 && !visibleEdgeIds.has(edge.id)) {
+    if (edge.source !== selectedNodeId && edge.target !== selectedNodeId) {
       continue;
     }
-
-    const { source, target, predicateLabel } = edge;
-    if (source !== selectedNodeId && target !== selectedNodeId) {
+    const outgoing = edge.source === selectedNodeId;
+    const neighborId = outgoing ? edge.target : edge.source;
+    const neighborLabel = graphData.nodeMap.get(neighborId)?.fullLabel ?? nodeLabels.get(neighborId) ?? neighborId;
+    const name = barePropertyName(edge.predicateLabel);
+    if (!name) {
       continue;
     }
-
-    const neighborId = source === selectedNodeId ? target : source;
-    const neighborNode = graphData.nodeMap.get(neighborId);
+    const key = `${edge.predicate}|${outgoing}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
     rows.push({
       edgeId: edge.id,
-      direction: source === selectedNodeId ? 'outgoing' : 'incoming',
-      predicateLabel,
+      direction: outgoing ? 'outgoing' : 'incoming',
+      predicateLabel: name,
       neighborId,
-      neighborLabel: neighborNode?.fullLabel ?? neighborId,
+      neighborLabel,
     });
   }
 
@@ -1397,7 +1457,10 @@ function ViewerApp() {
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
   const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.OWL);
-  const [graphLayoutType, setGraphLayoutType] = useState(GRAPH_LAYOUT_TYPES.SPREAD);
+  // Each view keeps its own layout: the OWL view reads best as a hierarchy, the RDF view as a spread graph.
+  const [layoutByView, setLayoutByView] = useState(DEFAULT_LAYOUT_BY_VIEW);
+  const graphLayoutType = layoutByView[graphProjectionMode] ?? GRAPH_LAYOUT_TYPES.SPREAD;
+  const setGraphLayoutType = (layoutType) => setLayoutByView((current) => ({ ...current, [graphProjectionMode]: layoutType }));
   const lastLayoutTypeRef = useRef(graphLayoutType);
   const collapseStateRef = useRef(null);
   const previousNodeIdsRef = useRef(null);
@@ -1435,6 +1498,7 @@ function ViewerApp() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGraphSearchOpen, setIsGraphSearchOpen] = useState(false);
   const [graphSearchQuery, setGraphSearchQuery] = useState('');
+  const [graphSearchKinds, setGraphSearchKinds] = useState(() => GRAPH_SEARCH_KINDS.map((kind) => kind.id));
   const [debouncedGraphSearchQuery, setDebouncedGraphSearchQuery] = useState('');
   const [graphSearchActiveIndex, setGraphSearchActiveIndex] = useState(0);
   const [graphZoomSpeed, setGraphZoomSpeed] = useState(DEFAULT_GRAPH_ZOOM_SPEED);
@@ -1498,6 +1562,8 @@ function ViewerApp() {
         category: data.category ?? 'object',
         axiomKind: data.axiomKind ?? '',
         restrictionKind: data.restrictionKind ?? '',
+        // Rows a projection attaches to its own edges (cardinality details, property chains, ...).
+        projectedMetadataRows: Array.isArray(data.projectedMetadataRows) ? data.projectedMetadataRows : [],
       };
     },
     [selectedEdgeId, graphData, visibleElements],
@@ -1521,25 +1587,61 @@ function ViewerApp() {
         .map((entry) => entry.data.id),
     );
 
-    const matches = (graphData?.nodes ?? []).filter((node) => {
-      if (!searchableNodeIds.has(node.id)) {
-        return false;
+    const enabledKinds = new Set(graphSearchKinds);
+    const matches = (graphData?.nodes ?? [])
+      .filter((node) => {
+        if (!searchableNodeIds.has(node.id)) {
+          return false;
+        }
+        if (GRAPH_AXIS_HELPER_CATEGORIES.has(node.entityCategory ?? '')) {
+          return false;
+        }
+        if (node.edgeAnchor || node.edgeBendHandle) {
+          return false;
+        }
+        if (!enabledKinds.has(getNodeSearchKind(node))) {
+          return false;
+        }
+        return doesNodeMatchSearchQuery(node, normalizedQuery);
+      })
+      .map((node) => ({ id: node.id, kind: 'node' }));
+
+    // In the OWL view object and data properties are drawn as edges, so match them there (one hit per property).
+    const seenProperties = new Set(
+      (graphData?.nodes ?? [])
+        .filter(
+          (node) =>
+            searchableNodeIds.has(node.id) &&
+            (node.entityCategory === 'object-property' || node.entityCategory === 'data-property'),
+        )
+        .map((node) => node.iri ?? node.id),
+    );
+    for (const entry of visibleElements) {
+      const edge = entry?.data;
+      if (!edge?.source || (edge.category !== 'object' && edge.category !== 'data')) {
+        continue;
       }
-      if (GRAPH_AXIS_HELPER_CATEGORIES.has(node.entityCategory ?? '')) {
-        return false;
+      const kind = edge.category === 'data' ? 'data-property' : 'object-property';
+      if (!enabledKinds.has(kind) || !edge.predicate || seenProperties.has(edge.predicate)) {
+        continue;
       }
-      if (node.edgeAnchor || node.edgeBendHandle) {
-        return false;
+      const name = barePropertyName(edge.predicateLabel);
+      if (
+        !normalizeSearchText(name).includes(normalizedQuery) &&
+        !normalizeSearchText(edge.predicate).includes(normalizedQuery)
+      ) {
+        continue;
       }
-      return doesNodeMatchSearchQuery(node, normalizedQuery);
-    });
+      seenProperties.add(edge.predicate);
+      matches.push({ id: edge.id, kind: 'edge' });
+    }
     graphSearchMetricsRef.current = {
       durationMs: Number((performance.now() - startedAt).toFixed(3)),
       matchCount: matches.length,
       queryLength: debouncedGraphSearchQuery.trim().length,
     };
     return matches;
-  }, [debouncedGraphSearchQuery, graphData, visibleElements]);
+  }, [debouncedGraphSearchQuery, graphData, visibleElements, graphSearchKinds]);
   const activeGraphSearchMatch =
     graphSearchMatches.length > 0 ? graphSearchMatches[graphSearchActiveIndex] ?? graphSearchMatches[0] : null;
 
@@ -1639,6 +1741,14 @@ function ViewerApp() {
     setSelectedNodeId(nodeId);
     setFocusedNodeId(nodeId);
     setFocusedNodeIds(nodeId ? [nodeId] : []);
+  }
+
+  // Selecting a property from the node inspector selects the property's edge, not a node.
+  function selectEdgeFromInspector(edgeId) {
+    setSelectedNodeId(null);
+    setFocusedNodeId(null);
+    setFocusedNodeIds([]);
+    setSelectedEdgeId(edgeId);
   }
 
   function extendFocusedNodes(nodeId) {
@@ -3073,6 +3183,10 @@ function ViewerApp() {
     () => selectedNodeAllLiteralProperties.filter((row) => row.category !== 'annotation'),
     [selectedNodeAllLiteralProperties],
   );
+  const selectedNodeAxiomDataProperties = useMemo(
+    () => buildAxiomDataPropertyRows(selectedNodeId, graphData, visibleElements),
+    [selectedNodeId, graphData, visibleElements],
+  );
   const selectedNodeStatements = useMemo(
     () => (selectedNodeId && graphData ? getNodeStatementBuckets(graphData, selectedNodeId) : { processed: [], unprocessed: [] }),
     [selectedNodeId, graphData],
@@ -3134,7 +3248,9 @@ function ViewerApp() {
   const hasNamedIndividuals = Boolean(
     graphData?.nodes?.some((node) => node.isInstanceNode),
   );
-  const showClassTypeFilter = hasNamedIndividuals && allClassIris.length > 0;
+  // Class Type exists to filter instances by class in the RDF view; the OWL view shows classes themselves.
+  const showClassTypeFilter =
+    graphProjectionMode === GRAPH_PROJECTION_MODES.RDF && hasNamedIndividuals && allClassIris.length > 0;
   const showNamedGraphFilter = (graphData?.namedGraphs?.length ?? 0) > 0;
 
   const isAllClassesSelected =
@@ -4309,9 +4425,15 @@ function ViewerApp() {
       return;
     }
 
-    const nextNodeId = graphSearchMatches[safeIndex]?.id ?? null;
-    if (nextNodeId) {
-      setSingleFocusedNode(nextNodeId);
+    const nextMatch = graphSearchMatches[safeIndex] ?? null;
+    if (nextMatch?.kind === 'edge') {
+      selectEdgeFromInspector(nextMatch.id);
+      const edge = cyRef.current?.getElementById(nextMatch.id);
+      if (edge && edge.nonempty()) {
+        cyRef.current.animate({ center: { eles: edge.connectedNodes() } }, { duration: 200 });
+      }
+    } else if (nextMatch?.id) {
+      setSingleFocusedNode(nextMatch.id);
     }
   }, [isGraphSearchOpen, debouncedGraphSearchQuery, graphSearchMatches, graphSearchActiveIndex]);
 
@@ -5357,6 +5479,7 @@ function ViewerApp() {
     firstVisualizationRecordedRef.current = false;
     setUploadedFiles([]);
     setSourceUrlError('');
+    setLayoutByView(DEFAULT_LAYOUT_BY_VIEW);
     setGraphData(null);
     setVisibleElements([]);
     setSelectedClassIris([]);
@@ -5491,7 +5614,12 @@ function ViewerApp() {
         const graphBuildSpan = telemetry.startSpan('dataset.graph.build', {
           datasetTripletCount: mergedQuads.length,
         });
+        // The ontology header statements are split off before the graph is built; they still say which IRIs are
+        // ontologies, which decides how entities group into base IRIs.
+        const ontologyIris = new Set();
+        parsedFiles.forEach((parsed) => collectDeclaredOntologyIris(parsed.headerQuads).forEach((iri) => ontologyIris.add(iri)));
         const nextGraphData = buildGraphData(mergedQuads, {
+          ontologyIris,
           // Stop classifying uploads as "ontology" vs "KG".
           // We always render uploaded data through the ontology-style path,
           // while still extracting declarations from the triples themselves.
@@ -6635,8 +6763,8 @@ function ViewerApp() {
                         setGraphSearchQuery(event.target.value);
                         setGraphSearchActiveIndex(0);
                       }}
-                      placeholder="Find visible nodes by name..."
-                      aria-label="Find visible nodes by name"
+                      placeholder="Find classes, properties, datatypes, individuals..."
+                      aria-label="Find in graph by name"
                     />
                     <button
                       type="button"
@@ -6667,6 +6795,27 @@ function ViewerApp() {
                     >
                       <span aria-hidden="true">×</span>
                     </button>
+                    <div className="graph-search-kinds" role="group" aria-label="Search types">
+                      {GRAPH_SEARCH_KINDS.map((kind) => {
+                        const active = graphSearchKinds.includes(kind.id);
+                        return (
+                          <button
+                            key={kind.id}
+                            type="button"
+                            className={`graph-search-kind ${active ? 'active' : ''}`}
+                            aria-pressed={active}
+                            onClick={() => {
+                              setGraphSearchKinds((current) =>
+                                current.includes(kind.id) ? current.filter((id) => id !== kind.id) : [...current, kind.id],
+                              );
+                              setGraphSearchActiveIndex(0);
+                            }}
+                          >
+                            {kind.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -7086,23 +7235,22 @@ function ViewerApp() {
                       ))}
                     </div>
 
-                    <h4>Unprocessed statements ({selectedNodeStatements.unprocessed.length})</h4>
+                    <h4>Data properties ({selectedNodeDataProperties.length + selectedNodeAxiomDataProperties.length})</h4>
                     <div className="property-list">
-                      {selectedNodeStatements.unprocessed.length === 0 && (
-                        <p className="muted">No unprocessed source/property statements for this node.</p>
-                      )}
-                      {selectedNodeStatements.unprocessed.map((row) => (
-                        <div key={row.id} className="property-row">
-                          <div className="property-value statement-value breakable">{row.statement}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <h4>Data properties ({selectedNodeDataProperties.length})</h4>
-                    <div className="property-list">
-                      {selectedNodeDataProperties.length === 0 && (
+                      {selectedNodeDataProperties.length + selectedNodeAxiomDataProperties.length === 0 && (
                         <p className="muted">No literal properties available for this node.</p>
                       )}
+                      {selectedNodeAxiomDataProperties.map((property) => (
+                        <button
+                          key={property.id}
+                          className="neighbor-row"
+                          type="button"
+                          onClick={() => selectEdgeFromInspector(property.id)}
+                          title={property.predicate}
+                        >
+                          <span className="neighbor-text">{property.predicateLabel}</span>
+                        </button>
+                      ))}
                       {selectedNodeDataProperties.map((property, index) => (
                         <div
                           key={`${property.predicate}-${property.value.slice(0, 18)}-${index}`}
@@ -7115,24 +7263,34 @@ function ViewerApp() {
                       ))}
                     </div>
 
-                    <h4>Object connections ({neighborRows.length})</h4>
+                    <h4>Object properties ({neighborRows.length})</h4>
                     <div className="neighbors">
-                      {neighborRows.length === 0 && <p className="muted">No object connections available for this node.</p>}
+                      {neighborRows.length === 0 && <p className="muted">No object properties available for this node.</p>}
                       {neighborRows.map((row) => (
                         <button
                           key={row.edgeId}
                           className="neighbor-row"
                           type="button"
-                          onClick={() => {
-                            setSingleFocusedNode(row.neighborId);
-                          }}
-                          title={row.neighborLabel}
+                          onClick={() => selectEdgeFromInspector(row.edgeId)}
+                          title={row.predicateLabel}
                         >
                           <span className="badge">{row.direction}</span>
                           <span className="neighbor-text">
-                            {row.predicateLabel} → {row.neighborLabel}
+                            {row.predicateLabel}
                           </span>
                         </button>
+                      ))}
+                    </div>
+
+                    <h4>Unprocessed statements ({selectedNodeStatements.unprocessed.length})</h4>
+                    <div className="property-list">
+                      {selectedNodeStatements.unprocessed.length === 0 && (
+                        <p className="muted">No unprocessed source/property statements for this node.</p>
+                      )}
+                      {selectedNodeStatements.unprocessed.map((row) => (
+                        <div key={row.id} className="property-row">
+                          <div className="property-value statement-value breakable">{row.statement}</div>
+                        </div>
                       ))}
                     </div>
                   </>

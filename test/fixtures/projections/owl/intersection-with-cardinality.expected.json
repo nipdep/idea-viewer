@@ -19,15 +19,6 @@
       "termType": "BlankNode"
     },
     {
-      "idHint": "helper:restriction",
-      "label": "",
-      "entityCategory": "class-expression-connector",
-      "ontologyKind": "",
-      "blankExpressionType": "Restriction",
-      "graphRole": "class-expression-connector",
-      "termType": "BlankNode"
-    },
-    {
       "idHint": "ManagedParent",
       "label": "ManagedParent",
       "entityCategory": "class",
@@ -49,28 +40,6 @@
   "edges": [
     {
       "sourceHint": "helper:intersection",
-      "targetHint": "helper:restriction",
-      "predicate": "subClassOf",
-      "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
-      "owlEdgeStyle": "dotted",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
-      "sourceHint": "helper:intersection",
-      "targetHint": "Person",
-      "predicate": "subClassOf",
-      "predicateLabel": "",
-      "category": "object",
-      "axiomKind": "SubClassOf",
-      "owlEdgeStyle": "dotted",
-      "sourceCardinality": "",
-      "isSelfLoop": false
-    },
-    {
-      "sourceHint": "helper:restriction",
       "targetHint": "Child",
       "predicate": "hasChild",
       "predicateLabel": "hasChild*",
@@ -78,6 +47,17 @@
       "axiomKind": "ClassExpressionRestriction",
       "owlEdgeStyle": "straight",
       "sourceCardinality": "0..1",
+      "isSelfLoop": false
+    },
+    {
+      "sourceHint": "helper:intersection",
+      "targetHint": "Person",
+      "predicate": "type",
+      "predicateLabel": "",
+      "category": "type",
+      "axiomKind": "ClassExpression",
+      "owlEdgeStyle": "dotted",
+      "sourceCardinality": "",
       "isSelfLoop": false
     },
     {

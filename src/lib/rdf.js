@@ -1,4 +1,6 @@
 import { DataFactory, Parser, Store } from 'n3';
+import { createBaseIriResolver, namespaceOf } from './base-iri.js';
+import { readPropertyChains } from './property-chains.js';
 import { AVERAGE_CHAR_WIDTH, computeTextBox, wrapToWidth } from './text-fit.js';
 
 export const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -118,6 +120,22 @@ const HIDDEN_BACKGROUND_CLASS_IRIS = new Set([
   OWL_CLASS,
   RDFS_DATATYPE,
   RDFS_CLASS,
+]);
+// Declarations that describe a property or an axiom: never "the class of an instance", so they are not offered in
+// the Class Type filter. They are deliberately NOT in HIDDEN_BACKGROUND_CLASS_IRIS: property-characteristic
+// detection ([T], [S], ... markers on edge labels) relies on those types still being recorded.
+const NON_INSTANCE_CLASS_IRIS = new Set([
+  `${OWL_NS}SymmetricProperty`,
+  `${OWL_NS}TransitiveProperty`,
+  `${OWL_NS}FunctionalProperty`,
+  `${OWL_NS}InverseFunctionalProperty`,
+  `${OWL_NS}ReflexiveProperty`,
+  `${OWL_NS}IrreflexiveProperty`,
+  `${OWL_NS}AllDisjointProperties`,
+  `${OWL_NS}NegativePropertyAssertion`,
+  `${OWL_NS}DataRange`,
+  `${OWL_NS}DeprecatedClass`,
+  `${OWL_NS}DeprecatedProperty`,
 ]);
 const BUILTIN_ANNOTATION_PREDICATES = new Set([
   `${RDFS_NS}label`,
@@ -243,6 +261,38 @@ const METADATA_PREDICATES = new Set([
   SKOS_DEFINITION,
 ]);
 
+/** Named IRIs that appear as a subject or object (the nodes of the graph). */
+function collectNamedNodeIris(quads) {
+  const iris = new Set();
+  for (const quad of quads) {
+    if (quad.subject.termType === 'NamedNode') {
+      iris.add(quad.subject.value);
+    }
+    if (quad.object.termType === 'NamedNode') {
+      iris.add(quad.object.value);
+    }
+  }
+  return iris;
+}
+
+/** Ontology IRIs declared in the data: owl:Ontology subjects plus owl:imports / owl:versionIRI targets. */
+export function collectDeclaredOntologyIris(quads) {
+  const ontologyIris = new Set();
+  for (const quad of quads) {
+    if (quad.predicate.value === RDF_TYPE && quad.object.termType === 'NamedNode' && quad.object.value === OWL_ONTOLOGY) {
+      if (quad.subject.termType === 'NamedNode') {
+        ontologyIris.add(quad.subject.value);
+      }
+    } else if (
+      (quad.predicate.value === OWL_IMPORTS || quad.predicate.value === OWL_VERSION_IRI) &&
+      quad.object.termType === 'NamedNode'
+    ) {
+      ontologyIris.add(quad.object.value);
+    }
+  }
+  return ontologyIris;
+}
+
 function collectOntologySubjectIds(quads) {
   const ontologySubjectIds = new Set();
   for (const quad of quads) {
@@ -276,91 +326,6 @@ function isRenderableTerm(term) {
 
 function isDefaultGraphTerm(term) {
   return !term || term.termType === 'DefaultGraph';
-}
-
-function getBaseIri(iri) {
-  if (!iri) {
-    return '';
-  }
-
-  const hashIndex = iri.lastIndexOf('#');
-  if (hashIndex >= 0) {
-    return iri.slice(0, hashIndex + 1);
-  }
-
-  // For HTTP(S) IRIs, derive a single ontology-root base in the form:
-  // <some-url>/<ontology-acronym>
-  // (no trailing slash), so deeper paths collapse under that base.
-  try {
-    const url = new URL(iri);
-    if (url.protocol === 'http:' || url.protocol === 'https:') {
-      const pathSegments = url.pathname.split('/').filter(Boolean);
-      if (pathSegments.length === 0) {
-        return url.origin;
-      }
-
-      const stopWords = new Set([
-        'ontology',
-        'ontologies',
-        'resource',
-        'resources',
-        'class',
-        'classes',
-        'individual',
-        'individuals',
-        'instance',
-        'instances',
-        'entity',
-        'entities',
-        'vocabulary',
-        'schema',
-        'model',
-        'data',
-      ]);
-
-      const isLikelyOntologyAcronym = (segment) => {
-        if (!segment || segment.length > 24 || /^\d+$/.test(segment)) {
-          return false;
-        }
-
-        const lower = segment.toLowerCase();
-        if (stopWords.has(lower)) {
-          return false;
-        }
-
-        const compact = segment.replace(/[-_]/g, '');
-        if (!/[a-zA-Z]/.test(compact) || compact.length < 2 || compact.length > 12) {
-          return false;
-        }
-
-        const hasUpper = /[A-Z]/.test(compact);
-        const isShortLowercaseToken = compact.length <= 5;
-        return hasUpper || isShortLowercaseToken;
-      };
-
-      let ontologyIndex = pathSegments.findIndex((segment) => isLikelyOntologyAcronym(segment));
-      if (ontologyIndex === -1) {
-        ontologyIndex = 0;
-      }
-
-      const basePath = pathSegments.slice(0, ontologyIndex + 1).join('/');
-      return `${url.origin}/${basePath}`;
-    }
-  } catch {
-    // Ignore URL parse failures and continue with generic fallbacks.
-  }
-
-  const slashIndex = iri.lastIndexOf('/');
-  if (slashIndex >= 0) {
-    return iri.slice(0, slashIndex + 1);
-  }
-
-  const colonIndex = iri.lastIndexOf(':');
-  if (colonIndex >= 0) {
-    return iri.slice(0, colonIndex + 1);
-  }
-
-  return iri;
 }
 
 function formatTermValue(term) {
@@ -915,7 +880,7 @@ function makeNodeData(term, labelIndex, options = {}) {
   return {
     id,
     iri: term.value,
-    baseIri: termType === 'NamedNode' ? getBaseIri(term.value) : '',
+    baseIri: termType === 'NamedNode' ? (options.baseIriOf ?? namespaceOf)(term.value) : '',
     termType,
     literalValue: termType === 'Literal' ? term.value : '',
     literalDatatype: termType === 'Literal' ? term.datatype?.value ?? '' : '',
@@ -2057,6 +2022,10 @@ export function buildGraphData(quads, options = {}) {
   const ontologyNamedIndividualNodeIds =
     ontologyModel.namedIndividualIds instanceof Set ? ontologyModel.namedIndividualIds : new Set();
   const { blankRoles, blankLabelById, restrictionKindById, restrictionTooltipById } = buildBlankExpressionIndex(graphQuads);
+  const baseIriOf = createBaseIriResolver({
+    iris: collectNamedNodeIris(graphQuads),
+    ontologyIris: [...(options.ontologyIris ?? []), ...collectDeclaredOntologyIris(quads)],
+  });
 
   const nodeMap = new Map();
   const edgeMap = new Map();
@@ -2081,7 +2050,7 @@ export function buildGraphData(quads, options = {}) {
   const ensureNode = (term) => {
     const nodeId = getTermId(term);
     if (!nodeMap.has(nodeId)) {
-      nodeMap.set(nodeId, makeNodeData(term, labelIndex, { blankLabelById }));
+      nodeMap.set(nodeId, makeNodeData(term, labelIndex, { blankLabelById, baseIriOf }));
     }
     return nodeMap.get(nodeId);
   };
@@ -2614,16 +2583,25 @@ export function buildGraphData(quads, options = {}) {
 
   const nodes = Array.from(nodeMap.values());
   const edges = [...objectEdges, ...literalEdges];
-  const classes = Array.from(classMap.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const classes = Array.from(classMap.values())
+    .filter((entry) => !NON_INSTANCE_CLASS_IRIS.has(entry.id))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   const baseIris = Array.from(baseIriCounts.entries())
     .map(([id, count]) => ({ id, label: id, count }))
     .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
   const namedGraphs = Array.from(namedGraphMap.values()).sort((a, b) => a.label.localeCompare(b.label));
 
+  // owl:propertyChainAxiom statements: drawn as a mark on the property's own edge, not as a list of nodes.
+  const propertyChains = readPropertyChains(store, (iri) => labelIndex.get(iri) ?? compactIri(iri));
+
   const graphData = {
     store,
     nodes,
     edges,
+    propertyChains: propertyChains.byProperty,
+    propertyChainHeadIds: propertyChains.headIds,
+    propertyChainCellIds: propertyChains.cellIds,
+    propertyChainMemberIds: propertyChains.memberIds,
     objectEdges,
     literalEdges,
     classes,

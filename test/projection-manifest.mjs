@@ -193,8 +193,8 @@ const owlCaseDefinitions = [
     ],
     structuralEdges: [
       { sourceHint: 'WorkingStudent', targetHint: 'helper:intersection', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:intersection', targetHint: 'Student', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:intersection', targetHint: 'Employee', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:intersection', targetHint: 'Student', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:intersection', targetHint: 'Employee', predicate: 'type', owlEdgeStyle: 'dotted' },
     ],
   },
   {
@@ -222,8 +222,8 @@ const owlCaseDefinitions = [
     ],
     structuralEdges: [
       { sourceHint: 'WorkingStudent', targetHint: 'helper:intersection', predicate: 'subClassOf', category: 'subclass', axiomKind: 'SubClassOf', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:intersection', targetHint: 'Student', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:intersection', targetHint: 'Employee', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:intersection', targetHint: 'Student', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:intersection', targetHint: 'Employee', predicate: 'type', owlEdgeStyle: 'dotted' },
     ],
   },
   {
@@ -250,8 +250,8 @@ const owlCaseDefinitions = [
     ],
     structuralEdges: [
       { sourceHint: 'ParentRole', targetHint: 'helper:union', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:union', targetHint: 'Mother', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:union', targetHint: 'Father', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'Mother', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'Father', predicate: 'type', owlEdgeStyle: 'dotted' },
     ],
   },
   {
@@ -490,13 +490,11 @@ const owlCaseDefinitions = [
       { idHint: 'Person', ontologyKind: 'class' },
       { idHint: 'Animal', ontologyKind: 'class' },
       { idHint: 'helper:union', blankExpressionType: 'Union' },
-      { idHint: 'helper:restriction', blankExpressionType: 'Restriction' },
     ],
     structuralEdges: [
       { sourceHint: 'FlexibleOwner', targetHint: 'helper:union', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:union', targetHint: 'Person', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:union', targetHint: 'helper:restriction', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:restriction', targetHint: 'Animal', predicate: 'hasPet', predicateLabel: '(some) hasPet*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
+      { sourceHint: 'helper:union', targetHint: 'Person', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'Animal', predicate: 'hasPet', predicateLabel: '(some) hasPet*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
     ],
   },
   {
@@ -550,13 +548,11 @@ const owlCaseDefinitions = [
       { idHint: 'Person', ontologyKind: 'class' },
       { idHint: 'Child', ontologyKind: 'class' },
       { idHint: 'helper:union', blankExpressionType: 'Union' },
-      { idHint: 'helper:restriction', blankExpressionType: 'Restriction' },
     ],
     structuralEdges: [
       { sourceHint: 'LimitedRole', targetHint: 'helper:union', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:union', targetHint: 'Person', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:union', targetHint: 'helper:restriction', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:restriction', targetHint: 'Child', predicate: 'hasChild', predicateLabel: 'hasChild*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight', sourceCardinality: '0..1' },
+      { sourceHint: 'helper:union', targetHint: 'Person', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'Child', predicate: 'hasChild', predicateLabel: 'hasChild*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight', sourceCardinality: '0..1' },
     ],
   },
   {
@@ -580,13 +576,11 @@ const owlCaseDefinitions = [
       { idHint: 'Person', ontologyKind: 'class' },
       { idHint: 'Married', entityCategory: 'individual' },
       { idHint: 'helper:intersection', blankExpressionType: 'Intersection' },
-      { idHint: 'helper:restriction', blankExpressionType: 'Restriction' },
     ],
     structuralEdges: [
       { sourceHint: 'CommittedPerson', targetHint: 'helper:intersection', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:intersection', targetHint: 'Person', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:intersection', targetHint: 'helper:restriction', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:restriction', targetHint: 'Married', predicate: 'hasStatus', predicateLabel: 'hasStatus', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
+      { sourceHint: 'helper:intersection', targetHint: 'Person', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:intersection', targetHint: 'Married', predicate: 'hasStatus', predicateLabel: 'hasStatus', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
     ],
   },
   {
@@ -642,13 +636,11 @@ const owlCaseDefinitions = [
       { idHint: 'Person', ontologyKind: 'class' },
       { idHint: 'Animal', ontologyKind: 'class' },
       { idHint: 'helper:union', blankExpressionType: 'Union' },
-      { idHint: 'helper:restriction', blankExpressionType: 'Restriction' },
     ],
     structuralEdges: [
       { sourceHint: 'SelectiveOwner', targetHint: 'helper:union', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:union', targetHint: 'Person', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:union', targetHint: 'helper:restriction', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:restriction', targetHint: 'Animal', predicate: 'hasPet', predicateLabel: '(all) hasPet*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
+      { sourceHint: 'helper:union', targetHint: 'Person', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'Animal', predicate: 'hasPet', predicateLabel: '(all) hasPet*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
     ],
   },
   {
@@ -672,13 +664,11 @@ const owlCaseDefinitions = [
       { idHint: 'Person', ontologyKind: 'class' },
       { idHint: 'Child', ontologyKind: 'class' },
       { idHint: 'helper:intersection', blankExpressionType: 'Intersection' },
-      { idHint: 'helper:restriction', blankExpressionType: 'Restriction' },
     ],
     structuralEdges: [
       { sourceHint: 'ManagedParent', targetHint: 'helper:intersection', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:intersection', targetHint: 'Person', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:intersection', targetHint: 'helper:restriction', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:restriction', targetHint: 'Child', predicate: 'hasChild', predicateLabel: 'hasChild*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight', sourceCardinality: '0..1' },
+      { sourceHint: 'helper:intersection', targetHint: 'Person', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:intersection', targetHint: 'Child', predicate: 'hasChild', predicateLabel: 'hasChild*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight', sourceCardinality: '0..1' },
     ],
   },
   {
@@ -704,15 +694,13 @@ const owlCaseDefinitions = [
       { idHint: 'Meaning', ontologyKind: 'class' },
       { idHint: 'Operator', ontologyKind: 'class' },
       { idHint: 'helper:union', blankExpressionType: 'Union' },
-      { idHint: 'helper:restriction', blankExpressionType: 'Restriction' },
     ],
     structuralEdges: [
       { sourceHint: 'AdaptiveSignal', targetHint: 'SignalConcept', predicate: 'equivalentClass', predicateLabel: '≡', axiomKind: 'EquivalentClasses' },
       { sourceHint: 'AdaptiveSignal', targetHint: 'helper:union', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
       { sourceHint: 'AdaptiveSignal', targetHint: 'Operator', predicate: 'observedBy', predicateLabel: '(some) observedBy*', axiomKind: 'Restriction' },
-      { sourceHint: 'helper:union', targetHint: 'ManualSignal', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:union', targetHint: 'helper:restriction', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:restriction', targetHint: 'Meaning', predicate: 'hasMeaning', predicateLabel: '(some) hasMeaning*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
+      { sourceHint: 'helper:union', targetHint: 'ManualSignal', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'Meaning', predicate: 'hasMeaning', predicateLabel: '(some) hasMeaning*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
     ],
   },
   {
@@ -770,10 +758,10 @@ const owlCaseDefinitions = [
     ],
     structuralEdges: [
       { sourceHint: 'ComplexAgent', targetHint: 'helper:intersection', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:intersection', targetHint: 'Person', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:intersection', targetHint: 'helper:union', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:union', targetHint: 'Employee', predicate: 'unionOf', owlEdgeStyle: 'dotted', axiomKind: 'ClassExpression' },
-      { sourceHint: 'helper:union', targetHint: 'Volunteer', predicate: 'unionOf', owlEdgeStyle: 'dotted', axiomKind: 'ClassExpression' },
+      { sourceHint: 'helper:intersection', targetHint: 'Person', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:intersection', targetHint: 'helper:union', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'Employee', predicate: 'type', owlEdgeStyle: 'dotted', axiomKind: 'ClassExpression' },
+      { sourceHint: 'helper:union', targetHint: 'Volunteer', predicate: 'type', owlEdgeStyle: 'dotted', axiomKind: 'ClassExpression' },
     ],
   },
   {
@@ -798,15 +786,13 @@ const owlCaseDefinitions = [
       { idHint: 'Animal', ontologyKind: 'class' },
       { idHint: 'helper:union', blankExpressionType: 'Union' },
       { idHint: 'helper:intersection', blankExpressionType: 'Intersection' },
-      { idHint: 'helper:restriction', blankExpressionType: 'Restriction' },
     ],
     structuralEdges: [
       { sourceHint: 'AdaptiveOwner', targetHint: 'helper:union', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:union', targetHint: 'Person', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:union', targetHint: 'helper:intersection', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:intersection', targetHint: 'Caretaker', predicate: 'intersectionOf', owlEdgeStyle: 'dotted', axiomKind: 'ClassExpression' },
-      { sourceHint: 'helper:intersection', targetHint: 'helper:restriction', predicate: 'intersectionOf', owlEdgeStyle: 'dotted', axiomKind: 'ClassExpression' },
-      { sourceHint: 'helper:restriction', targetHint: 'Animal', predicate: 'hasPet', predicateLabel: '(some) hasPet*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
+      { sourceHint: 'helper:union', targetHint: 'Person', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'helper:intersection', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:intersection', targetHint: 'Caretaker', predicate: 'type', owlEdgeStyle: 'dotted', axiomKind: 'ClassExpression' },
+      { sourceHint: 'helper:intersection', targetHint: 'Animal', predicate: 'hasPet', predicateLabel: '(some) hasPet*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
     ],
   },
   {
@@ -834,8 +820,8 @@ const owlCaseDefinitions = [
     ],
     structuralEdges: [
       { sourceHint: 'CompositeSignal', targetHint: 'helper:union', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:union', targetHint: 'SignalConcept', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:union', targetHint: 'helper:oneof', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'SignalConcept', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:union', targetHint: 'helper:oneof', predicate: 'type', owlEdgeStyle: 'dotted' },
       { sourceHint: 'helper:oneof', targetHint: 'Red', predicate: 'oneOf', owlEdgeStyle: 'dotted', axiomKind: 'ClassExpression' },
       { sourceHint: 'helper:oneof', targetHint: 'Yellow', predicate: 'oneOf', owlEdgeStyle: 'dotted', axiomKind: 'ClassExpression' },
     ],
@@ -861,13 +847,11 @@ const owlCaseDefinitions = [
       { idHint: 'Person', ontologyKind: 'class' },
       { idHint: 'Animal', ontologyKind: 'class' },
       { idHint: 'helper:intersection', blankExpressionType: 'Intersection' },
-      { idHint: 'helper:restriction', blankExpressionType: 'Restriction' },
     ],
     structuralEdges: [
       { sourceHint: 'ResponsiblePetOwner', targetHint: 'helper:intersection', predicate: 'equivalentClass', owlEdgeStyle: 'straight' },
-      { sourceHint: 'helper:intersection', targetHint: 'Person', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:intersection', targetHint: 'helper:restriction', predicate: 'subClassOf', owlEdgeStyle: 'dotted' },
-      { sourceHint: 'helper:restriction', targetHint: 'Animal', predicate: 'hasPet', predicateLabel: '(some) hasPet*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
+      { sourceHint: 'helper:intersection', targetHint: 'Person', predicate: 'type', owlEdgeStyle: 'dotted' },
+      { sourceHint: 'helper:intersection', targetHint: 'Animal', predicate: 'hasPet', predicateLabel: '(some) hasPet*', axiomKind: 'ClassExpressionRestriction', owlEdgeStyle: 'straight' },
     ],
   },
 ];

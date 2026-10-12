@@ -1070,7 +1070,7 @@ textarea {
 
 .graph-search-panel {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-height: 36px;
 }
@@ -1112,6 +1112,7 @@ textarea {
 
 .graph-search-fields {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: min(460px, calc(100vw - 96px));
@@ -1124,7 +1125,7 @@ textarea {
 }
 
 .graph-search-fields input {
-  flex: 1 1 auto;
+  flex: 1 0 100%;
   min-width: 0;
   height: 34px;
   border: 1px solid rgba(30, 27, 22, 0.14);
@@ -2013,4 +2014,30 @@ textarea {
 /* cytoscape-expand-collapse injects a cue overlay canvas; cues are disabled, and it must not block the toolbar. */
 .expand-collapse-canvas {
   pointer-events: none !important;
+}
+
+.graph-search-kinds {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-left: 4px;
+}
+
+.graph-search-kind {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgba(30, 27, 22, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--muted);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.graph-search-kind.active {
+  border-color: rgba(42, 111, 110, 0.4);
+  background: rgba(42, 111, 110, 0.14);
+  color: #1f5f5e;
 }

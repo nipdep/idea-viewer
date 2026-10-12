@@ -7,6 +7,7 @@ import {
   getTermId,
   makeDisplayLabel,
 } from './rdf';
+import { formatPropertyChain, markChainLabel, PROPERTY_CHAIN_ROW_KEY } from './property-chains';
 import { relationPaletteCategory } from './relation-palette';
 
 export const GRAPH_VIEW_MODES = Object.freeze({
@@ -1660,6 +1661,21 @@ function applyRdfSpecProjection(graphData, elements) {
 
   const handledListHeads = new Set();
 
+  // Property-chain lists are not drawn: the chain is shown on the property's own edge (see annotatePropertyChains).
+  const chainCellIds = graphData?.propertyChainCellIds instanceof Set ? graphData.propertyChainCellIds : new Set();
+  const chainMemberIds = graphData?.propertyChainMemberIds instanceof Set ? graphData.propertyChainMemberIds : new Set();
+  if (chainCellIds.size > 0) {
+    graphData.propertyChainHeadIds.forEach((headId) => handledListHeads.add(headId));
+    chainCellIds.forEach((cellId) => hiddenNodeIds.add(cellId));
+    for (const rawEdge of edgeElements) {
+      const data = rawEdge.data;
+      const isListEdge = data.predicate === RDF_FIRST || data.predicate === RDF_REST;
+      if ((chainCellIds.has(data.source) && isListEdge) || chainCellIds.has(data.target)) {
+        hiddenEdgeIds.add(data.id);
+      }
+    }
+  }
+
   for (const [sourceId, typeEdges] of typeEdgesBySource.entries()) {
     const typeTargets = new Set(typeEdges.map((edge) => edge.target));
     const isAllDifferent = typeTargets.has(OWL_ALL_DIFFERENT);
@@ -1956,8 +1972,18 @@ function applyRdfSpecProjection(graphData, elements) {
     });
   }
 
-  const filteredNodes = Array.from(nodeElementsById.values()).filter((element) => !hiddenNodeIds.has(element.data.id));
   const filteredEdges = edgeElements.filter((element) => !hiddenEdgeIds.has(element.data.id));
+  // A property that only appeared as a node because it was a chain member has nothing left to attach to.
+  const connectedNodeIds = new Set();
+  [...filteredEdges, ...addedEdges].forEach((element) => {
+    connectedNodeIds.add(element.data.source);
+    connectedNodeIds.add(element.data.target);
+  });
+  const filteredNodes = Array.from(nodeElementsById.values()).filter(
+    (element) =>
+      !hiddenNodeIds.has(element.data.id) &&
+      !(chainMemberIds.has(element.data.id) && !connectedNodeIds.has(element.data.id)),
+  );
   return [...filteredNodes, ...filteredEdges, ...addedEdges];
 }
 
@@ -2232,6 +2258,7 @@ function buildProjectedRestrictionTargetNode(
   for (const memberId of memberIds) {
     let resolvedTargetId = memberId;
     let nestedProjection = null;
+    let inlineEdges = null;
     if (!visibleNodeIds.has(memberId)) {
       nestedProjection = buildProjectedRestrictionTargetNode(
         graphData,
@@ -2246,8 +2273,9 @@ function buildProjectedRestrictionTargetNode(
         continue;
       }
       resolvedTargetId = nestedProjection.rootTargetId;
-      synthesizedNodes.push(...nestedProjection.synthesizedNodes);
-      synthesizedEdges.push(...nestedProjection.synthesizedEdges);
+      inlineEdges = INLINE_RESTRICTION_KINDS.has(config.kind) ? splitInlineableRestriction(nestedProjection) : null;
+      synthesizedNodes.push(...(inlineEdges ? inlineEdges.nodes : nestedProjection.synthesizedNodes));
+      synthesizedEdges.push(...(inlineEdges ? inlineEdges.rest : nestedProjection.synthesizedEdges));
       for (const hiddenNodeId of nestedProjection.hiddenNodeIds) {
         hiddenNodeIds.add(hiddenNodeId);
       }
@@ -2257,8 +2285,12 @@ function buildProjectedRestrictionTargetNode(
     }
 
     connectorTexts.push(manchesterNodeText(graphData, memberId));
-    synthesizedEdges.push({
-      data: {
+    if (inlineEdges) {
+      synthesizedEdges.push(...inlinedRestrictionEdges(connectorId, inlineEdges.nested));
+      continue;
+    }
+    synthesizedEdges.push(
+      connectorMemberEdge(config.kind, connectorId, resolvedTargetId, `${resolvedTargetId}:${memberId}`, {
         id: `${connectorId}:member:${resolvedTargetId}:${memberId}`,
         source: connectorId,
         target: resolvedTargetId,
@@ -2268,8 +2300,8 @@ function buildProjectedRestrictionTargetNode(
         axiomKind: 'ClassExpression',
         owlEdgeStyle: 'dotted',
         owlSynthesized: 1,
-      },
-    });
+      }),
+    );
   }
 
   if (connectorTexts.length === 0) {
@@ -3021,6 +3053,65 @@ function synthesizeDisjointAxiomProjection(graphData, visibleNodeIds) {
   };
 }
 
+
+// Intersection and union connectors: a member that is a restriction needs no circle of its own. Its property edges
+// leave the connector directly ("A = B and (some) p C" reads as one picture), and the edge from the connector to a
+// direct class member is a membership ("typeOf") edge. Restrictions that cannot be expressed that way (cardinality
+// nodes, hasSelf loops) keep their circle.
+const INLINE_RESTRICTION_KINDS = new Set(['Intersection', 'Union']);
+
+function splitInlineableRestriction(projection) {
+  const connectorId = projection?.rootTargetId;
+  if (!String(connectorId ?? '').startsWith('owl-target-restr:')) {
+    return null;
+  }
+  const edges = projection.synthesizedEdges ?? [];
+  const nested = edges.filter((edge) => edge.data.source === connectorId);
+  if (nested.length === 0) {
+    return null;
+  }
+  const unsafe = nested.some(
+    (edge) =>
+      edge.data.target === connectorId ||
+      edge.data.isSelfLoop === 1 ||
+      String(edge.data.target).startsWith('owl-card:'),
+  );
+  const referencedElsewhere = edges.some((edge) => edge.data.source !== connectorId && edge.data.target === connectorId);
+  if (unsafe || referencedElsewhere) {
+    return null;
+  }
+  return {
+    nested,
+    nodes: (projection.synthesizedNodes ?? []).filter((node) => node.data.id !== connectorId),
+    rest: edges.filter((edge) => edge.data.source !== connectorId),
+  };
+}
+
+function connectorMemberEdge(kind, connectorId, targetId, idSuffix, legacyData) {
+  if (!INLINE_RESTRICTION_KINDS.has(kind)) {
+    return { data: legacyData };
+  }
+  return {
+    data: {
+      id: `${connectorId}:member:${idSuffix}`,
+      source: connectorId,
+      target: targetId,
+      predicate: RDF_TYPE,
+      predicateLabel: '',
+      category: 'type',
+      axiomKind: 'ClassExpression',
+      owlEdgeStyle: 'dotted',
+      owlSynthesized: 1,
+    },
+  };
+}
+
+function inlinedRestrictionEdges(connectorId, nestedEdges) {
+  return nestedEdges.map((edge) => ({
+    data: { ...edge.data, id: `${connectorId}:restriction:${edge.data.id}`, source: connectorId },
+  }));
+}
+
 function synthesizeClassExpressionProjection(graphData, visibleNodeIds, propertyDeclarations) {
   const outgoingBySource = buildOutgoingEdgeIndex(graphData);
   const incomingByTarget = buildIncomingEdgeIndex(graphData);
@@ -3128,11 +3219,13 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
         if (!nestedProjection) {
           return null;
         }
+        const inline = INLINE_RESTRICTION_KINDS.has(config.kind) ? splitInlineableRestriction(nestedProjection) : null;
         return {
           kind: 'node',
           targetId: nestedProjection.rootTargetId,
-          synthesizedNodes: nestedProjection.synthesizedNodes,
-          synthesizedEdges: nestedProjection.synthesizedEdges,
+          synthesizedNodes: inline ? inline.nodes : nestedProjection.synthesizedNodes,
+          synthesizedEdges: inline ? inline.rest : nestedProjection.synthesizedEdges,
+          inlineEdges: inline ? inline.nested : null,
           hiddenNodeIds: nestedProjection.hiddenNodeIds,
           supplementalNodeIds: nestedProjection.supplementalNodeIds,
         };
@@ -3231,8 +3324,12 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
             },
       });
       for (const member of projectedMembers) {
-        synthesizedEdges.push({
-          data: {
+        if (member.inlineEdges) {
+          synthesizedEdges.push(...inlinedRestrictionEdges(helperNodeId, member.inlineEdges));
+          continue;
+        }
+        synthesizedEdges.push(
+          connectorMemberEdge(config.kind, helperNodeId, member.targetId, member.targetId, {
             id: `${helperNodeId}:member:${member.targetId}`,
             source: helperNodeId,
             target: member.targetId,
@@ -3242,8 +3339,8 @@ function synthesizeClassExpressionProjection(graphData, visibleNodeIds, property
             axiomKind: 'SubClassOf',
             owlEdgeStyle: 'dotted',
             owlSynthesized: 1,
-          },
-        });
+          }),
+        );
       }
     }
   }
@@ -4311,6 +4408,34 @@ export function createViewOptions(mode, flags = {}) {
   };
 }
 
+
+// `p owl:propertyChainAxiom (a b)`: p's own edge (domain -> range) gets the chain mark in its label, and the chain
+// (`a o b -> p`) is listed in the inspector and the hover text. The list itself is not drawn (see the RDF view).
+function annotatePropertyChains(graphData, elements) {
+  const chains = graphData?.propertyChains;
+  if (!(chains instanceof Map) || chains.size === 0) {
+    return elements;
+  }
+  return elements.map((element) => {
+    const data = element?.data;
+    if (!data?.source || data.axiomKind !== 'PropertyProjection' || !chains.has(data.predicate)) {
+      return element;
+    }
+    const next = cloneElement(element);
+    const texts = chains
+      .get(data.predicate)
+      .map((chain) => formatPropertyChain(chain.members, chain.propertyLabel));
+    next.data.predicateLabel = markChainLabel(next.data.predicateLabel);
+    next.data.propertyChain = 1;
+    next.data.projectedMetadataRows = [
+      ...(Array.isArray(next.data.projectedMetadataRows) ? next.data.projectedMetadataRows : []),
+      ...texts.map((value) => ({ key: PROPERTY_CHAIN_ROW_KEY, value })),
+    ];
+    next.data.hoverText = [next.data.hoverText, ...texts].filter(Boolean).join('\n');
+    return next;
+  });
+}
+
 export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = DEFAULT_VIEW_OPTIONS) {
   const rdfProjectionLevel = viewOptions?.rdfProjectionLevel ?? RDF_PROJECTION_LEVELS.ALL;
   const options = normalizeProjectionFlags({
@@ -4347,10 +4472,13 @@ export function buildRdfViewProjection(graphData, focusedNodeIds, viewOptions = 
     ),
   );
 
-  return suppressInfrastructureNodes(
+  return annotatePropertyChains(
     graphData,
-    suppressDisplayOnlyNodes(
-      rdfProjectionLevel === RDF_PROJECTION_LEVELS.ALL ? stripNodeBadges(projectedElements) : projectedElements,
+    suppressInfrastructureNodes(
+      graphData,
+      suppressDisplayOnlyNodes(
+        rdfProjectionLevel === RDF_PROJECTION_LEVELS.ALL ? stripNodeBadges(projectedElements) : projectedElements,
+      ),
     ),
   );
 }
@@ -4400,9 +4528,12 @@ export function buildOwlViewProjection(graphData, focusedNodeIds, viewOptions = 
         owlProjectionLevel,
       ),
     );
-    return suppressInfrastructureNodes(
+    return annotatePropertyChains(
       graphData,
-      stripNodeBadges(projectedElements),
+      suppressInfrastructureNodes(
+        graphData,
+        stripNodeBadges(projectedElements),
+      ),
     );
   } catch (error) {
     console.error('OWL projection failed; falling back to base ontology graph.', error);

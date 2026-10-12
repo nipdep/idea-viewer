@@ -76,7 +76,7 @@
       "predicateLabel": "(some) hasPet*",
       "category": "object",
       "axiomKind": "ClassExpressionRestriction",
-      "owlEdgeStyle": "dotted",
+      "owlEdgeStyle": "straight",
       "sourceCardinality": "",
       "isSelfLoop": false
     },

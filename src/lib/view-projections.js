@@ -2109,7 +2109,10 @@ function buildProjectedRestrictionTargetNode(
           restrictionKind: restrictionProjection.restrictionKind || compactIri(targetSpec.predicate),
           sourceCardinality: targetSpec.sourceCardinality,
           showSourceCardinality: targetSpec.sourceCardinality ? 1 : 0,
-          owlEdgeStyle: 'dotted',
+          // The restriction's property edge is an ordinary property edge (solid for an object property, dashed
+          // for a data property) whether the restriction hangs off a class or sits inside an expression. Only the
+          // connector -> member links, which project RDF list membership, are dotted.
+          owlEdgeStyle: restrictionProjection.propertyKind === 'data-property' ? 'dashed' : 'straight',
           owlSynthesized: 1,
           isSelfLoop: resolvedTargetId === connectorId || targetSpec.isSelfLoop ? 1 : 0,
           projectedMetadataRows: targetSpec.projectedMetadataRows,

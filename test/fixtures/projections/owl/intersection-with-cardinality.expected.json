@@ -76,7 +76,7 @@
       "predicateLabel": "hasChild*",
       "category": "object",
       "axiomKind": "ClassExpressionRestriction",
-      "owlEdgeStyle": "dotted",
+      "owlEdgeStyle": "straight",
       "sourceCardinality": "0..1",
       "isSelfLoop": false
     },

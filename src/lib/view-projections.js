@@ -4409,8 +4409,9 @@ export function createViewOptions(mode, flags = {}) {
 }
 
 
-// `p owl:propertyChainAxiom (a b)`: p's own edge (domain -> range) gets the chain mark in its label, and the chain
-// (`a o b -> p`) is listed in the inspector and the hover text. The list itself is not drawn (see the RDF view).
+// `p owl:propertyChainAxiom (a b)`: every edge drawn for p (its own domain -> range edge, and the restriction or
+// assertion edges that use p) gets the chain mark in its label, and the chain (`a o b -> p`) is listed in the
+// inspector and the hover text. The list itself is not drawn (see the RDF view).
 function annotatePropertyChains(graphData, elements) {
   const chains = graphData?.propertyChains;
   if (!(chains instanceof Map) || chains.size === 0) {
@@ -4418,7 +4419,7 @@ function annotatePropertyChains(graphData, elements) {
   }
   return elements.map((element) => {
     const data = element?.data;
-    if (!data?.source || data.axiomKind !== 'PropertyProjection' || !chains.has(data.predicate)) {
+    if (!data?.source || !chains.has(data.predicate) || !data.predicateLabel) {
       return element;
     }
     const next = cloneElement(element);

@@ -10,6 +10,7 @@ import {
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
 import { filterBuiltinVocabulary } from './lib/builtin-vocabulary-filter';
+import { connectorTransparentNeighborhood } from './lib/focus-neighborhood';
 import { fetchRdfSource } from './lib/remote-source';
 import { applyReadableViewport, revealInViewport } from './lib/graph-fit';
 import { applySpreadClusters, getCluster, toggleCluster } from './lib/spread-collapse';
@@ -3892,7 +3893,7 @@ function ViewerApp() {
         return;
       }
 
-      const groupNodes = focusRoots.closedNeighborhood().nodes();
+      const groupNodes = connectorTransparentNeighborhood(focusRoots).nodes();
       if (!groupNodes.has(downNode)) {
         groupDragArmRef.current = null;
         return;
@@ -3948,7 +3949,7 @@ function ViewerApp() {
         return;
       }
 
-      const groupNodes = focusRoots.closedNeighborhood().nodes();
+      const groupNodes = connectorTransparentNeighborhood(focusRoots).nodes();
       if (!groupNodes.has(grabbedNode)) {
         groupDragStateRef.current = null;
         groupDragArmRef.current = null;
@@ -4910,11 +4911,12 @@ function ViewerApp() {
         return;
       }
 
-      const neighborhood = focusRoots.closedNeighborhood();
+      // Looks through connectors (circles) to the real nodes behind them; see focus-neighborhood.js.
+      const neighborhood = connectorTransparentNeighborhood(focusRoots);
       cy.elements().difference(neighborhood).addClass('faded');
       focusRoots.addClass('focus-node');
       neighborhood.nodes().difference(focusRoots).addClass('focus-neighbor');
-      focusRoots.connectedEdges().addClass('focus-edge');
+      neighborhood.edges().addClass('focus-edge');
     });
 
     if (focusedNodeIds.length > 0) {
@@ -4922,7 +4924,7 @@ function ViewerApp() {
       if (!focusRoots.empty()) {
         cy.animate({
           fit: {
-            eles: focusRoots.closedNeighborhood(),
+            eles: connectorTransparentNeighborhood(focusRoots),
             padding: 76,
           },
           duration: 250,

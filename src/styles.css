@@ -2181,3 +2181,17 @@ textarea {
   background: rgba(42, 111, 110, 0.2);
   color: #1f5f5e;
 }
+
+.inspector-link-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.inspector-link-detail {
+  color: #8a7c6d;
+  font-size: 0.74rem;
+  font-weight: 400;
+}

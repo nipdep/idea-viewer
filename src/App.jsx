@@ -935,6 +935,28 @@ function runNodeNameFilter(graphData, queryText) {
 }
 
 // Data properties a class carries through axioms (restrictions, domain/range), shown as edges to a datatype.
+// An endpoint of an edge between two property edges (subPropertyOf, inverseOf, ...) is an anchor on a property
+// edge. Describe it as that property: its name, the classes it connects, and the edge to select on click.
+function describeEdgeEndpoint(endpointId, graphData, visibleElements) {
+  const node = graphData?.nodeMap.get(endpointId);
+  if (node) {
+    return { label: node.fullLabel ?? endpointId, detail: '', nodeId: endpointId, edgeId: '' };
+  }
+  const anchor = (visibleElements ?? []).find((entry) => !entry?.data?.source && entry?.data?.id === endpointId)?.data;
+  const edgeId = anchor?.anchoredEdgeId;
+  const edge = edgeId ? (visibleElements ?? []).find((entry) => entry?.data?.source && entry.data.id === edgeId)?.data : null;
+  if (!edge) {
+    return { label: endpointId, detail: '', nodeId: endpointId, edgeId: '' };
+  }
+  const labelOf = (id) => graphData?.nodeMap.get(id)?.fullLabel ?? id;
+  return {
+    label: barePropertyName(edge.predicateLabel) || edge.predicate,
+    detail: `${labelOf(edge.source)} → ${labelOf(edge.target)}`,
+    nodeId: '',
+    edgeId,
+  };
+}
+
 // rdf:/rdfs:/owl: relations (equivalentClass, sameAs, ...) are axioms between entities, not properties of them.
 function isBuiltinVocabularyPredicate(iri) {
   return /^http:\/\/www\.w3\.org\/(1999\/02\/22-rdf-syntax-ns|2000\/01\/rdf-schema|2002\/07\/owl)#/.test(String(iri ?? ''));
@@ -7240,31 +7262,32 @@ function ViewerApp() {
                       <dt>Predicate IRI</dt>
                       <dd className="breakable mono">{selectedEdge.predicate}</dd>
 
-                      <dt>Source</dt>
-                      <dd>
-                        <button
-                          type="button"
-                          className="neighbor-row inspector-link"
-                          onClick={() => {
-                            setSingleFocusedNode(selectedEdge.source);
-                          }}
-                        >
-                          {graphData?.nodeMap.get(selectedEdge.source)?.fullLabel ?? selectedEdge.source}
-                        </button>
-                      </dd>
-
-                      <dt>Target</dt>
-                      <dd>
-                        <button
-                          type="button"
-                          className="neighbor-row inspector-link"
-                          onClick={() => {
-                            setSingleFocusedNode(selectedEdge.target);
-                          }}
-                        >
-                          {graphData?.nodeMap.get(selectedEdge.target)?.fullLabel ?? selectedEdge.target}
-                        </button>
-                      </dd>
+                      {[['Source', selectedEdge.source], ['Target', selectedEdge.target]].map(([title, endpointId]) => {
+                        const endpoint = describeEdgeEndpoint(endpointId, graphData, visibleElements);
+                        return (
+                          <Fragment key={title}>
+                            <dt>{title}</dt>
+                            <dd>
+                              <button
+                                type="button"
+                                className="neighbor-row inspector-link"
+                                onClick={() => {
+                                  if (endpoint.edgeId) {
+                                    selectEdgeFromInspector(endpoint.edgeId);
+                                  } else {
+                                    setSingleFocusedNode(endpoint.nodeId);
+                                  }
+                                }}
+                              >
+                                <span className="inspector-link-text">
+                                  {endpoint.label}
+                                  {endpoint.detail && <small className="inspector-link-detail">{endpoint.detail}</small>}
+                                </span>
+                              </button>
+                            </dd>
+                          </Fragment>
+                        );
+                      })}
                     </dl>
 
                     {selectedEdge.propertyChainSteps?.length > 0 && (

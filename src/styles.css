@@ -632,6 +632,41 @@ textarea {
   width: 100%;
 }
 
+.url-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.url-control label {
+  color: #4f473f;
+}
+
+.url-control-row {
+  display: flex;
+  gap: 6px;
+}
+
+.url-control-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+}
+
+.url-control-row button {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+}
+
+.url-control-error {
+  color: #9a3b2a;
+  font-size: 0.9rem;
+}
+
 .file-control small,
 .muted {
   color: var(--muted);

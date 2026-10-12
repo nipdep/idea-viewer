@@ -10,6 +10,7 @@ import {
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
 import { filterBuiltinVocabulary } from './lib/builtin-vocabulary-filter';
+import { fetchRdfSource } from './lib/remote-source';
 import { applyReadableViewport, revealInViewport } from './lib/graph-fit';
 import { applySpreadClusters, getCluster, toggleCluster } from './lib/spread-collapse';
 import { CLUSTER_NODE_THRESHOLD } from './lib/spread-clusters';
@@ -1379,6 +1380,9 @@ function ViewerApp() {
   const previousFilterRunRef = useRef(null);
 
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [sourceUrlDraft, setSourceUrlDraft] = useState('');
+  const [isFetchingUrl, setIsFetchingUrl] = useState(false);
+  const [sourceUrlError, setSourceUrlError] = useState('');
   const [graphData, setGraphData] = useState(null);
   const [visibleElements, setVisibleElements] = useState([]);
 
@@ -5328,6 +5332,7 @@ function ViewerApp() {
     previousFilterRunRef.current = null;
     firstVisualizationRecordedRef.current = false;
     setUploadedFiles([]);
+    setSourceUrlError('');
     setGraphData(null);
     setVisibleElements([]);
     setSelectedClassIris([]);
@@ -5359,6 +5364,30 @@ function ViewerApp() {
     }
 
     setUploadedFiles((current) => mergeSelectedFiles(current, files));
+  }
+
+  async function handleLoadFromUrl(event) {
+    event?.preventDefault();
+    if (isFetchingUrl) {
+      return;
+    }
+    setSourceUrlError('');
+    setIsFetchingUrl(true);
+    try {
+      const source = await fetchRdfSource(sourceUrlDraft);
+      // Wrapped as a File so parsing, merging and Clear treat it like any uploaded file.
+      const file = new File([source.text], source.name, {
+        type: source.contentType || 'text/plain',
+        lastModified: source.lastModified,
+      });
+      file.sourceUrl = source.sourceUrl;
+      handleFileSelection([file]);
+      setSourceUrlDraft('');
+    } catch (error) {
+      setSourceUrlError(error.message || 'Unable to load this URL.');
+    } finally {
+      setIsFetchingUrl(false);
+    }
   }
 
   useEffect(() => {
@@ -5399,7 +5428,7 @@ function ViewerApp() {
         const parsedFiles = await Promise.all(
           uploadedFiles.map(async (file) => {
             const text = await file.text();
-            const quads = await parseRdfText(text, file.name);
+            const quads = await parseRdfText(text, file.name, file.sourceUrl);
             const { headerQuads, contentQuads } = partitionOntologyHeaderQuads(quads);
             return { fileName: file.name, headerQuads, contentQuads };
           }),
@@ -6007,7 +6036,7 @@ function ViewerApp() {
                   >
                     {leftSectionOpen.source ? '-' : '+'}
                   </button>
-                  <h2>Upload File</h2>
+                  <h2>Load Data</h2>
                   <button
                     type="button"
                     className="section-clear"
@@ -6036,7 +6065,31 @@ function ViewerApp() {
                       />
                       <small>{formatSelectedFiles(uploadedFiles, 'No files selected')}</small>
                     </label>
-                    <small className="muted">{isLoading ? 'Parsing uploaded triples and refreshing both views...' : 'Graph updates automatically when files are added.'}</small>
+                    <form className="url-control" onSubmit={handleLoadFromUrl}>
+                      <label htmlFor="source-url-input">Or load from a URL</label>
+                      <div className="url-control-row">
+                        <input
+                          id="source-url-input"
+                          type="text"
+                          inputMode="url"
+                          autoComplete="off"
+                          spellCheck={false}
+                          placeholder="https://example.org/ontology.ttl"
+                          value={sourceUrlDraft}
+                          onChange={(event) => {
+                            setSourceUrlDraft(event.target.value);
+                            setSourceUrlError('');
+                          }}
+                          disabled={isFetchingUrl}
+                          aria-label="Ontology or RDF document URL"
+                        />
+                        <button type="submit" disabled={isFetchingUrl || sourceUrlDraft.trim().length === 0}>
+                          {isFetchingUrl ? 'Loading...' : 'Load'}
+                        </button>
+                      </div>
+                      {sourceUrlError && <small className="url-control-error" role="alert">{sourceUrlError}</small>}
+                    </form>
+                    <small className="muted">{isLoading ? 'Parsing uploaded triples and refreshing both views...' : 'Graph updates automatically when files or URLs are added.'}</small>
                   </div>
                 )}
               </section>

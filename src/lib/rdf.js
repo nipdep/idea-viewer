@@ -691,7 +691,7 @@ function literalFromText(text, datatypeIri, lang) {
   return literal(text);
 }
 
-function parseRdfXml(text, fileName) {
+function parseRdfXml(text, fileName, baseIri = '') {
   if (typeof DOMParser === 'undefined') {
     throw new Error(`File ${fileName} is RDF/XML but no XML parser is available in this runtime.`);
   }
@@ -703,7 +703,7 @@ function parseRdfXml(text, fileName) {
     throw new Error(`Failed to parse RDF/XML in ${fileName}: ${message}`);
   }
 
-  const fallbackBase = `https://idea-viewer.local/${encodeURIComponent(fileName)}`;
+  const fallbackBase = baseIri || `https://idea-viewer.local/${encodeURIComponent(fileName)}`;
   const root = document.documentElement;
   const docBase = resolveIri(root.getAttributeNS(XML_NS, 'base') || fallbackBase, fallbackBase);
   const docLang = root.getAttributeNS(XML_NS, 'lang') || '';
@@ -888,14 +888,15 @@ function parseRdfXml(text, fileName) {
   return quads;
 }
 
-export function parseRdfText(text, fileName) {
+export function parseRdfText(text, fileName, baseIri = '') {
   const format = detectFormat(fileName, text);
   if (format === 'RDFXML') {
-    return parseRdfXml(text, fileName);
+    return parseRdfXml(text, fileName, baseIri);
   }
 
   // Relative IRIs such as `<>` need a base, otherwise they resolve to "" and become unusable node ids.
-  const parser = new Parser({ format, baseIRI: documentBaseIri(fileName) });
+  // A document loaded from a URL is its own base, so `<>` and relative IRIs resolve to real addresses.
+  const parser = new Parser({ format, baseIRI: baseIri || documentBaseIri(fileName) });
   return parser.parse(text);
 }
 

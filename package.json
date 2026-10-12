@@ -12,12 +12,21 @@
     "plot:scale-stats": "node scripts/plot-scale-stats.mjs",
     "test:projections": "node --import ./test/projection-helpers/register-node-loader.mjs --test test/view-projections.test.mjs",
     "test:projections:summary": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/projection-test-manifest-summary.mjs",
-    "test:projections:generate": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/generate-projection-expectations.mjs"
+    "test:projections:generate": "node --import ./test/projection-helpers/register-node-loader.mjs ./scripts/generate-projection-expectations.mjs",
+    "test:collapse": "node --test test/hierarchy-collapse.test.mjs test/builtin-vocabulary-filter.test.mjs test/relative-iri.test.mjs",
+    "bench:layout": "node scripts/layout-benchmark.mjs",
+    "bench:layout:stability": "node scripts/layout-stability.mjs"
   },
   "dependencies": {
     "@comunica/query-sparql": "^3.0.0",
     "@vercel/analytics": "^1.5.0",
     "cytoscape": "^3.30.0",
+    "cytoscape-elk": "^2.3.0",
+    "cytoscape-expand-collapse": "^4.1.1",
+    "cytoscape-fcose": "^2.2.0",
+    "elkjs": "^0.12.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
     "n3": "^1.20.0",
     "ngraph.forcelayout": "^3.3.1",
     "ngraph.graph": "^20.1.2",
@@ -27,6 +36,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",
+    "playwright-core": "^1.64.0",
     "vite": "^6.2.0"
   }
 }

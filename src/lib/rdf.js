@@ -894,8 +894,14 @@ export function parseRdfText(text, fileName) {
     return parseRdfXml(text, fileName);
   }
 
-  const parser = new Parser({ format });
+  // Relative IRIs such as `<>` need a base, otherwise they resolve to "" and become unusable node ids.
+  const parser = new Parser({ format, baseIRI: documentBaseIri(fileName) });
   return parser.parse(text);
+}
+
+// Hierarchical base so `<>`, `<#x>`, `../x` and `x/y` resolve like they would next to the file.
+export function documentBaseIri(fileName) {
+  return `file:///${encodeURIComponent(fileName || 'uploaded')}`;
 }
 
 function buildLabelIndex(quads) {

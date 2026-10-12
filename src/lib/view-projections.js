@@ -676,11 +676,22 @@ function annotateRdfNodePresentation(elements) {
           data.entityCategory === 'class-expression-connector',
       );
 
-    if (!isBlankNode && !isConnectorNode && !isStructuralBlankNode) {
+    // The RDF notation has five node shapes (class, resource, literal, datatype, connector). A property that
+    // appears as a node here (e.g. a member of a property chain) is just a named resource, so it is drawn as
+    // one; the hexagon/diamond property shapes belong to no RDF-view symbol. Semantic fields stay as they are.
+    const isPropertyResource =
+      data.entityCategory === 'object-property' ||
+      data.entityCategory === 'data-property' ||
+      data.entityCategory === 'annotation-property';
+
+    if (!isBlankNode && !isConnectorNode && !isStructuralBlankNode && !isPropertyResource) {
       return element;
     }
 
     const next = cloneElement(element);
+    if (isPropertyResource) {
+      next.data.rdfNamedResource = 1;
+    }
     if (isBlankNode) {
       next.data.rdfBlankNode = 1;
       next.data.label = '';

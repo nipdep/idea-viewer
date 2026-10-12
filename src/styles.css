@@ -902,13 +902,15 @@ textarea {
 
 .graph-tools-left {
   left: 12px;
-  right: auto;
+  /* span the width up to the right-hand tools so the projection, layout and search controls sit in one row */
+  right: 156px;
 }
 
 .graph-tools-left-stack {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 
@@ -1954,4 +1956,26 @@ textarea {
 
 .flyout-hover-zone.right {
   right: 0;
+}
+
+.layout-type-toggle {
+  width: 92px;
+  height: 38px;
+  border-radius: 999px;
+  gap: 0;
+}
+
+.layout-type-button {
+  height: 100%;
+}
+
+.layout-type-button.active {
+  background: rgba(42, 111, 110, 0.14);
+  border-color: rgba(42, 111, 110, 0.28);
+  border-radius: 999px;
+}
+
+/* cytoscape-expand-collapse injects a cue overlay canvas; cues are disabled, and it must not block the toolbar. */
+.expand-collapse-canvas {
+  pointer-events: none !important;
 }

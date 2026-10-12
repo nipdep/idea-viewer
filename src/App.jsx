@@ -9,7 +9,20 @@ import {
   GRAPH_VIEW_MODES,
 } from './lib/view-projections';
 import { applyLayoutPositions } from './lib/incremental-graph-layout';
-import { applyRankAwareRadialBfsLayout } from './lib/rank-aware-radial-bfs-layout';
+import { filterBuiltinVocabulary } from './lib/builtin-vocabulary-filter';
+import { applyReadableViewport, revealInViewport } from './lib/graph-fit';
+import { applySpreadClusters, getCluster, toggleCluster } from './lib/spread-collapse';
+import { CLUSTER_NODE_THRESHOLD } from './lib/spread-clusters';
+import { GRAPH_LAYOUT_LABELS, GRAPH_LAYOUT_TYPES, HIERARCHY_PREDICATES, placeNodesBelow, runGraphLayout } from './lib/graph-layouts';
+import {
+  applyCollapseVisibility,
+  autoExpand,
+  buildHierarchyIndex,
+  computeVisibleNodes,
+  countHiddenDescendants,
+  hasHierarchyChildren,
+  toggleExpanded,
+} from './lib/hierarchy-collapse';
 import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
 import './styles.css';
 
@@ -1378,6 +1391,12 @@ function ViewerApp() {
   const [sparqlQuery, setSparqlQuery] = useState('');
   const [sparqlPrefixes, setSparqlPrefixes] = useState([]);
   const [graphProjectionMode, setGraphProjectionMode] = useState(GRAPH_PROJECTION_MODES.OWL);
+  const [graphLayoutType, setGraphLayoutType] = useState(GRAPH_LAYOUT_TYPES.SPREAD);
+  const lastLayoutTypeRef = useRef(graphLayoutType);
+  const collapseStateRef = useRef(null);
+  const previousNodeIdsRef = useRef(null);
+  const collapseControllerRef = useRef(null);
+  const pendingFocusTimerRef = useRef(null);
   const [owlProjectionLevel, setOwlProjectionLevel] = useState(OWL_PROJECTION_LEVELS.ONTOLOGY);
   const [rdfProjectionLevel, setRdfProjectionLevel] = useState(RDF_PROJECTION_LEVELS.ALL);
 
@@ -3292,6 +3311,17 @@ function ViewerApp() {
           },
         },
         {
+          // RDF view: a property shown as a node is a named resource (same look as a named individual).
+          selector: 'node[rdfNamedResource = 1]',
+          style: {
+            shape: 'round-rectangle',
+            'background-color': '#f6f0e8',
+            'border-color': '#8f6f52',
+            'border-width': 1.1,
+            'border-style': 'solid',
+          },
+        },
+        {
           selector: 'node[entityCategory = "class-expression"]',
           style: {
             shape: 'hexagon',
@@ -3710,6 +3740,57 @@ function ViewerApp() {
             opacity: 1,
           },
         },
+        // Folded-group cues use the existing palette only. Shape and fill carry meaning in the formatting
+        // spec (class, resource, literal, datatype, connector, dashed enumeration area), so nothing here
+        // reuses those: a folded cluster is a neutral cut-corner box, and the "+N" in the label is the cue.
+        {
+          selector: 'node[clusterNode = 1]',
+          style: {
+            label: 'data(clusterTitle)',
+            shape: 'cut-rectangle',
+            'background-color': '#f6f0e8',
+            'background-opacity': 1,
+            'border-color': '#7e6f60',
+            'border-style': 'solid',
+            'border-width': 0.8,
+            'text-valign': 'center',
+          },
+        },
+        {
+          selector: 'node[clusterNode = 1]:parent',
+          style: {
+            'background-opacity': 0.04,
+            'border-color': '#b5a898',
+            'border-width': 1,
+            'text-valign': 'top',
+            'text-margin-y': -4,
+            padding: '26px',
+          },
+        },
+        {
+          selector: 'edge.flat-edge',
+          style: { 'curve-style': 'straight' },
+        },
+        {
+          selector: 'edge.cluster-edge-primary',
+          style: { label: 'data(collapsedCountLabel)' },
+        },
+        {
+          selector: '.cy-expand-collapse-collapsed-node',
+          style: {
+            width: 'data(nodeWidth)',
+            height: 'data(nodeHeight)',
+          },
+        },
+        {
+          selector: '.collapse-hidden',
+          style: { display: 'none' },
+        },
+        {
+          // A collapsed real node keeps its own shape and colours; only the label gains "[+N]".
+          selector: 'node[collapsedCount > 0]',
+          style: { label: 'data(collapsedLabel)' },
+        },
       ],
       layout: {
         name: 'cose',
@@ -3720,7 +3801,7 @@ function ViewerApp() {
     });
 
     cy.on('tap', 'node', (event) => {
-      if (event.target.data('edgeBendHandle') === 1) {
+      if (event.target.data('edgeBendHandle') === 1 || event.target.data('clusterNode') === 1) {
         return;
       }
       if (suppressNextTapRef.current) {
@@ -3736,7 +3817,22 @@ function ViewerApp() {
         extendFocusedNodes(nodeId);
         return;
       }
+      if (collapseControllerRef.current?.canToggle(nodeId)) {
+        // A double tap toggles collapse instead of focusing, so wait briefly before focusing.
+        clearTimeout(pendingFocusTimerRef.current);
+        pendingFocusTimerRef.current = setTimeout(() => setSingleFocusedNode(nodeId), 280);
+        return;
+      }
       setSingleFocusedNode(nodeId);
+    });
+
+    cy.on('dbltap', 'node', (event) => {
+      const node = event.target;
+      if (node.data('edgeBendHandle') === 1 || !collapseControllerRef.current?.canToggle(node.id())) {
+        return;
+      }
+      clearTimeout(pendingFocusTimerRef.current);
+      collapseControllerRef.current.toggle(node.id());
     });
 
     cy.on('tap', 'edge', (event) => {
@@ -4099,6 +4195,9 @@ function ViewerApp() {
     container.addEventListener('wheel', onWheel, { passive: true });
 
     cyRef.current = cy;
+    if (import.meta.env.DEV) {
+      window.__ideaViewerCy = cy; // dev-only hook for UI checks
+    }
     if (!initialGraphStyleJsonRef.current && typeof cy.style().json === 'function') {
       initialGraphStyleJsonRef.current = cy.style().json();
     }
@@ -4465,6 +4564,7 @@ function ViewerApp() {
     hasAppliedInitialLayoutRef.current = false;
     firstVisualizationRecordedRef.current = false;
     layoutPositionCacheRef.current.clear();
+    collapseStateRef.current = null;
     projectedElementsCacheRef.current.clear();
     canonicalLayoutEngineRef.current = null;
     setIsLayouting(false);
@@ -4473,6 +4573,7 @@ function ViewerApp() {
   useEffect(() => {
     hasAppliedInitialLayoutRef.current = false;
     layoutPositionCacheRef.current.clear();
+    collapseStateRef.current = null;
   }, [graphProjectionMode]);
 
   useEffect(() => {
@@ -4523,7 +4624,15 @@ function ViewerApp() {
     cy.batch(() => {
       cy.elements().remove();
       if (visibleElements.length > 0) {
-        cy.add(visibleElements);
+        // Cytoscape keeps references to the `data` objects it is given and cluster collapse rewrites
+        // edge endpoints in place, so hand it copies to keep visibleElements pristine.
+        cy.add(
+          visibleElements.map((element) => ({
+            ...element,
+            data: { ...element.data },
+            ...(element.position ? { position: { ...element.position } } : {}),
+          })),
+        );
       }
     });
     cy.style().update();
@@ -4533,6 +4642,34 @@ function ViewerApp() {
       hasAppliedInitialLayoutRef.current = false;
       return undefined;
     }
+
+    // Rebuilding the elements (e.g. a filter change) drops their positions, which used to leave every node
+    // stacked on one point. Restore them from the last layout; nodes it has never seen need a fresh layout.
+    let nodesWithoutPosition = 0;
+    if (hasAppliedInitialLayoutRef.current) {
+      cy.batch(() => {
+        cy.nodes()
+          .not('[edgeAnchor = 1]')
+          .not('[edgeBendHandle = 1]')
+          .forEach((node) => {
+            const cached = positionCache.get(node.id());
+            if (cached) {
+              node.position(cached);
+            } else {
+              nodesWithoutPosition += 1;
+            }
+          });
+      });
+    }
+    const currentNodeIds = new Set(
+      cy.nodes().not('[edgeAnchor = 1]').not('[edgeBendHandle = 1]').map((node) => node.id()),
+    );
+    const previousNodeIds = previousNodeIdsRef.current;
+    const nodeSetChanged =
+      !previousNodeIds ||
+      previousNodeIds.size !== currentNodeIds.size ||
+      [...currentNodeIds].some((id) => !previousNodeIds.has(id));
+    previousNodeIdsRef.current = currentNodeIds;
 
     const cacheCurrentPositions = () => {
       positionCache.clear();
@@ -4552,7 +4689,31 @@ function ViewerApp() {
       if (duration > 0) {
         fitCurrentGraphViewport(cy, duration);
       } else {
-        cy.fit(cy.nodes(), 42);
+        applyReadableViewport(cy, { anchorTop: lastLayoutTypeRef.current === GRAPH_LAYOUT_TYPES.HIERARCHY });
+      }
+    };
+
+    let cancelled = false;
+    const layoutTypeChanged = lastLayoutTypeRef.current !== graphLayoutType;
+    lastLayoutTypeRef.current = graphLayoutType;
+    const isLargeSpreadGraph =
+      graphLayoutType === GRAPH_LAYOUT_TYPES.SPREAD &&
+      visibleElements.filter(
+        (element) => !element?.data?.source && element?.data?.edgeAnchor !== 1 && element?.data?.edgeBendHandle !== 1,
+      ).length > CLUSTER_NODE_THRESHOLD;
+    // Elements were just rebuilt, so large spread graphs must be re-clustered and re-laid out.
+    const needsLayout =
+      layoutTypeChanged || !hasAppliedInitialLayoutRef.current || isLargeSpreadGraph || nodesWithoutPosition > 0;
+    let layoutSettled = !needsLayout;
+    const finishRenderTelemetry = () => {
+      const renderSpan = pendingRenderSpanRef.current;
+      pendingRenderSpanRef.current = null;
+      renderSpan?.end(buildTelemetryContext(visibleElements));
+      const firstViewSpan = pendingFirstViewSpanRef.current;
+      pendingFirstViewSpanRef.current = null;
+      firstViewSpan?.end(buildTelemetryContext(visibleElements));
+      if (firstViewSpan) {
+        firstVisualizationRecordedRef.current = true;
       }
     };
 
@@ -4561,33 +4722,129 @@ function ViewerApp() {
         if (cy.destroyed()) {
           return;
         }
-        if (!hasAppliedInitialLayoutRef.current) {
-          const layoutNodes = cy.nodes(":visible").not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
-          const layoutNodeIds = new Set(layoutNodes.map((node) => node.id()));
-          const layoutEdges = cy.edges(":visible").filter((edge) => layoutNodeIds.has(edge.source().id()) && layoutNodeIds.has(edge.target().id()))
+        const isHierarchyLayout = graphLayoutType === GRAPH_LAYOUT_TYPES.HIERARCHY;
+        const getLayoutGraph = () => {
+          const nodes = cy.nodes().not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
+          const nodeIds = new Set(nodes.map((node) => node.id()));
+          const edges = cy.edges().filter((edge) => nodeIds.has(edge.source().id()) && nodeIds.has(edge.target().id()))
             .not("[edgeAnchorTether = 1]").not("[edgeAttachedConnector = 1]").not("[owlRelationConnector = 1]");
-          if (layoutNodes.length > 1) applyRankAwareRadialBfsLayout(cy, { nodes: layoutNodes, edges: layoutEdges });
+          return { nodes, edges };
+        };
+        // Decides which nodes are collapsed and mirrors that onto the elements.
+        const applyHierarchyCollapse = () => {
+          const { nodes, edges } = getLayoutGraph();
+          const toPair = (edge) => ({ source: edge.source().id(), target: edge.target().id() });
+          const isTaxonomyEdge = (edge) => HIERARCHY_PREDICATES.has(edge.data('predicate'));
+          const index = buildHierarchyIndex(
+            nodes.map((node) => node.id()),
+            edges.filter(isTaxonomyEdge).map(toPair),
+            edges.filter((edge) => !isTaxonomyEdge(edge)).map(toPair),
+          );
+          if (!collapseStateRef.current) {
+            collapseStateRef.current = { expanded: autoExpand(index) };
+          }
+          const { expanded } = collapseStateRef.current;
+          const visible = computeVisibleNodes(index, expanded);
+          applyCollapseVisibility(cy, nodes, visible, countHiddenDescendants(index, visible, expanded));
+          return index;
+        };
+        const layoutVisibleGraph = (incremental = false, fixedNodes = null) => {
+          const nodes = cy.nodes(":visible").not("[edgeAnchor = 1]").not("[edgeBendHandle = 1]");
+          const nodeIds = new Set(nodes.map((node) => node.id()));
+          const edges = cy.edges(":visible").filter((edge) => nodeIds.has(edge.source().id()) && nodeIds.has(edge.target().id()))
+            .not("[edgeAnchorTether = 1]").not("[edgeAttachedConnector = 1]").not("[owlRelationConnector = 1]");
+          if (nodes.length < 2) {
+            return Promise.resolve();
+          }
+          return runGraphLayout(cy, { type: graphLayoutType, nodes, edges, incremental, fixedNodes })
+            .catch((error) => console.error('Graph layout failed', error));
+        };
+        const finishLayout = (viewportMode) => {
+          if (cy.destroyed() || cancelled) {
+            return;
+          }
           synchronizeEdgeAnchorPositions(cy);
           synchronizeEdgeBendHandle(cy);
-          fitGraph(0);
+          if (viewportMode === 'fit') {
+            fitGraph(0);
+          } else if (typeof viewportMode === 'function') {
+            viewportMode();
+          }
+          cacheCurrentPositions();
+          hasAppliedInitialLayoutRef.current = true;
+          layoutSettled = true;
+          finishRenderTelemetry();
+        };
+
+        let hierarchyIndex = null;
+        if (isHierarchyLayout) {
+          if (layoutTypeChanged) {
+            collapseStateRef.current = null;
+          }
+          hierarchyIndex = applyHierarchyCollapse();
+          collapseControllerRef.current = {
+            canToggle: (nodeId) => hasHierarchyChildren(hierarchyIndex, nodeId),
+            toggle: (nodeId) => {
+              if (cy.destroyed() || !collapseStateRef.current) {
+                return;
+              }
+              collapseStateRef.current = {
+                expanded: toggleExpanded(collapseStateRef.current.expanded, nodeId),
+              };
+              const shownBefore = new Set(cy.nodes(':visible').map((node) => node.id()));
+              applyHierarchyCollapse();
+              // Keep the toggled node where the user clicked it so the view does not jump.
+              const toggled = cy.getElementById(nodeId);
+              const before = toggled.renderedPosition();
+              placeNodesBelow(
+                toggled,
+                cy.nodes(':visible').filter((node) => !shownBefore.has(node.id()) && node.data('edgeAnchor') !== 1),
+              );
+              layoutVisibleGraph(true).then(() =>
+                finishLayout(() => {
+                  const after = toggled.renderedPosition();
+                  cy.panBy({ x: before.x - after.x, y: before.y - after.y });
+                }),
+              );
+            },
+          };
         } else {
-          synchronizeEdgeAnchorPositions(cy);
-          synchronizeEdgeBendHandle(cy);
+          collapseControllerRef.current = null;
+          if (needsLayout) {
+            const { nodes: allNodes, edges: allEdges } = getLayoutGraph();
+            if (allNodes.length > CLUSTER_NODE_THRESHOLD && applySpreadClusters(cy, allNodes, allEdges) > 0) {
+              collapseControllerRef.current = {
+                canToggle: (nodeId) => getCluster(cy, nodeId) !== null,
+                toggle: (nodeId) => {
+                  const cluster = getCluster(cy, nodeId);
+                  if (cy.destroyed() || !cluster) {
+                    return;
+                  }
+                  // Existing nodes stay pinned, so the view is left alone unless the cluster ends up off-screen.
+                  const clusterId = cluster.id();
+                  toggleCluster(cy, nodeId, (fixedNodes) => layoutVisibleGraph(true, fixedNodes)).then(() =>
+                    finishLayout(() => {
+                      const toggled = cy.getElementById(clusterId);
+                      if (toggled.nonempty()) {
+                        revealInViewport(cy, toggled.isParent() ? toggled.union(toggled.descendants()) : toggled);
+                      }
+                    }),
+                  );
+                },
+              };
+            }
+          }
         }
-        cacheCurrentPositions();
-        hasAppliedInitialLayoutRef.current = true;
-        const renderSpan = pendingRenderSpanRef.current;
-        pendingRenderSpanRef.current = null;
-        renderSpan?.end(buildTelemetryContext(visibleElements));
-        const firstViewSpan = pendingFirstViewSpanRef.current;
-        pendingFirstViewSpanRef.current = null;
-        firstViewSpan?.end(buildTelemetryContext(visibleElements));
-        if (firstViewSpan) {
-          firstVisualizationRecordedRef.current = true;
+
+        if (needsLayout) {
+          layoutVisibleGraph().then(() => finishLayout('fit'));
+        } else {
+          // Only re-fit when the set of nodes changed (a filter), not for edge-curve edits.
+          finishLayout(nodeSetChanged ? 'fit' : null);
         }
       }, 0),
       setTimeout(() => {
-        if (cy.destroyed()) {
+        if (cy.destroyed() || !layoutSettled) {
           return;
         }
         synchronizeEdgeAnchorPositions(cy);
@@ -4597,9 +4854,11 @@ function ViewerApp() {
     ];
 
     return () => {
+      cancelled = true;
+      clearTimeout(pendingFocusTimerRef.current);
       timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
     };
-  }, [visibleElements]);
+  }, [visibleElements, graphLayoutType]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -4612,13 +4871,7 @@ function ViewerApp() {
     const timeoutId = setTimeout(() => {
       if (!cy.destroyed()) {
         cy.resize();
-        cy.fit(
-          cy
-            .nodes()
-            .not('[edgeAnchor = 1]')
-            .not('[edgeBendHandle = 1]'),
-          42,
-        );
+        applyReadableViewport(cy, { anchorTop: lastLayoutTypeRef.current === GRAPH_LAYOUT_TYPES.HIERARCHY });
         synchronizeEdgeBendHandle(cy);
       }
     }, 0);
@@ -4826,7 +5079,10 @@ function ViewerApp() {
           }
 
           const projected = getPositionedProjectionElements(rawProjected);
-          const filteredProjection = filterProjectedElementsByGraphAxis(projected, graphFilterAxis);
+          const filteredProjection = filterBuiltinVocabulary(
+            filterProjectedElementsByGraphAxis(projected, graphFilterAxis),
+            focusedNodeIds ?? [],
+          );
           projectionSpan.end(buildTelemetryContext(filteredProjection, {
             focusedNodeCount: Array.isArray(focusedNodeIds) ? focusedNodeIds.length : 0,
           }));
@@ -5158,7 +5414,10 @@ function ViewerApp() {
         const metadataRows = [];
 
         for (const parsed of parsedFiles) {
-          mergedQuads.push(...parsed.contentQuads);
+          // Not push(...quads): spreading a large file's quads as arguments overflows the call stack.
+          for (const quad of parsed.contentQuads) {
+            mergedQuads.push(quad);
+          }
 
           parsed.headerQuads.forEach((quad, index) => {
             metadataRows.push({
@@ -6230,6 +6489,41 @@ function ViewerApp() {
                     />
                   </svg>
                 </button>
+              </div>
+
+              <div className="projection-toggle layout-type-toggle" role="group" aria-label="Graph layout type">
+                {Object.values(GRAPH_LAYOUT_TYPES).map((layoutType) => (
+                  <button
+                    key={layoutType}
+                    type="button"
+                    data-layout-type={layoutType}
+                    className={`projection-toggle-button layout-type-button ${graphLayoutType === layoutType ? 'active' : ''}`}
+                    onClick={() => setGraphLayoutType(layoutType)}
+                    aria-pressed={graphLayoutType === layoutType}
+                    aria-label={GRAPH_LAYOUT_LABELS[layoutType]}
+                    title={GRAPH_LAYOUT_LABELS[layoutType]}
+                  >
+                    {layoutType === GRAPH_LAYOUT_TYPES.SPREAD ? (
+                      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <circle cx="8" cy="8" r="1.6" fill="currentColor" />
+                        <circle cx="3" cy="4" r="1.2" fill="currentColor" />
+                        <circle cx="13" cy="4" r="1.2" fill="currentColor" />
+                        <circle cx="3" cy="12.5" r="1.2" fill="currentColor" />
+                        <circle cx="13" cy="12.5" r="1.2" fill="currentColor" />
+                        <path d="M8 8L3 4M8 8L13 4M8 8L3 12.5M8 8L13 12.5" stroke="currentColor" strokeWidth="1" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <circle cx="8" cy="3" r="1.4" fill="currentColor" />
+                        <circle cx="4" cy="9" r="1.2" fill="currentColor" />
+                        <circle cx="12" cy="9" r="1.2" fill="currentColor" />
+                        <circle cx="2.5" cy="14" r="1" fill="currentColor" />
+                        <circle cx="5.5" cy="14" r="1" fill="currentColor" />
+                        <path d="M8 3L4 9M8 3L12 9M4 9L2.5 14M4 9L5.5 14" stroke="currentColor" strokeWidth="1" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
               </div>
 
               <div className={`graph-search-panel ${isGraphSearchOpen ? 'open' : ''}`}>

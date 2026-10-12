@@ -6018,8 +6018,8 @@ function ViewerApp() {
             href={docsUrl()}
             target="_blank"
             rel="noreferrer"
-            aria-label="Open the notation guide"
-            title="Notation guide"
+            aria-label="Open the usage guide"
+            title="Usage guide"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 16h-2v-2h2v2Zm2.1-7.7-.9.9c-.7.7-1.2 1.3-1.2 2.8h-2v-.5c0-1.1.5-2.1 1.2-2.8l1.2-1.3c.4-.3.6-.8.6-1.4 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 .9-.4 1.7-.9 2.3Z" />

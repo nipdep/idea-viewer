@@ -105,7 +105,7 @@ export default function DocsPage() {
         <a className="docs-brand" href="./">
           IDEA<span>*</span> viewer
         </a>
-        <div className="docs-nav-sub">Notation guide</div>
+        <div className="docs-nav-sub">Usage guide</div>
         <ul>
           {TOC.map((item) => (
             <li key={item.id}>

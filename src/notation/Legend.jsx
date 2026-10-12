@@ -99,7 +99,7 @@ export default function Legend({ mode }) {
         </div>
       ))}
       <a className="graph-legend-docs-link" href={docsUrl(view)} target="_blank" rel="noreferrer">
-        Full notation guide ↗
+        Full usage guide ↗
       </a>
     </div>
   );

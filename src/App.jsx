@@ -28,7 +28,7 @@ import {
 } from './lib/hierarchy-collapse';
 import { persistAndRotateTelemetrySession, telemetry } from './telemetry';
 import Legend from './notation/Legend';
-import { docsUrl, openGuide } from './notation/docs-url';
+import { docsUrl, openGuide, GUIDE_CLOSE_MESSAGE, GUIDE_OPEN_EVENT } from './notation/docs-url';
 import './styles.css';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -1496,6 +1496,29 @@ function ViewerApp() {
   const [rightFlyoutOpen, setRightFlyoutOpen] = useState(false);
   const [isDetachedPanMode, setIsDetachedPanMode] = useState(false);
   const [isLegendOpen, setIsLegendOpen] = useState(false);
+  const [guideAnchor, setGuideAnchor] = useState(null);
+
+  useEffect(() => {
+    const onOpen = (event) => setGuideAnchor(event.detail?.anchor ?? '');
+    const onMessage = (event) => {
+      if (event.origin === window.location.origin && event.data?.type === GUIDE_CLOSE_MESSAGE) {
+        setGuideAnchor(null);
+      }
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        setGuideAnchor(null);
+      }
+    };
+    window.addEventListener(GUIDE_OPEN_EVENT, onOpen);
+    window.addEventListener('message', onMessage);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener(GUIDE_OPEN_EVENT, onOpen);
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGraphSearchOpen, setIsGraphSearchOpen] = useState(false);
@@ -7263,6 +7286,12 @@ function ViewerApp() {
           </>
         )}
       </div>
+
+      {guideAnchor !== null && (
+        <div className="guide-overlay" role="dialog" aria-label="Usage guide">
+          <iframe className="guide-frame" title="Usage guide" src={docsUrl(guideAnchor)} />
+        </div>
+      )}
 
       <footer className="app-footer">
         Copyright © 2026 Rensselaer Polytechnic Institute | Tetherless World Constellation

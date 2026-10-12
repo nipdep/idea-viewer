@@ -36,21 +36,11 @@ const TOC = [
   { id: 'using', title: 'Using the viewer', children: [{ id: 'loading', title: 'Loading data' }, { id: 'layouts', title: 'Layouts and large graphs' }, { id: 'focus', title: 'Selecting and focusing' }, { id: 'search', title: 'Search and filters' }, { id: 'inspector', title: 'Entity inspector' }] },
 ];
 
-// Opened from the viewer: close this tab and return to it (the loaded graph lives there). Opened directly: navigate.
+// Shown inside the viewer (an iframe over it): ask the parent to close the overlay. Opened directly: navigate.
 function goBackToViewer(event) {
-  const opener = window.opener;
-  if (opener && !opener.closed) {
+  if (window.parent !== window) {
     event.preventDefault();
-    try {
-      opener.focus();
-    } catch {
-      // Focus is best effort.
-    }
-    window.close();
-    // A tab the browser refuses to close falls back to a normal navigation.
-    window.setTimeout(() => {
-      window.location.href = './';
-    }, 250);
+    window.parent.postMessage({ type: 'idea-guide-close' }, window.location.origin);
   }
 }
 

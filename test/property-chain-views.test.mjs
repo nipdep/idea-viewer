@@ -33,8 +33,10 @@ for (const [name, builder, mode] of [
     const chainEdge = edges.find((edge) => /serves/.test(edge.data.predicateLabel ?? ''));
     assert.ok(chainEdge, 'property edge present');
     assert.match(chainEdge.data.predicateLabel, /⛓/);
-    const rows = chainEdge.data.projectedMetadataRows ?? [];
-    assert.ok(rows.some((row) => row.key === 'Property chain' && /hasPart o connectsTo -> serves/.test(row.value)), JSON.stringify(rows));
+    const steps = chainEdge.data.propertyChainSteps ?? [];
+    assert.deepEqual(steps.map((step) => step.members.map((member) => member.label)), [['hasPart', 'connectsTo']]);
+    assert.equal(steps[0].result, 'serves');
+    assert.match(chainEdge.data.hoverText, /hasPart o connectsTo -> serves/);
   });
 
   test(`${name} view leaves no list connector or cons-cell nodes for the chain`, async () => {
@@ -62,4 +64,32 @@ test('properties that are only used (restriction, chain) and never declared are 
   const elements = buildOwlViewProjection(graphData, null, createViewOptions(GRAPH_VIEW_MODES.OWL, {}));
   const drawn = elements.filter((element) => !element.data.source).map((element) => element.data.id);
   assert.ok(!drawn.some((id) => id.startsWith('http://other/')), `drawn nodes: ${drawn}`);
+});
+
+test('OWL view also marks restriction edges that use a chain property', async () => {
+  const quads = await parseRdfText(
+    `@prefix : <http://ex/> . @prefix owl: <http://www.w3.org/2002/07/owl#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+:A a owl:Class ; rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :serves ; owl:someValuesFrom :B ] . :B a owl:Class .
+:serves a owl:ObjectProperty ; rdfs:domain :A ; rdfs:range :B ; owl:propertyChainAxiom ( :hasPart :connectsTo ) .
+:hasPart a owl:ObjectProperty . :connectsTo a owl:ObjectProperty .`,
+    'restr.ttl',
+  );
+  const graphData = buildGraphData(quads, { hasKg: false, hasOntology: true, ontologyModel: extractOntologyModel(quads) });
+  const elements = buildOwlViewProjection(graphData, null, createViewOptions(GRAPH_VIEW_MODES.OWL, {}));
+  const restriction = elements.find((element) => element.data.source && element.data.axiomKind === 'Restriction');
+  assert.ok(restriction, 'restriction edge present');
+  assert.match(restriction.data.predicateLabel, /⛓/);
+  assert.equal(restriction.data.propertyChainSteps[0].members.length, 2);
+  assert.equal((restriction.data.predicateLabel.match(/⛓/g) ?? []).length, 1, 'mark not doubled');
+});
+
+test('self-loops of one node fan out on both sides with distinct directions', async () => {
+  const { planSelfLoop } = await import('../src/lib/view-projections.js');
+  const node = { nodeWidth: 160, nodeHeight: 46 };
+  const plans = Array.from({ length: 6 }, (_, index) => planSelfLoop(index, node, 'some property'));
+  const directions = plans.map((plan) => plan.selfLoopDirection);
+  assert.equal(new Set(directions).size, 6, `directions ${directions}`);
+  assert.deepEqual(directions.slice(0, 2), ['90deg', '270deg'], 'first loops: east then west');
+  assert.ok(plans[0].selfLoopLabelDx > 0 && plans[1].selfLoopLabelDx < 0, 'labels pushed outward on each side');
+  assert.ok(planSelfLoop(10, node, 'x').selfLoopStepSize > plans[0].selfLoopStepSize, 'second ring is larger');
 });

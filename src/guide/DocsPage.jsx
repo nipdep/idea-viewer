@@ -405,9 +405,9 @@ export default function DocsPage() {
           </Section>
           <Section id="property-chains" level={3} title="Property chains">
             <Row symbol={<MarkSymbol text="⛓ p" />} name="owl:propertyChainAxiom">
-              The property edge gets a <MarkSymbol text="⛓" /> prefix. Click the edge: the side panel shows the chain,
-              for example <code>hasServiceComponent o connectsTo -&gt; serversRoom</code> (read: following{' '}
-              <code>hasServiceComponent</code> and then <code>connectsTo</code> implies <code>serversRoom</code>).
+              Every edge drawn for the property gets a <MarkSymbol text="⛓" /> prefix. Click the edge: the side panel draws each
+              chain step by step, for example <code>hasServiceComponent</code> <em>then</em> <code>connectsTo</code>{' '}
+              <em>implies</em> <code>serversRoom</code>. A property with several chains lists each one.
             </Row>
             <Pattern>{`:serversRoom owl:propertyChainAxiom ( :hasServiceComponent :connectsTo ) .`}</Pattern>
             <p>

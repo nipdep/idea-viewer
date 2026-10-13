@@ -2110,3 +2110,88 @@ textarea {
   height: 100%;
   border: 0;
 }
+
+.chain-card {
+  margin: 6px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(30, 27, 22, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 253, 249, 0.85);
+}
+
+.chain-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(159, 122, 87, 0.45);
+  border-radius: 8px;
+  background: #f6f0e8;
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.chain-index {
+  flex: 0 0 auto;
+  min-width: 1.35em;
+  height: 1.35em;
+  border-radius: 999px;
+  background: rgba(159, 122, 87, 0.2);
+  color: #684c32;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.35em;
+  text-align: center;
+}
+
+.chain-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chain-then {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 2px 14px;
+  color: #8a7c6d;
+  font-family: "Avenir Next", "Avenir", "Trebuchet MS", Verdana, sans-serif;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chain-then::before {
+  content: '↓';
+  font-size: 0.9rem;
+}
+
+.chain-implies {
+  color: #2a6f6e;
+}
+
+.chain-result {
+  border-color: rgba(42, 111, 110, 0.55);
+  background: #e8f2ef;
+  font-weight: 700;
+}
+
+.chain-result .chain-index {
+  background: rgba(42, 111, 110, 0.2);
+  color: #1f5f5e;
+}
+
+.inspector-link-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.inspector-link-detail {
+  color: #8a7c6d;
+  font-size: 0.74rem;
+  font-weight: 400;
+}

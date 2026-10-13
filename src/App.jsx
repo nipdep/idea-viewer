@@ -935,6 +935,33 @@ function runNodeNameFilter(graphData, queryText) {
 }
 
 // Data properties a class carries through axioms (restrictions, domain/range), shown as edges to a datatype.
+// An endpoint of an edge between two property edges (subPropertyOf, inverseOf, ...) is an anchor on a property
+// edge. Describe it as that property: its name, the classes it connects, and the edge to select on click.
+function describeEdgeEndpoint(endpointId, graphData, visibleElements) {
+  const node = graphData?.nodeMap.get(endpointId);
+  if (node) {
+    return { label: node.fullLabel ?? endpointId, detail: '', nodeId: endpointId, edgeId: '' };
+  }
+  const anchor = (visibleElements ?? []).find((entry) => !entry?.data?.source && entry?.data?.id === endpointId)?.data;
+  const edgeId = anchor?.anchoredEdgeId;
+  const edge = edgeId ? (visibleElements ?? []).find((entry) => entry?.data?.source && entry.data.id === edgeId)?.data : null;
+  if (!edge) {
+    return { label: endpointId, detail: '', nodeId: endpointId, edgeId: '' };
+  }
+  const labelOf = (id) => graphData?.nodeMap.get(id)?.fullLabel ?? id;
+  return {
+    label: barePropertyName(edge.predicateLabel) || edge.predicate,
+    detail: `${labelOf(edge.source)} → ${labelOf(edge.target)}`,
+    nodeId: '',
+    edgeId,
+  };
+}
+
+// rdf:/rdfs:/owl: relations (equivalentClass, sameAs, ...) are axioms between entities, not properties of them.
+function isBuiltinVocabularyPredicate(iri) {
+  return /^http:\/\/www\.w3\.org\/(1999\/02\/22-rdf-syntax-ns|2000\/01\/rdf-schema|2002\/07\/owl)#/.test(String(iri ?? ''));
+}
+
 // Property label without the restriction quantifier "(some)", cardinality or "*" marks.
 function barePropertyName(label) {
   return String(label ?? '').replace(/^\([^)]*\)\s*/, '').replace(/\s*\[[^\]]*\]/g, '').replace(/\*+$/, '').trim();
@@ -948,7 +975,7 @@ function buildAxiomDataPropertyRows(selectedNodeId, graphData, visibleElements) 
   const seen = new Set();
   for (const element of visibleElements ?? []) {
     const data = element?.data;
-    if (!data?.source || data.category !== 'data' || data.source !== selectedNodeId) {
+    if (!data?.source || data.category !== 'data' || data.source !== selectedNodeId || isBuiltinVocabularyPredicate(data.predicate)) {
       continue;
     }
     const name = barePropertyName(data.predicateLabel || data.predicate);
@@ -978,7 +1005,7 @@ function buildNeighborRows(selectedNodeId, graphData, visibleElements) {
   for (const element of visibleElements ?? []) {
     const edge = element?.data;
     // Only object properties: subclass, equivalence, type and other structural edges are not properties.
-    if (!edge?.source || edge.category !== 'object') {
+    if (!edge?.source || edge.category !== 'object' || isBuiltinVocabularyPredicate(edge.predicate)) {
       continue;
     }
     if (edge.source !== selectedNodeId && edge.target !== selectedNodeId) {
@@ -1211,6 +1238,36 @@ function partitionOntologyHeaderQuads(quads) {
     headerQuads,
     contentQuads,
   };
+}
+
+// A property chain drawn as steps: each member, "then" between them, and what the chain implies.
+function PropertyChainView({ steps }) {
+  return (
+    <div className="chain-view">
+      <h4>Property chain{steps.length > 1 ? `s (${steps.length})` : ''}</h4>
+      {steps.map((step, index) => (
+        <div key={index} className="chain-card">
+          {step.members.map((member, memberIndex) => (
+            <Fragment key={memberIndex}>
+              {memberIndex > 0 && <div className="chain-then">then</div>}
+              <div className="chain-step">
+                <span className="chain-index">{memberIndex + 1}</span>
+                <span className="chain-name">
+                  {member.inverse && <em>inverse of </em>}
+                  {member.label}
+                </span>
+              </div>
+            </Fragment>
+          ))}
+          <div className="chain-then chain-implies">implies</div>
+          <div className="chain-step chain-result">
+            <span className="chain-index">⛓</span>
+            <span className="chain-name">{step.result}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function LongText({ text }) {
@@ -1717,6 +1774,7 @@ function ViewerApp() {
         restrictionKind: data.restrictionKind ?? '',
         // Rows a projection attaches to its own edges (cardinality details, property chains, ...).
         projectedMetadataRows: Array.isArray(data.projectedMetadataRows) ? data.projectedMetadataRows : [],
+        propertyChainSteps: Array.isArray(data.propertyChainSteps) ? data.propertyChainSteps : [],
       };
     },
     [selectedEdgeId, graphData, visibleElements],
@@ -3925,13 +3983,12 @@ function ViewerApp() {
           selector: 'edge[isSelfLoop = 1]',
           style: {
             'curve-style': 'bezier',
-            'source-endpoint': '180deg',
-            'target-endpoint': '-90deg',
             'control-point-step-size': 'data(selfLoopStepSize)',
-            'loop-direction': '-135deg',
-            'loop-sweep': '34deg',
+            'loop-direction': 'data(selfLoopDirection)',
+            'loop-sweep': 'data(selfLoopSweep)',
             'text-rotation': 'none',
-            'text-margin-y': -12,
+            'text-margin-x': 'data(selfLoopLabelDx)',
+            'text-margin-y': 0,
           },
         },
         {
@@ -7204,32 +7261,37 @@ function ViewerApp() {
                       <dt>Predicate IRI</dt>
                       <dd className="breakable mono">{selectedEdge.predicate}</dd>
 
-                      <dt>Source</dt>
-                      <dd>
-                        <button
-                          type="button"
-                          className="neighbor-row inspector-link"
-                          onClick={() => {
-                            setSingleFocusedNode(selectedEdge.source);
-                          }}
-                        >
-                          {graphData?.nodeMap.get(selectedEdge.source)?.fullLabel ?? selectedEdge.source}
-                        </button>
-                      </dd>
-
-                      <dt>Target</dt>
-                      <dd>
-                        <button
-                          type="button"
-                          className="neighbor-row inspector-link"
-                          onClick={() => {
-                            setSingleFocusedNode(selectedEdge.target);
-                          }}
-                        >
-                          {graphData?.nodeMap.get(selectedEdge.target)?.fullLabel ?? selectedEdge.target}
-                        </button>
-                      </dd>
+                      {[['Source', selectedEdge.source], ['Target', selectedEdge.target]].map(([title, endpointId]) => {
+                        const endpoint = describeEdgeEndpoint(endpointId, graphData, visibleElements);
+                        return (
+                          <Fragment key={title}>
+                            <dt>{title}</dt>
+                            <dd>
+                              <button
+                                type="button"
+                                className="neighbor-row inspector-link"
+                                onClick={() => {
+                                  if (endpoint.edgeId) {
+                                    selectEdgeFromInspector(endpoint.edgeId);
+                                  } else {
+                                    setSingleFocusedNode(endpoint.nodeId);
+                                  }
+                                }}
+                              >
+                                <span className="inspector-link-text">
+                                  {endpoint.label}
+                                  {endpoint.detail && <small className="inspector-link-detail">{endpoint.detail}</small>}
+                                </span>
+                              </button>
+                            </dd>
+                          </Fragment>
+                        );
+                      })}
                     </dl>
+
+                    {selectedEdge.propertyChainSteps?.length > 0 && (
+                      <PropertyChainView steps={selectedEdge.propertyChainSteps} />
+                    )}
 
                     <h4>Relation metadata ({selectedEdgeMetadataRows.length})</h4>
                     <div className="property-list">
